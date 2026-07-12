@@ -8,6 +8,7 @@ import { TableList } from "./catalog/TableList";
 import { ErdPage } from "./canvas/ErdPage";
 import { useI18n } from "./i18n/useI18n";
 import { totalTableCount, useAppStore, type Fatal } from "./model/store";
+import { BootstrapScreen } from "./ui/BootstrapScreen";
 import { Header } from "./ui/Header";
 import { Link } from "./ui/Link";
 import { NotFound } from "./ui/NotFound";
@@ -115,6 +116,16 @@ export function App() {
 /** 描画を止めるバナー（A-04 / §3.6）。中途半端に読んで誤った図を見せない */
 function FatalBanner({ fatal }: { fatal: Fatal }) {
   const { t } = useI18n();
+  const serverMode = useAppStore((s) => s.serverMode);
+  if (fatal.kind === "no-data" || fatal.kind === "empty") {
+    // サーバーモードならブートストラップ（A-08）。判定中はどちらの画面も出さない
+    if (serverMode === null) {
+      return <div className="boot-loading">{t("canvas.loading")}</div>;
+    }
+    if (serverMode) {
+      return <BootstrapScreen />;
+    }
+  }
   let message: string;
   switch (fatal.kind) {
     case "no-data":

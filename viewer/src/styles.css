@@ -170,6 +170,58 @@ body {
   padding: 24px 32px;
 }
 
+.bootstrap-options {
+  display: flex;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.bootstrap-option {
+  flex: 1;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bootstrap-option h2 {
+  font-size: 14px;
+  margin: 0;
+}
+
+.bootstrap-option p {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0;
+  flex: 1;
+}
+
+.bootstrap-option button {
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+}
+
+.bootstrap-option button:disabled {
+  background: var(--panel);
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.bootstrap-option-disabled {
+  opacity: 0.7;
+}
+
+.bootstrap-error {
+  color: var(--error);
+  margin-top: 12px;
+}
+
 .error-banner {
   background: var(--error-bg);
   color: var(--error);

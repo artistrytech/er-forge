@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "e2e": "node e2e/smoke.mjs"
+    "e2e": "node e2e/smoke.mjs",
+    "e2e:server": "node e2e/server-smoke.mjs"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",
