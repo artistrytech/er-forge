@@ -1,0 +1,54 @@
+{
+  "id": "public.future",
+  "schema": {
+    "name": "future",
+    "schema": "public",
+    "comment": null,
+    "columns": [
+      {
+        "name": "id",
+        "type": "int4",
+        "logicalType": "int",
+        "nullable": false,
+        "autoIncrement": false,
+        "generated": false,
+        "comment": null,
+        "unknown": {
+          "sensitivity": "high"
+        },
+        "default": null
+      }
+    ],
+    "primaryKey": [
+      "id"
+    ],
+    "uniques": [ ],
+    "indexes": [ ],
+    "foreignKeys": [ ],
+    "dialect": { }
+  },
+  "meta": {
+    "displayName": "未来",
+    "tags": [ ],
+    "notes": null,
+    "columns": { },
+    "logicalUniques": [ ],
+    "logicalForeignKeys": [ ],
+    "relations": { },
+    "unknown": {
+      "reviewedBy": "本田"
+    },
+    "empty": false
+  },
+  "unknown": {
+    "futureFeature": {
+      "enabled": true,
+      "thresholds": [
+        1,
+        2,
+        3
+      ]
+    },
+    "futureFlag": true
+  }
+}

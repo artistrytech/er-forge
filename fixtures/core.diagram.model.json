@@ -1,0 +1,51 @@
+{
+  "id": "core",
+  "title": "コアドメイン",
+  "order": 1,
+  "nodes": {
+    "public.orders": {
+      "pos": [
+        520,
+        80
+      ],
+      "w": null,
+      "unknown": { }
+    },
+    "public.organizations": {
+      "pos": [
+        120,
+        400
+      ],
+      "w": null,
+      "unknown": { }
+    },
+    "public.users": {
+      "pos": [
+        120,
+        80
+      ],
+      "w": 260,
+      "unknown": { }
+    }
+  },
+  "edges": {
+    "public.orders#fk:orders_user_id_fkey": {
+      "waypoints": [ ],
+      "unknown": { }
+    },
+    "public.users#fk:users_org_id_fkey": {
+      "waypoints": [
+        [
+          380,
+          200
+        ],
+        [
+          300,
+          320
+        ]
+      ],
+      "unknown": { }
+    }
+  },
+  "unknown": { }
+}

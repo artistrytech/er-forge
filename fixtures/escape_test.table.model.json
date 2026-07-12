@@ -1,0 +1,75 @@
+{
+  "id": "public.escape_test",
+  "schema": {
+    "name": "escape_test",
+    "schema": "public",
+    "comment": null,
+    "columns": [
+      {
+        "name": "id",
+        "type": "int4",
+        "logicalType": "int",
+        "nullable": false,
+        "autoIncrement": false,
+        "generated": false,
+        "comment": null,
+        "unknown": { },
+        "default": null
+      },
+      {
+        "name": "default",
+        "type": "varchar(10)",
+        "logicalType": "string",
+        "nullable": true,
+        "autoIncrement": false,
+        "generated": false,
+        "comment": null,
+        "unknown": { },
+        "default": null
+      },
+      {
+        "name": "class",
+        "type": "varchar(10)",
+        "logicalType": "string",
+        "nullable": true,
+        "autoIncrement": false,
+        "generated": false,
+        "comment": null,
+        "unknown": { },
+        "default": null
+      }
+    ],
+    "primaryKey": [
+      "id"
+    ],
+    "uniques": [ ],
+    "indexes": [ ],
+    "foreignKeys": [ ],
+    "dialect": { }
+  },
+  "meta": {
+    "displayName": null,
+    "tags": [ ],
+    "notes": "1行目\n2行目\tタブ \"引用\" \\バックスラッシュ LINE SEPARATOR  PARAGRAPH SEPARATOR ",
+    "columns": {
+      "default": {
+        "displayName": "既定値",
+        "notes": "1行目\n2行目\tタブ \"引用\" \\バックスラッシュ LINE SEPARATOR  PARAGRAPH SEPARATOR ",
+        "unknown": { },
+        "empty": false
+      },
+      "class": {
+        "displayName": "区分",
+        "notes": null,
+        "unknown": { },
+        "empty": false
+      }
+    },
+    "logicalUniques": [ ],
+    "logicalForeignKeys": [ ],
+    "relations": { },
+    "unknown": { },
+    "empty": false
+  },
+  "unknown": { }
+}

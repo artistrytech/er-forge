@@ -1,0 +1,7 @@
+ERD.config({
+  ignoreTables: [
+    "public.flyway_schema_history",
+    "public.tmp_*",
+    "/^staging\\..*_bak$/",
+  ],
+});

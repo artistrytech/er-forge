@@ -1,0 +1,11 @@
+{
+  "columns": {
+    "id": "ID",
+    "created_at": "作成日時",
+    "updated_at": "更新日時",
+    "org_id": "組織ID",
+    "email": "メールアドレス",
+    "default": "既定値"
+  },
+  "unknown": { }
+}

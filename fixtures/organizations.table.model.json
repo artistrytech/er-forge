@@ -1,0 +1,51 @@
+{
+  "id": "public.organizations",
+  "schema": {
+    "name": "organizations",
+    "schema": "public",
+    "comment": "組織",
+    "columns": [
+      {
+        "name": "id",
+        "type": "bigserial",
+        "logicalType": "int",
+        "nullable": false,
+        "autoIncrement": true,
+        "generated": false,
+        "comment": null,
+        "unknown": { },
+        "default": null
+      },
+      {
+        "name": "name",
+        "type": "varchar(120)",
+        "logicalType": "string",
+        "nullable": false,
+        "autoIncrement": false,
+        "generated": false,
+        "comment": null,
+        "unknown": { },
+        "default": null
+      }
+    ],
+    "primaryKey": [
+      "id"
+    ],
+    "uniques": [ ],
+    "indexes": [ ],
+    "foreignKeys": [ ],
+    "dialect": { }
+  },
+  "meta": {
+    "displayName": "組織",
+    "tags": [ ],
+    "notes": null,
+    "columns": { },
+    "logicalUniques": [ ],
+    "logicalForeignKeys": [ ],
+    "relations": { },
+    "unknown": { },
+    "empty": false
+  },
+  "unknown": { }
+}
