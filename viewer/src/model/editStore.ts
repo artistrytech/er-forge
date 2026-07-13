@@ -714,6 +714,26 @@ export function installUnloadHandlers(): void {
   });
 }
 
+// ---------------------------------------- 他画面（テーブル編集・一括編集）との共有
+
+/**
+ * 編集フォーム（O-03 / P-03）の書き込みが使う編集ロックID。
+ * ロックはプロジェクト全体で1つ（H-11）であり、フォームも同じセッションを共有する。
+ */
+export function currentLockId(): string | null {
+  return lockId;
+}
+
+/** フォームの保存が発行したリビジョンを記録し、SSE のエコーバックを無視させる（INV-3） */
+export function rememberOwnRevision(revision: string): void {
+  rememberRevision(revision);
+}
+
+/** フォームの保存が 423 LOCK_LOST を受けたときの共通処理（閲覧へ強制降格） */
+export function notifyLockLost(): void {
+  onLockLost();
+}
+
 /** エクスポート後などに未保存の有無を判定するヘルパ */
 export function hasPending(diagramId?: string): boolean {
   const st = useEditStore.getState();

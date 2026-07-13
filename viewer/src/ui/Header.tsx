@@ -48,6 +48,11 @@ export function Header({ currentDiagramId }: { currentDiagramId?: string }) {
         <Link className="app-nav-link" href={hrefs.tables()}>
           {t("nav.tables")}
         </Link>
+        {serverMode === true && (
+          <Link className="app-nav-link" href={hrefs.columns()}>
+            {t("nav.columns")}
+          </Link>
+        )}
         <button type="button" className="app-nav-button" onClick={() => setSearchOpen(true)}>
           🔍 {t("nav.search")} <kbd>{t("nav.searchHint")}</kbd>
         </button>

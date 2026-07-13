@@ -14,6 +14,7 @@ export function TableDetail({ tableId, notice }: { tableId: string; notice?: str
   const { t } = useI18n();
   const index = useAppStore((s) => s.index);
   const nameDisplay = useAppStore((s) => s.nameDisplay);
+  const serverMode = useAppStore((s) => s.serverMode);
 
   const it = index?.tables?.find((x) => x.id === tableId);
   if (index !== null && !it) {
@@ -29,6 +30,11 @@ export function TableDetail({ tableId, notice }: { tableId: string; notice?: str
       <div className="catalog-header">
         <h2>{title}</h2>
         <span className="mono muted">{tableId}</span>
+        {serverMode === true && (
+          <Link className="button-link" href={hrefs.tableEdit(tableId)}>
+            {t("catalog.edit")}
+          </Link>
+        )}
         <Link className="button-link" href={hrefs.tables()}>
           {t("catalog.backToList")}
         </Link>

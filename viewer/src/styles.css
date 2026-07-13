@@ -992,3 +992,220 @@ body {
 a {
   color: var(--accent);
 }
+
+/* ---- 編集フォーム（O-03 テーブル編集 / P-03 一括編集） ---- */
+
+.edit-form {
+  border: none;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+
+.edit-form:disabled {
+  opacity: 0.6;
+}
+
+.edit-form h3 {
+  margin: 20px 0 6px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.edit-form h4 {
+  margin: 12px 0 6px;
+  font-size: 13px;
+}
+
+.form-hint {
+  margin: 0 0 8px;
+  font-size: 12px;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: max-content minmax(200px, 480px);
+  gap: 8px 16px;
+  align-items: center;
+}
+
+.form-grid label {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.form-grid input,
+.form-grid textarea,
+.edit-form .data-table input,
+.constraint-row input,
+.columns-table input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: inherit;
+  font-size: 13px;
+}
+
+.edit-form .data-table td {
+  vertical-align: middle;
+}
+
+.edit-form .data-table input {
+  min-width: 140px;
+}
+
+.form-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 20px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.constraint-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-bottom: 6px;
+}
+
+.constraint-row.has-error {
+  border-color: var(--error);
+}
+
+.constraint-row .constraint-name {
+  width: 240px;
+}
+
+.constraint-row .constraint-notes {
+  flex: 1;
+  min-width: 160px;
+}
+
+.constraint-row select,
+.column-picker select,
+.columns-toolbar select,
+.edit-form .data-table select {
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: inherit;
+  font-size: 12.5px;
+}
+
+.constraint-arrow {
+  color: var(--text-muted);
+}
+
+.column-picker {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.column-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: 10px;
+  padding: 1px 4px 1px 8px;
+  font-size: 12px;
+}
+
+.column-chip button {
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+button.button-link {
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+button.button-link.danger {
+  background: none;
+  color: var(--error);
+  padding: 6px 8px;
+}
+
+.field-error {
+  color: var(--error);
+}
+
+.error-list {
+  margin: 4px 0 0;
+  padding-left: 20px;
+}
+
+.badge-warn {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+.form-gate {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.dialog-actions button.danger {
+  border-color: var(--error);
+  color: var(--error);
+}
+
+.dialog-actions button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+/* ---- カラム論理名の一括編集（P-03） ---- */
+
+.columns-page .columns-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.columns-toolbar .spacer {
+  flex: 1;
+}
+
+.columns-table td.right .badge {
+  margin-left: 4px;
+}
+
+.columns-table .row-dirty td:first-child {
+  border-left: 3px solid var(--accent);
+}
+
+.paste-area {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--bg);
+  color: inherit;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  font-size: 12px;
+  resize: vertical;
+}

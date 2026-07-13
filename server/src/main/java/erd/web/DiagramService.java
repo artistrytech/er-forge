@@ -1,7 +1,6 @@
 package erd.web;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import erd.core.index.IndexGenerator;
 import erd.core.io.DataFileParser;
 import erd.core.io.DataFilePrinter;
 import erd.core.io.ProjectStore;
@@ -37,7 +36,6 @@ public final class DiagramService {
     private final DataFileParser parser = new DataFileParser();
     private final DataFilePrinter printer = new DataFilePrinter();
     private final ProjectStore store = new ProjectStore();
-    private final IndexGenerator indexGenerator = new IndexGenerator();
 
     public sealed interface Outcome permits Ok, Stale, NotFound {}
 
@@ -77,12 +75,14 @@ public final class DiagramService {
         String newHash = Hashes.sha256(content.getBytes(StandardCharsets.UTF_8));
         try {
             if (!newHash.equals(currentHash)) {
-                writeAtomic(file, content);
+                FileWrites.writeAtomic(file, content);
                 written.put("diagrams/" + diagramId + ".js", newHash);
             }
             // ノードの追加 / 除去は index.js の tables[].diagrams に影響する。
             // 条件分岐で最適化せず、書き込み後は必ず再生成する（§8.2 と同じ方針）
-            String indexHash = regenerateIndex(dataDir);
+            ProjectStore.LoadResult loaded = store.read(dataDir);
+            String indexHash = FileWrites.regenerateIndex(
+                    dataDir, loaded.model().tables(), loaded.model().diagrams());
             if (indexHash != null) {
                 written.put("index.js", indexHash);
             }
@@ -162,29 +162,4 @@ public final class DiagramService {
                 (int) Math.round(arr.path(1).asDouble() / 8.0) * 8);
     }
 
-    // ------------------------------------------------------------- index.js
-
-    /** index.js を全体から再生成する。内容が変わったときのみ書き、そのハッシュを返す。 */
-    private String regenerateIndex(Path dataDir) throws IOException {
-        ProjectStore.LoadResult loaded = store.read(dataDir);
-        String content = printer.printIndex(
-                indexGenerator.generate(loaded.model().tables(), loaded.model().diagrams()));
-        Path file = dataDir.resolve("index.js");
-        String hash = Hashes.sha256(content.getBytes(StandardCharsets.UTF_8));
-        if (Files.isRegularFile(file) && Hashes.sha256(file).equals(hash)) {
-            return null;
-        }
-        writeAtomic(file, content);
-        return hash;
-    }
-
-    private static void writeAtomic(Path target, String content) throws IOException {
-        Path tmp = target.resolveSibling(target.getFileName() + ".tmp");
-        Files.write(tmp, content.getBytes(StandardCharsets.UTF_8));
-        try {
-            Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-        } catch (java.nio.file.AtomicMoveNotSupportedException e) {
-            Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
-        }
-    }
 }

@@ -1,0 +1,186 @@
+/**
+ * テーブル編集・論理名・論理制約のスモークテスト（Phase4 の完了条件の検証）。
+ *
+ * - サンプルデータを取り込み、テーブル編集画面（O-03）を開く（ロック自動取得）
+ * - テーブル論理名を変更し、論理外部制約（P-07）を追加して保存
+ *   → schema/**.js に meta が書かれ、index.js が再生成される（P §4.3）
+ *   → ER図に破線エッジが1本増える（E-09。Phase4 の完了条件）
+ * - カラム論理名の一括編集画面（P-03）で辞書を編集して保存
+ *   → dictionary.js が更新される
+ *
+ * 前提: `npm run build` と `gradlew shadowJar` 済み。実行: `node e2e/meta-edit-smoke.mjs`
+ */
+import { chromium } from "playwright";
+import { spawn } from "node:child_process";
+import { mkdtempSync, copyFileSync, existsSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const here = dirname(fileURLToPath(import.meta.url));
+const JAR = resolve(here, "..", "..", "server", "build", "libs", "erd-server.jar");
+const INDEX = resolve(here, "..", "dist", "index.html");
+
+const results = [];
+function check(name, cond) {
+  results.push(`${cond ? "PASS" : "FAIL"}: ${name}`);
+  if (!cond) process.exitCode = 1;
+}
+
+/**
+ * 制御コンポーネントへの入力は実際のキー入力で行う。
+ * locator.fill() は value を直接書き換えるため React の onChange が発火しない。
+ */
+async function typeInto(locator, text) {
+  await locator.click();
+  await locator.press("ControlOrMeta+a");
+  await locator.pressSequentially(text);
+}
+
+function javaBin() {
+  if (process.env.JAVA_HOME) return join(process.env.JAVA_HOME, "bin", "java");
+  return "java";
+}
+
+async function main() {
+  if (!existsSync(JAR) || !existsSync(INDEX)) {
+    console.error("erd-server.jar / dist/index.html がありません。先にビルドしてください。");
+    process.exit(1);
+  }
+  const dir = mkdtempSync(join(tmpdir(), "erd-meta-"));
+  copyFileSync(INDEX, join(dir, "index.html"));
+
+  const proc = spawn(javaBin(), ["-jar", JAR], {
+    cwd: dir,
+    env: { ...process.env, ERD_NO_BROWSER: "1", ERD_PORT: "5391" },
+  });
+  let url = null;
+  proc.stdout.on("data", (d) => {
+    const m = String(d).match(/ERD server: (http:\/\/[^\s]+)/);
+    if (m) url = m[1];
+  });
+  proc.stderr.on("data", () => {});
+
+  const browser = await chromium.launch();
+  try {
+    for (let i = 0; i < 100 && url === null; i++) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    check("server starts", url !== null);
+    if (url === null) return;
+
+    // サンプルデータの取り込み（A-08）。UI を経ずに API で初期化する
+    const token = new URL(url).searchParams.get("t");
+    const origin = new URL(url).origin;
+    const boot = await fetch(`${origin}/__erd/bootstrap?t=${token}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "sample" }),
+    });
+    check("sample bootstrap succeeds", boot.status === 200);
+
+    const page = await browser.newPage();
+
+    // ---- ベースライン: users ページの破線エッジ数 ----
+    await page.goto(`${url}#/erd/users`);
+    await page.waitForSelector(".react-flow__node", { timeout: 15000 });
+    const logicalBefore = await page.locator(".erd-edge-logical").count();
+
+    // ---- テーブル編集画面（O-03）: 論理名 + 論理外部制約を保存 ----
+    await page.goto(`${url}#/tables/public.user_sessions/edit`);
+    await page.waitForFunction(
+      () => {
+        const f = document.querySelector("fieldset.edit-form");
+        return f !== null && !f.disabled;
+      },
+      null,
+      { timeout: 15000 },
+    );
+    check("edit form is enabled after acquiring the lock", true);
+
+    await typeInto(page.locator(".form-grid input").first(), "セッション");
+
+    await page.getByRole("button", { name: "+ 論理外部制約を追加" }).click();
+    const row = page.locator(".constraint-row").last();
+    await row.locator("select").nth(0).selectOption("user_id"); // 参照元カラム
+    await row.locator("select").nth(1).selectOption("public.user_profiles"); // 参照先テーブル
+    await row.locator("select").nth(2).selectOption("id"); // 参照先カラム
+
+    await page.locator(".form-actions button", { hasText: "保存" }).click();
+    await page.waitForFunction(
+      () => location.hash === "#/tables/public.user_sessions",
+      null,
+      { timeout: 15000 },
+    );
+    check("save navigates back to the detail page", true);
+
+    const schemaText = readFileSync(
+      join(dir, "data", "schema", "public", "user_sessions.js"),
+      "utf-8",
+    );
+    check("schema file contains the new displayName", schemaText.includes('displayName: "セッション"'));
+    check(
+      "schema file contains the auto-named logical FK",
+      schemaText.includes("lfk_user_sessions_user_id") &&
+        schemaText.includes('table: "public.user_profiles"'),
+    );
+
+    const indexText = readFileSync(join(dir, "data", "index.js"), "utf-8");
+    check(
+      "index.js is regenerated with the lfk edge (P §4.3)",
+      indexText.includes("public.user_sessions#lfk:lfk_user_sessions_user_id"),
+    );
+
+    // ---- ER図に破線エッジが増える（Phase4 の完了条件） ----
+    await page.goto(`${url}#/erd/users`);
+    await page.waitForSelector(".react-flow__node", { timeout: 15000 });
+    await page.waitForFunction(
+      (before) => document.querySelectorAll(".erd-edge-logical").length === before + 1,
+      logicalBefore,
+      { timeout: 15000 },
+    );
+    check("a dashed edge appears on the diagram", true);
+
+    // ---- カラム論理名の一括編集（P-03） ----
+    await page.goto(`${url}#/columns`);
+    // 全テーブルのロード完了 + ロック済みで保存が有効化されるまで編集
+    const rowInput = page
+      .locator("tr", { has: page.locator("td", { hasText: "session_token" }) })
+      .locator("input");
+    await typeInto(rowInput, "セッショントークン");
+    const saveButton = page.locator(".columns-toolbar button", { hasText: "保存" });
+    await page.waitForFunction(
+      () => {
+        const buttons = [...document.querySelectorAll(".columns-toolbar button")];
+        const save = buttons.find((b) => b.textContent.includes("保存"));
+        return save !== undefined && !save.disabled;
+      },
+      null,
+      { timeout: 20000 },
+    );
+    await saveButton.click();
+    // 保存が済むと dirty マークが消える（辞書は index.js を再生成しない。P §4.3）
+    await page.waitForFunction(
+      () => document.querySelectorAll(".columns-table .row-dirty").length === 0,
+      null,
+      { timeout: 15000 },
+    );
+    const dictText = readFileSync(join(dir, "data", "dictionary.js"), "utf-8");
+    check("dictionary.js is updated by bulk edit", dictText.includes("セッショントークン"));
+
+    await page.close();
+  } catch (e) {
+    check(`no unexpected error (${e.message})`, false);
+  } finally {
+    await browser.close();
+    proc.kill();
+    try {
+      rmSync(dir, { recursive: true, force: true });
+    } catch {
+      // Windows ではプロセス終了直後の削除が失敗することがある
+    }
+    console.log(results.join("\n"));
+  }
+}
+
+await main();

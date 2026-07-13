@@ -3,7 +3,9 @@
  * バージョン不整合・データ欠損時は描画せずバナーのみ表示する（A-04 / §3.6）。
  */
 import { useEffect } from "react";
+import { ColumnsPage } from "./catalog/ColumnsPage";
 import { TableDetail } from "./catalog/TableDetail";
+import { TableEdit } from "./catalog/TableEdit";
 import { TableList } from "./catalog/TableList";
 import { ErdPage } from "./canvas/ErdPage";
 import { useI18n } from "./i18n/useI18n";
@@ -24,6 +26,7 @@ import { hrefs, replaceRoute, useRoute } from "./ui/router";
 export function App() {
   const { t } = useI18n();
   const route = useRoute();
+  const serverMode = useAppStore((s) => s.serverMode);
   const fatal = useAppStore((s) => s.fatal);
   const ready = useAppStore((s) => s.ready);
   const manifest = useAppStore((s) => s.manifest);
@@ -82,19 +85,31 @@ export function App() {
       break;
     case "tableEdit":
       // 静的モードでは詳細画面にリダイレクトし、閲覧モードである旨を表示（§4.4）
-      content = <TableDetail tableId={route.tableId} notice={t("banner.editRedirect")} />;
+      if (serverMode === true) {
+        content = <TableEdit tableId={route.tableId} />;
+      } else if (serverMode === null) {
+        content = <div className="boot-loading">{t("canvas.loading")}</div>;
+      } else {
+        content = <TableDetail tableId={route.tableId} notice={t("banner.editRedirect")} />;
+      }
       break;
     case "columns":
-      content = (
-        <div className="empty-state">
-          <p>{t("columnsPage.serverOnly")}</p>
-          <p>
-            <Link className="button-link" href={hrefs.tables()}>
-              {t("notFound.toTables")}
-            </Link>
-          </p>
-        </div>
-      );
+      if (serverMode === true) {
+        content = <ColumnsPage />;
+      } else if (serverMode === null) {
+        content = <div className="boot-loading">{t("canvas.loading")}</div>;
+      } else {
+        content = (
+          <div className="empty-state">
+            <p>{t("columnsPage.serverOnly")}</p>
+            <p>
+              <Link className="button-link" href={hrefs.tables()}>
+                {t("notFound.toTables")}
+              </Link>
+            </p>
+          </div>
+        );
+      }
       break;
     case "notFound":
       content = <NotFound path={route.path} />;
