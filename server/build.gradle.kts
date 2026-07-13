@@ -23,6 +23,10 @@ dependencies {
     testImplementation(platform("org.junit:junit-bom:5.10.2"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+
+    // JDBC 標準内省（層1）の検証用。実 DB（PostgreSQL / MySQL）に対する検証は
+    // Testcontainers で別途行う（Docker が要るため CI の必須ゲートからは外す）
+    testImplementation("com.h2database:h2:2.2.224")
 }
 
 tasks.test {

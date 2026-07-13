@@ -43,6 +43,10 @@ public final class Main {
             }
         }
 
+        // drivers/*.jar を DriverShim 経由で DriverManager に登録する（§7.2）。
+        // ここで登録しないと、URLClassLoader で読んだドライバは DriverManager から見えない
+        erd.introspect.Drivers.scan(root.resolve("drivers"));
+
         String token = newToken();
         WebServer server = new WebServer(root, token);
         int basePort = envInt("ERD_PORT", DEFAULT_PORT);

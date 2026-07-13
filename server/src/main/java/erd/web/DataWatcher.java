@@ -34,6 +34,7 @@ public final class DataWatcher implements AutoCloseable {
     private final BiConsumer<String, Set<String>> listener; // (revision, relPaths)
     private final Thread thread;
     private volatile boolean closed;
+    private volatile boolean suppressed;
 
     public DataWatcher(Path dataDir, Revisions revisions, BiConsumer<String, Set<String>> listener) {
         this.dataDir = dataDir;
@@ -45,6 +46,17 @@ public final class DataWatcher implements AutoCloseable {
 
     public void start() {
         thread.start();
+    }
+
+    /**
+     * 複数ファイルに跨る書き込み（逆生成の適用。§8.6）の間、配信を抑止する。
+     *
+     * <p>1ファイルずつ置換すると「manifest だけ新しく schema は古い」中間状態が一瞬生まれる。
+     * その隙間に監視 → SSE → 再読込が走ると、ビューアが壊れた状態を読む。抑止を解いたあと、
+     * 呼び出し側が単一のリビジョンとしてまとめて通知する。
+     */
+    public void suppress(boolean value) {
+        this.suppressed = value;
     }
 
     @Override
@@ -94,6 +106,7 @@ public final class DataWatcher implements AutoCloseable {
     }
 
     private void emit(Set<String> relPaths) {
+        if (suppressed) return;
         Map<String, String> hashes = new LinkedHashMap<>();
         for (String rel : relPaths) {
             Path f = dataDir.resolve(rel);

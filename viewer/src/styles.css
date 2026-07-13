@@ -1209,3 +1209,214 @@ button.button-link.danger {
   font-size: 12px;
   resize: vertical;
 }
+
+/* ---- 逆生成（K-01〜K-15） ---- */
+
+.introspect-page .form-section {
+  margin-top: 20px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.introspect-page .form-section h3 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.form-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.form-row label {
+  min-width: 96px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.form-row input[type="text"],
+.form-row input[type="password"],
+.form-row select {
+  flex: 1;
+  min-width: 160px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: inherit;
+  font-size: 13px;
+}
+
+.form-row .spacer,
+.form-actions .spacer,
+.sticky-actions .spacer {
+  flex: 1;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12px;
+  color: inherit;
+}
+
+.link-button {
+  border: none;
+  background: none;
+  padding: 0 4px;
+  color: var(--accent);
+  font-size: 12px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.driver-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.introspect-stats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 12px 0;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+/* 差分ツリー */
+
+.diff-group h3 {
+  margin: 16px 0 6px;
+  font-size: 13px;
+}
+
+.diff-table {
+  border-left: 3px solid transparent;
+  padding-left: 6px;
+  margin-bottom: 2px;
+}
+
+.diff-table.diff-added {
+  border-left-color: #2e9e5b;
+}
+
+.diff-table.diff-removed {
+  border-left-color: #d14343;
+}
+
+.diff-table.diff-modified {
+  border-left-color: #c98a12;
+}
+
+.diff-table.diff-renamed {
+  border-left-color: #4a7fd4;
+}
+
+.diff-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  font-size: 13px;
+}
+
+.diff-row.diff-child {
+  padding-left: 28px;
+  font-size: 12px;
+}
+
+.diff-toggle {
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+}
+
+.diff-mark {
+  width: 12px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.diff-kind {
+  min-width: 84px;
+  color: var(--text-muted);
+}
+
+.diff-target {
+  font-weight: 500;
+}
+
+.diff-summary,
+.diff-values {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.diff-values del {
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
+.diff-values ins {
+  text-decoration: none;
+}
+
+.diff-warn {
+  padding: 2px 0 2px 46px;
+  font-size: 12px;
+  color: #b06a00;
+}
+
+/* リネーム候補 */
+
+.rename-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  margin-bottom: 4px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.rename-row.rename-undecided {
+  border-color: #c98a12;
+}
+
+.rename-row.rename-reject {
+  opacity: 0.65;
+}
+
+.badge-high {
+  background: #e6f4ea;
+  color: #1e7b3c;
+}
+
+.badge-medium {
+  background: #fdf3e0;
+  color: #a06a00;
+}
+
+.sticky-actions {
+  position: sticky;
+  bottom: 0;
+  align-items: center;
+  background: var(--bg);
+}

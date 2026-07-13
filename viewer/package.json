@@ -12,7 +12,8 @@
     "e2e": "node e2e/smoke.mjs",
     "e2e:server": "node e2e/server-smoke.mjs",
     "e2e:edit": "node e2e/edit-smoke.mjs",
-    "e2e:meta": "node e2e/meta-edit-smoke.mjs"
+    "e2e:meta": "node e2e/meta-edit-smoke.mjs",
+    "e2e:introspect": "node e2e/introspect-smoke.mjs"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",

@@ -10,6 +10,7 @@
 import { useAppStore } from "./store";
 import {
   SUPPORTED_SCHEMA_VERSION,
+  zConfig,
   zDiagram,
   zDictionary,
   zIndexData,
@@ -257,6 +258,47 @@ export async function reloadDictionary(version?: string): Promise<void> {
   } catch {
     // 失敗時は手元の辞書を維持する
   }
+}
+
+/**
+ * config.js（テーブル無視リスト。§6.1 段階2'）。
+ * 閲覧には不要なため静的モードでは読まない。逆生成の画面を開いたときに遅延ロードする。
+ */
+export async function loadConfig(version?: string): Promise<void> {
+  const file = useAppStore.getState().manifest?.config ?? "config.js";
+  try {
+    await injectScript(withVersion(DATA_BASE + file, version));
+    const raw = staged.config;
+    staged.config = undefined;
+    const parsed = zConfig.safeParse(raw);
+    useAppStore.setState({
+      config: raw !== undefined && parsed.success ? parsed.data : { ignoreTables: [] },
+    });
+  } catch {
+    // config.js は無くてよい（無視リストが空のプロジェクト）
+    useAppStore.setState({ config: { ignoreTables: [] } });
+  }
+}
+
+/**
+ * 逆生成の適用後（K-11）: 何が変わったかを追わず、派生物と全テーブルを読み直す。
+ * スキーマ・manifest・index が一度に変わるため、部分的な追随はかえって漏れる。
+ */
+export async function reloadAfterApply(revision: string): Promise<void> {
+  await reloadManifest(revision);
+  await Promise.all([reloadIndex(revision), reloadDictionary(revision), loadConfig(revision)]);
+
+  const state = useAppStore.getState();
+  for (const id of Object.keys(state.tables)) {
+    invalidateTable(id);
+  }
+  for (const id of Object.keys(state.tableErrors)) {
+    invalidateTable(id);
+  }
+  await Promise.all(
+    Object.keys(state.diagrams).map((id) => forceReloadDiagram(id, revision)),
+  );
+  scheduleBackgroundLoad();
 }
 
 export async function reloadManifest(version?: string): Promise<void> {

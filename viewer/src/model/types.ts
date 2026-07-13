@@ -77,6 +77,13 @@ export const zDictionary = z.looseObject({
 });
 export type Dictionary = z.infer<typeof zDictionary>;
 
+// ---- config.js（プロジェクト設定 / テーブル無視リスト。サーバーモードでのみ読む。§6.1 段階2'） ----
+
+export const zConfig = z.looseObject({
+  ignoreTables: z.array(z.string()).optional(),
+});
+export type Config = z.infer<typeof zConfig>;
+
 // ---- schema/**.js（テーブル1件） ----
 
 export const zColumn = z.looseObject({

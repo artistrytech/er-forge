@@ -9,6 +9,7 @@ import { TableEdit } from "./catalog/TableEdit";
 import { TableList } from "./catalog/TableList";
 import { ErdPage } from "./canvas/ErdPage";
 import { useI18n } from "./i18n/useI18n";
+import { IntrospectPage } from "./introspect/IntrospectPage";
 import { totalTableCount, useAppStore, type Fatal } from "./model/store";
 import { useEditStore } from "./model/editStore";
 import { BootstrapScreen } from "./ui/BootstrapScreen";
@@ -51,10 +52,18 @@ export function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [setSearchOpen]);
 
-  if (fatal !== null) {
+  // 空プロジェクトからの逆生成（§3.6「既存のスキーマから生成する」）。
+  // データはまだ無いが、それを作るための画面なので開けなければならない
+  const bootstrapping =
+    fatal !== null &&
+    serverMode === true &&
+    (fatal.kind === "no-data" || fatal.kind === "empty") &&
+    route.kind === "introspect";
+
+  if (fatal !== null && !bootstrapping) {
     return <FatalBanner fatal={fatal} />;
   }
-  if (!ready) {
+  if (!ready && !bootstrapping) {
     return <div className="boot-loading">{t("canvas.loading")}</div>;
   }
 
@@ -102,6 +111,25 @@ export function App() {
         content = (
           <div className="empty-state">
             <p>{t("columnsPage.serverOnly")}</p>
+            <p>
+              <Link className="button-link" href={hrefs.tables()}>
+                {t("notFound.toTables")}
+              </Link>
+            </p>
+          </div>
+        );
+      }
+      break;
+    case "introspect":
+      // 逆生成はサーバー API に依存する（静的モードには手段がない。§9.6）
+      if (serverMode === true) {
+        content = <IntrospectPage />;
+      } else if (serverMode === null) {
+        content = <div className="boot-loading">{t("canvas.loading")}</div>;
+      } else {
+        content = (
+          <div className="empty-state">
+            <p>{t("introspect.serverOnly")}</p>
             <p>
               <Link className="button-link" href={hrefs.tables()}>
                 {t("notFound.toTables")}

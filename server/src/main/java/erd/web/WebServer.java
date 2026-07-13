@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import erd.core.io.ProjectStore;
 import erd.core.migrate.SchemaVersions;
+import erd.introspect.Drivers;
 import io.javalin.Javalin;
 import io.javalin.http.Context;
 import io.javalin.http.sse.SseClient;
@@ -36,6 +37,9 @@ public final class WebServer {
     private final DiagramService diagrams = new DiagramService();
     private final TableService tables = new TableService();
     private final DictionaryService dictionary = new DictionaryService();
+    private final ConfigService config = new ConfigService();
+    private final ConnectionStore connections = new ConnectionStore();
+    private final IntrospectService introspect = new IntrospectService();
     private final ConcurrentLinkedQueue<SseClient> sseClients = new ConcurrentLinkedQueue<>();
     private Javalin app;
     private DataWatcher watcher;
@@ -89,6 +93,18 @@ public final class WebServer {
         javalin.put("/__erd/tables/{id}", this::putTable);
         javalin.get("/__erd/dictionary", this::getDictionary);
         javalin.put("/__erd/dictionary", this::putDictionary);
+        javalin.get("/__erd/config", this::getConfig);
+        javalin.put("/__erd/config", this::putConfig);
+
+        // 逆生成（K-01〜K-14）
+        javalin.get("/__erd/drivers", this::getDrivers);
+        javalin.get("/__erd/connection", this::getConnection);
+        javalin.put("/__erd/connection", this::putConnection);
+        javalin.post("/__erd/connection/test", this::testConnection);
+        javalin.post("/__erd/introspect", this::postIntrospect);
+        javalin.get("/__erd/introspect/{sessionId}", this::getIntrospect);
+        javalin.post("/__erd/introspect/{sessionId}/plan", this::postIntrospectPlan);
+        javalin.post("/__erd/introspect/apply", this::postIntrospectApply);
 
         javalin.sse("/__erd/events", this::sse);
 
@@ -268,6 +284,184 @@ public final class WebServer {
             ok.writtenFiles().forEach((rel, hash) -> revisions.recordWrite(rel, hash, revision));
             ctx.json(Map.of("revision", revision, "newHash", ok.newHash()));
         }
+    }
+
+    // ---------------------------------------------------- config（無視リスト / K-15）
+
+    private void getConfig(Context ctx) {
+        if (!authorized(ctx)) {
+            ctx.status(403).json(Map.of("error", "forbidden"));
+            return;
+        }
+        var cfg = config.read(root.resolve("data"));
+        ObjectNode res = mapper.createObjectNode();
+        res.put("baseHash", config.baseHash(root.resolve("data")));
+        var arr = res.putArray("ignoreTables");
+        cfg.ignoreTables().forEach(arr::add);
+        ctx.json(res);
+    }
+
+    /** 無視リストの更新（§9.4）。config.js を書き換えるのみで、スキーマには一切触れない。 */
+    private void putConfig(Context ctx) throws Exception {
+        if (!authorized(ctx)) {
+            ctx.status(403).json(Map.of("error", "forbidden"));
+            return;
+        }
+        JsonNode body = mapper.readTree(ctx.body());
+        if (!locks.isValid(body.path("lockId").asText(null))) {
+            ctx.status(423).json(Map.of("code", "LOCK_LOST"));
+            return;
+        }
+        ConfigService.Outcome outcome = config.put(root.resolve("data"), body);
+        if (outcome instanceof ConfigService.Stale stale) {
+            ctx.status(409).json(Map.of("code", "STALE", "currentHash", stale.currentHash()));
+        } else if (outcome instanceof ConfigService.Invalid invalid) {
+            ctx.status(400).json(Map.of("error", invalid.message()));
+        } else if (outcome instanceof ConfigService.Ok ok) {
+            String revision = revisions.next();
+            ok.writtenFiles().forEach((rel, hash) -> revisions.recordWrite(rel, hash, revision));
+            ctx.json(Map.of("revision", revision, "newHash", ok.newHash()));
+        }
+    }
+
+    // --------------------------------------------------------- 逆生成（K-01〜K-14）
+
+    /** K-01: ロード済み JDBC ドライバの一覧（drivers/ 自動スキャン + クラスパス）。 */
+    private void getDrivers(Context ctx) {
+        if (!authorized(ctx)) {
+            ctx.status(403).json(Map.of("error", "forbidden"));
+            return;
+        }
+        ctx.json(Map.of("drivers", Drivers.loaded()));
+    }
+
+    /** K-05: 保存された接続設定（パスワードは明示的に保存した場合のみ含む）。 */
+    private void getConnection(Context ctx) {
+        if (!authorized(ctx)) {
+            ctx.status(403).json(Map.of("error", "forbidden"));
+            return;
+        }
+        ctx.json(connections.forClient(erdDir()));
+    }
+
+    private void putConnection(Context ctx) throws Exception {
+        if (!authorized(ctx)) {
+            ctx.status(403).json(Map.of("error", "forbidden"));
+            return;
+        }
+        JsonNode body = mapper.readTree(ctx.body());
+        if (body.path("clear").asBoolean(false)) {
+            connections.delete(erdDir());
+        } else {
+            connections.save(erdDir(), body);
+        }
+        ctx.json(Map.of("ok", true));
+    }
+
+    /** K-04: 接続テスト（製品名・バージョン・ネームスペース一覧）。 */
+    private void testConnection(Context ctx) throws Exception {
+        if (!authorized(ctx)) {
+            ctx.status(403).json(Map.of("error", "forbidden"));
+            return;
+        }
+        try {
+            ctx.json(introspect.test(mapper.readTree(ctx.body())));
+        } catch (java.sql.SQLException e) {
+            ctx.status(400).json(Map.of("code", "CONNECT_FAILED", "message", String.valueOf(e.getMessage())));
+        }
+    }
+
+    /** K-07 → K-08: 逆生成を実行し、差分プレビューを返す（1バイトも書き込まない。INV-4）。 */
+    private void postIntrospect(Context ctx) throws Exception {
+        if (!authorized(ctx)) {
+            ctx.status(403).json(Map.of("error", "forbidden"));
+            return;
+        }
+        try {
+            respond(ctx, introspect.preview(erdDir(), root.resolve("data"), mapper.readTree(ctx.body())));
+        } catch (java.sql.SQLException e) {
+            ctx.status(400).json(Map.of("code", "CONNECT_FAILED", "message", String.valueOf(e.getMessage())));
+        }
+    }
+
+    /** プレビューの再取得（ブラウザのリロード対策）。失効時は 410。 */
+    private void getIntrospect(Context ctx) {
+        if (!authorized(ctx)) {
+            ctx.status(403).json(Map.of("error", "forbidden"));
+            return;
+        }
+        respond(ctx, introspect.reload(erdDir(), root.resolve("data"),
+                ctx.pathParam("sessionId"), List.of()));
+    }
+
+    /**
+     * リネーム決定を反映したプランの再計算（DB へは再接続しない）。
+     * 差分ロジックはサーバーの単一実装に集約し、UI 側に持たせない。
+     */
+    private void postIntrospectPlan(Context ctx) throws Exception {
+        if (!authorized(ctx)) {
+            ctx.status(403).json(Map.of("error", "forbidden"));
+            return;
+        }
+        JsonNode body = mapper.readTree(ctx.body());
+        respond(ctx, introspect.reload(erdDir(), root.resolve("data"), ctx.pathParam("sessionId"),
+                introspect.decisions(body.path("renameDecisions"))));
+    }
+
+    /**
+     * K-11: 差分の適用。置換中は SSE の配信を抑止し、完了後に単一のリビジョンとして
+     * まとめて通知する（§8.6。中間状態をビューアに読ませない）。
+     */
+    private void postIntrospectApply(Context ctx) throws Exception {
+        if (!authorized(ctx)) {
+            ctx.status(403).json(Map.of("error", "forbidden"));
+            return;
+        }
+        JsonNode body = mapper.readTree(ctx.body());
+        if (!locks.isValid(body.path("lockId").asText(null))) {
+            ctx.status(423).json(Map.of("code", "LOCK_LOST"));
+            return;
+        }
+        IntrospectService.Outcome outcome;
+        if (watcher != null) watcher.suppress(true);
+        try {
+            outcome = introspect.apply(erdDir(), root.resolve("data"), body);
+        } finally {
+            if (watcher != null) watcher.suppress(false);
+        }
+        if (outcome instanceof IntrospectService.Ok ok && !ok.writtenFiles().isEmpty()) {
+            String revision = revisions.next();
+            ok.writtenFiles().forEach((rel, hash) -> revisions.recordWrite(rel, hash, revision));
+            ObjectNode res = mapper.valueToTree(ok.body());
+            res.put("revision", revision);
+            broadcast(revision, ok.writtenFiles().keySet());
+            ctx.json(res);
+            return;
+        }
+        respond(ctx, outcome);
+    }
+
+    private void respond(Context ctx, IntrospectService.Outcome outcome) {
+        if (outcome instanceof IntrospectService.Ok ok) {
+            ctx.json(ok.body());
+        } else if (outcome instanceof IntrospectService.Gone gone) {
+            ctx.status(410).json(Map.of("code", "SESSION_EXPIRED", "message", gone.message()));
+        } else if (outcome instanceof IntrospectService.Stale stale) {
+            ctx.status(409).json(Map.of("code", "STALE",
+                    "currentFingerprint", stale.currentFingerprint(),
+                    "message", "プレビュー後にファイルが変更されました。再プレビューしてください。"));
+        } else if (outcome instanceof IntrospectService.Bad bad) {
+            ctx.status(400).json(Map.of("code", bad.code(), "message", bad.message(),
+                    "itemIds", bad.itemIds()));
+        } else if (outcome instanceof IntrospectService.Failed failed) {
+            ctx.status(500).json(Map.of("code", "APPLY_FAILED", "message", failed.message()));
+        }
+    }
+
+    /** `.erd/`（Git 管理外。接続設定・バックアップ）。erd/ の親に置く（§3.3）。 */
+    private Path erdDir() {
+        Path parent = root.getParent();
+        return parent != null ? parent.resolve(".erd") : root.resolve(".erd");
     }
 
     // ------------------------------------------------------------------- SSE

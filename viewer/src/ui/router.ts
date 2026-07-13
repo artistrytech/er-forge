@@ -11,6 +11,7 @@ export type Route =
   | { kind: "table"; tableId: string }
   | { kind: "tableEdit"; tableId: string }
   | { kind: "columns" }
+  | { kind: "introspect" }
   | { kind: "notFound"; path: string };
 
 /** ルート → ハッシュ URL（リンク生成はすべてここを通す） */
@@ -23,6 +24,7 @@ export const hrefs = {
   table: (tableId: string): string => `#/tables/${encodeURIComponent(tableId)}`,
   tableEdit: (tableId: string): string => `#/tables/${encodeURIComponent(tableId)}/edit`,
   columns: (): string => "#/columns",
+  introspect: (): string => "#/introspect",
 };
 
 export function parseHash(hash: string): Route {
@@ -52,6 +54,7 @@ export function parseHash(hash: string): Route {
     }
   }
   if (head === "columns" && segments.length === 1) return { kind: "columns" };
+  if (head === "introspect" && segments.length === 1) return { kind: "introspect" };
   return { kind: "notFound", path: raw };
 }
 

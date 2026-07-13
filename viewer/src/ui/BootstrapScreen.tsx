@@ -1,11 +1,12 @@
 /**
  * 空プロジェクトの初期化（A-08 / §3.6）。
  * サーバーモード + データ0件のときだけ表示される。
- * 「既存のスキーマから生成する」は逆生成（フェーズ5）の実装後に有効化する。
  */
 import { useState } from "react";
 import { useI18n } from "../i18n/useI18n";
 import { apiPost } from "../model/api";
+import { Link } from "./Link";
+import { hrefs } from "./router";
 
 export function BootstrapScreen() {
   const { t } = useI18n();
@@ -37,12 +38,12 @@ export function BootstrapScreen() {
         <h1>{t("app.title")}</h1>
         <p>{t("bootstrap.lead")}</p>
         <div className="bootstrap-options">
-          <div className="bootstrap-option bootstrap-option-disabled">
+          <div className="bootstrap-option">
             <h2>{t("bootstrap.introspect")}</h2>
             <p>{t("bootstrap.introspectDesc")}</p>
-            <button type="button" disabled>
-              {t("bootstrap.notImplemented")}
-            </button>
+            <Link className="button-link" href={hrefs.introspect()}>
+              {t("bootstrap.introspect")}
+            </Link>
           </div>
           <div className="bootstrap-option">
             <h2>{t("bootstrap.sample")}</h2>

@@ -26,7 +26,10 @@ public final class Revisions {
         return "ext-" + UUID.randomUUID();
     }
 
-    /** relPath は data/ からの相対パス（例: "diagrams/core.js"）。 */
+    /**
+     * relPath は data/ からの相対パス（例: "diagrams/core.js"）。
+     * contentHash が null なら「自分が削除した」ことの記録（逆生成の適用でテーブルが消える場合）。
+     */
     public void recordWrite(String relPath, String contentHash, String revision) {
         selfWrites.put(relPath, new SelfWrite(contentHash, revision));
     }
@@ -39,7 +42,7 @@ public final class Revisions {
         String rev = null;
         for (Map.Entry<String, String> e : changedHashes.entrySet()) {
             SelfWrite sw = selfWrites.get(e.getKey());
-            if (sw == null || e.getValue() == null || !sw.hash().equals(e.getValue())) {
+            if (sw == null || !java.util.Objects.equals(sw.hash(), e.getValue())) {
                 return null;
             }
             rev = sw.revision();

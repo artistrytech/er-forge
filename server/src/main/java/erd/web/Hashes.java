@@ -28,5 +28,24 @@ public final class Hashes {
         }
     }
 
+    /**
+     * data/** 全体の指紋（K-11 §6.1）。全ファイルの (パス, 内容ハッシュ) をソートして連結し、
+     * さらにハッシュする。プレビュー発行時と適用直前に取り直して照合し、その間の外部変更
+     * （git pull / エディタ編集 / 他の書き込み API）を検出する（TOCTOU の回避）。
+     */
+    public static String fingerprint(Path dataDir) {
+        if (!Files.isDirectory(dataDir)) return sha256(new byte[0]);
+        StringBuilder sb = new StringBuilder();
+        try (java.util.stream.Stream<Path> walk = Files.walk(dataDir)) {
+            walk.filter(p -> Files.isRegularFile(p) && p.toString().endsWith(".js"))
+                    .map(p -> dataDir.relativize(p).toString().replace('\\', '/') + "=" + sha256(p))
+                    .sorted()
+                    .forEach(s -> sb.append(s).append('\n'));
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        return sha256(sb.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
     private Hashes() { }
 }

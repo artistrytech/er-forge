@@ -6,7 +6,7 @@
 import { create } from "zustand";
 import { detectLang, type Lang } from "../i18n/messages";
 import type { NameDisplay } from "./logicalName";
-import type { Diagram, Dictionary, IndexData, Manifest, Table } from "./types";
+import type { Config, Diagram, Dictionary, IndexData, Manifest, Table } from "./types";
 
 /** 描画を止める致命的な状態（A-04 / §3.6） */
 export type Fatal =
@@ -31,6 +31,8 @@ export interface AppState {
   manifest: Manifest | null;
   index: IndexData | null;
   dictionary: Dictionary | null;
+  /** テーブル無視リスト（K-15）。サーバーモードで逆生成の画面を開いたときに遅延ロードする */
+  config: Config | null;
   tables: Record<string, Table>;
   tableErrors: Record<string, string>;
   diagrams: Record<string, Diagram>;
@@ -67,6 +69,7 @@ export const useAppStore = create<AppState>((set) => ({
   manifest: null,
   index: null,
   dictionary: null,
+  config: null,
   tables: {},
   tableErrors: {},
   diagrams: {},
