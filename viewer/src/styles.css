@@ -170,6 +170,164 @@ body {
   padding: 24px 32px;
 }
 
+/* ---- 編集セッション（H-04 / H-09 / H-13 / M-01） ---- */
+
+.session-editing {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.save-warn {
+  color: var(--warn);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.save-status {
+  font-size: 12px;
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.save-status button {
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel);
+  color: inherit;
+  cursor: pointer;
+}
+
+.save-dirty {
+  color: var(--warn);
+}
+
+.save-failed {
+  color: var(--error);
+  font-weight: 600;
+}
+
+.header-button {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.header-button-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.erd-edit-toolbar {
+  display: flex;
+  gap: 6px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 6px;
+}
+
+.erd-edit-toolbar button {
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 2px 8px;
+}
+
+.erd-edit-toolbar button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.external-banner {
+  background: var(--warn-bg);
+  color: var(--warn);
+  padding: 6px 16px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.external-banner button {
+  padding: 2px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel);
+  color: inherit;
+  cursor: pointer;
+}
+
+.toast-area {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 1000;
+}
+
+.toast {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 13px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  max-width: 360px;
+}
+
+.export-hint {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.export-code {
+  width: 100%;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px;
+  background: var(--bg);
+  color: inherit;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.dialog-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+.dialog-actions button {
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: inherit;
+  cursor: pointer;
+}
+
+.dialog-note {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
 .bootstrap-options {
   display: flex;
   gap: 16px;

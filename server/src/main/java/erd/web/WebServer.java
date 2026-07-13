@@ -1,23 +1,29 @@
 package erd.web;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import erd.core.io.ProjectStore;
 import erd.core.migrate.SchemaVersions;
 import io.javalin.Javalin;
 import io.javalin.http.Context;
+import io.javalin.http.sse.SseClient;
 
 import java.net.BindException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.stream.Stream;
 
 /**
- * フェーズ2の最小 Web サーバー。
+ * サーバーモードの Web 層。
  *
- * <p>責務は「静的配信 + ブートストラップ」まで（編集系 API・SSE はフェーズ3）。
- * データの読み込み経路はモードにかかわらず data/**.js の &lt;script&gt; 注入1本であり（§4.3）、
- * サーバーは data/** を静的ファイルとして配信するだけでよい。
+ * <p>データ本体は API で返さない（§4.3。読み込みは data/**.js の静的配信 + &lt;script&gt; 注入）。
+ * API は書き込みと、書き込みに必要なメタ情報（baseHash・リビジョン）のためだけに存在する。
  */
 public final class WebServer {
 
@@ -25,7 +31,12 @@ public final class WebServer {
     private final String token;
     private final ObjectMapper mapper = new ObjectMapper();
     private final ProjectStore store = new ProjectStore();
+    private final LockManager locks = new LockManager();
+    private final Revisions revisions = new Revisions();
+    private final DiagramService diagrams = new DiagramService();
+    private final ConcurrentLinkedQueue<SseClient> sseClients = new ConcurrentLinkedQueue<>();
     private Javalin app;
+    private DataWatcher watcher;
 
     public WebServer(Path root, String token) {
         this.root = root;
@@ -38,6 +49,8 @@ public final class WebServer {
             try {
                 app = create();
                 app.start("127.0.0.1", port);
+                watcher = new DataWatcher(root.resolve("data"), revisions, this::broadcast);
+                watcher.start();
                 return port;
             } catch (RuntimeException e) {
                 if (!isBindError(e)) throw e;
@@ -47,6 +60,7 @@ public final class WebServer {
     }
 
     public void stop() {
+        if (watcher != null) watcher.close();
         if (app != null) app.stop();
     }
 
@@ -58,13 +72,141 @@ public final class WebServer {
 
         javalin.get("/__erd/health", ctx ->
                 ctx.json(Map.of("ok", true, "schemaVersion", SchemaVersions.CURRENT)));
-
+        javalin.get("/__erd/project", this::project);
         javalin.post("/__erd/bootstrap", this::bootstrap);
+
+        javalin.post("/__erd/lock", this::lockAcquire);
+        javalin.put("/__erd/lock", this::lockHeartbeat);
+        javalin.delete("/__erd/lock", this::lockRelease);
+        // sendBeacon は POST しか送れないため、タブ閉じ用の別名を用意する（§2.1）
+        javalin.post("/__erd/lock/release", this::lockRelease);
+
+        javalin.patch("/__erd/diagrams/{id}", this::patchDiagram);
+
+        javalin.sse("/__erd/events", this::sse);
 
         javalin.get("/", this::serveIndex);
         javalin.get("/index.html", this::serveIndex);
         javalin.get("/data/<path>", this::serveData);
         return javalin;
+    }
+
+    // --------------------------------------------------------------- project
+
+    /** リビジョン・各ファイルの baseHash・schemaVersion・ブートストラップの要否（§8.2）。 */
+    private void project(Context ctx) throws Exception {
+        if (!authorized(ctx)) {
+            ctx.status(403).json(Map.of("error", "forbidden"));
+            return;
+        }
+        ObjectNode res = mapper.createObjectNode();
+        res.put("schemaVersion", SchemaVersions.CURRENT);
+        res.put("needsBootstrap", needsBootstrap());
+        ObjectNode files = res.putObject("files");
+        Path dataDir = root.resolve("data");
+        if (Files.isDirectory(dataDir)) {
+            try (Stream<Path> walk = Files.walk(dataDir)) {
+                List<Path> list = walk
+                        .filter(p -> Files.isRegularFile(p) && p.toString().endsWith(".js"))
+                        .sorted()
+                        .toList();
+                for (Path p : list) {
+                    files.put(dataDir.relativize(p).toString().replace('\\', '/'), Hashes.sha256(p));
+                }
+            }
+        }
+        ctx.json(res);
+    }
+
+    // ------------------------------------------------------------------ lock
+
+    private void lockAcquire(Context ctx) throws Exception {
+        if (!authorized(ctx)) {
+            ctx.status(403).json(Map.of("error", "forbidden"));
+            return;
+        }
+        boolean force = !ctx.body().isEmpty() && mapper.readTree(ctx.body()).path("force").asBoolean(false);
+        LockManager.Acquire result = locks.acquire(force);
+        if (!result.acquired()) {
+            ctx.status(423).json(Map.of(
+                    "code", "LOCKED",
+                    "acquiredAt", String.valueOf(result.acquiredAt()),
+                    "lastHeartbeat", String.valueOf(result.lastHeartbeat())));
+            return;
+        }
+        ctx.json(Map.of("lockId", result.lockId(), "acquiredAt", String.valueOf(result.acquiredAt())));
+    }
+
+    private void lockHeartbeat(Context ctx) throws Exception {
+        if (!authorized(ctx)) {
+            ctx.status(403).json(Map.of("error", "forbidden"));
+            return;
+        }
+        String lockId = ctx.body().isEmpty() ? null : mapper.readTree(ctx.body()).path("lockId").asText(null);
+        if (!locks.heartbeat(lockId)) {
+            ctx.status(409).json(Map.of("code", "LOCK_LOST"));
+            return;
+        }
+        ctx.json(Map.of("ok", true));
+    }
+
+    private void lockRelease(Context ctx) throws Exception {
+        if (!authorized(ctx)) {
+            ctx.status(403).json(Map.of("error", "forbidden"));
+            return;
+        }
+        String lockId = ctx.body().isEmpty() ? null : mapper.readTree(ctx.body()).path("lockId").asText(null);
+        locks.release(lockId);
+        ctx.json(Map.of("ok", true));
+    }
+
+    // -------------------------------------------------------------- diagrams
+
+    /** レイアウトの差分保存（§4.4）。lockId と baseHash が必須。 */
+    private void patchDiagram(Context ctx) throws Exception {
+        if (!authorized(ctx)) {
+            ctx.status(403).json(Map.of("error", "forbidden"));
+            return;
+        }
+        JsonNode body = mapper.readTree(ctx.body());
+        if (!locks.isValid(body.path("lockId").asText(null))) {
+            ctx.status(423).json(Map.of("code", "LOCK_LOST"));
+            return;
+        }
+        DiagramService.Outcome outcome = diagrams.patch(root.resolve("data"), ctx.pathParam("id"), body);
+        if (outcome instanceof DiagramService.NotFound) {
+            ctx.status(404).json(Map.of("error", "not found"));
+        } else if (outcome instanceof DiagramService.Stale stale) {
+            ctx.status(409).json(Map.of("code", "STALE", "currentHash", stale.currentHash()));
+        } else if (outcome instanceof DiagramService.Ok ok) {
+            String revision = revisions.next();
+            ok.writtenFiles().forEach((rel, hash) -> revisions.recordWrite(rel, hash, revision));
+            ctx.json(Map.of("revision", revision, "newHash", ok.newHash()));
+        }
+    }
+
+    // ------------------------------------------------------------------- SSE
+
+    private void sse(SseClient client) {
+        if (!authorized(client.ctx())) {
+            client.close();
+            return;
+        }
+        client.keepAlive();
+        sseClients.add(client);
+        client.onClose(() -> sseClients.remove(client));
+    }
+
+    /** ファイル監視からの変更通知を全クライアントへ配る（H-09）。 */
+    private void broadcast(String revision, Set<String> files) {
+        ObjectNode payload = mapper.createObjectNode();
+        payload.put("revision", revision);
+        var arr = payload.putArray("files");
+        files.stream().sorted().forEach(arr::add);
+        String json = payload.toString();
+        for (SseClient client : sseClients) {
+            client.sendEvent("change", json);
+        }
     }
 
     // ------------------------------------------------------------- bootstrap

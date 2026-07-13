@@ -8,7 +8,10 @@ import { TableList } from "./catalog/TableList";
 import { ErdPage } from "./canvas/ErdPage";
 import { useI18n } from "./i18n/useI18n";
 import { totalTableCount, useAppStore, type Fatal } from "./model/store";
+import { useEditStore } from "./model/editStore";
 import { BootstrapScreen } from "./ui/BootstrapScreen";
+import { EditDialogs, ExternalUpdateBanner, Toasts } from "./ui/EditDialogs";
+import { ExportDialog } from "./ui/ExportDialog";
 import { Header } from "./ui/Header";
 import { Link } from "./ui/Link";
 import { NotFound } from "./ui/NotFound";
@@ -31,6 +34,7 @@ export function App() {
   const loaded = useAppStore((s) => s.loadedTableCount);
   const failed = useAppStore((s) => s.failedTableCount);
   const total = useAppStore((s) => totalTableCount(s));
+  const exportDiagramId = useEditStore((s) => s.exportDiagramId);
 
   // N-01: Cmd/Ctrl + K で検索を開く
   useEffect(() => {
@@ -105,10 +109,14 @@ export function App() {
           {t("banner.missingTables", { list: failedIds.join(", ") })}
         </div>
       )}
+      <ExternalUpdateBanner />
       <main className="app-main">{content}</main>
       {dialog?.type === "table" && <TableDetailDialog tableId={dialog.id} />}
       {dialog?.type === "relation" && <RelationDialog relationId={dialog.id} />}
       {searchOpen && <SearchDialog />}
+      <EditDialogs />
+      {exportDiagramId !== null && <ExportDialog diagramId={exportDiagramId} />}
+      <Toasts />
     </div>
   );
 }

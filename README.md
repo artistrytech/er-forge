@@ -29,7 +29,12 @@ cd viewer && npm run typecheck && npm test && npm run e2e   # e2e はビルド�
 cd server && ./gradlew test
 ```
 
-## リリース（ZIP 化手順。設計書 §3.1）
+## リリース
+
+Windows ではリポジトリ直下の **`build-dist.bat`** をダブルクリック（または実行）するだけでよい
+（npm install → viewer ビルド → shadowJar → ZIP 組み立てまで自動。`--no-pause` で自動化にも使える）。
+
+手動で行う場合:
 
 ```sh
 cd server && ./gradlew packageDist

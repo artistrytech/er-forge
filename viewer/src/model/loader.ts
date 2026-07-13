@@ -175,11 +175,16 @@ export async function boot(): Promise<void> {
   scheduleBackgroundLoad();
 }
 
+/** 書き込み後・外部変更後の再読込はリビジョンをクエリに付けてキャッシュを回避する（§4.3） */
+function withVersion(src: string, v?: string): string {
+  return v === undefined ? src : `${src}?v=${encodeURIComponent(v)}`;
+}
+
 // ---- 段階3: ダイアグラム（オンデマンド） ----
 
 const inflightDiagrams = new Map<string, Promise<Diagram | null>>();
 
-export function loadDiagram(id: string): Promise<Diagram | null> {
+export function loadDiagram(id: string, version?: string): Promise<Diagram | null> {
   const st = useAppStore.getState();
   const cached = st.diagrams[id];
   if (cached) return Promise.resolve(cached);
@@ -190,7 +195,7 @@ export function loadDiagram(id: string): Promise<Diagram | null> {
   if (!ref) {
     return Promise.resolve(null);
   }
-  const p = injectScript(DATA_BASE + ref.file)
+  const p = injectScript(withVersion(DATA_BASE + ref.file, version))
     .then(() => {
       const raw = staged.diagrams.get(id);
       staged.diagrams.delete(id);
@@ -210,6 +215,80 @@ export function loadDiagram(id: string): Promise<Diagram | null> {
     });
   inflightDiagrams.set(id, p);
   return p;
+}
+
+/** 外部変更の取り込み（H-09）: キャッシュを捨ててから読み直す */
+export function forceReloadDiagram(id: string, version?: string): Promise<Diagram | null> {
+  useAppStore.setState((s) => {
+    const diagrams = { ...s.diagrams };
+    delete diagrams[id];
+    const diagramErrors = { ...s.diagramErrors };
+    delete diagramErrors[id];
+    return { diagrams, diagramErrors };
+  });
+  return loadDiagram(id, version);
+}
+
+/** index.js の再読込（スキーマ・配置の外部変更でノード名・リレーション・所属ページを追随させる） */
+export async function reloadIndex(version?: string): Promise<void> {
+  try {
+    await injectScript(withVersion(DATA_BASE + "index.js", version));
+    const raw = staged.index;
+    staged.index = undefined;
+    const parsed = zIndexData.safeParse(raw);
+    if (raw !== undefined && parsed.success) {
+      useAppStore.setState({ index: parsed.data });
+    }
+  } catch {
+    // 失敗時は手元の index を維持する（次の変更イベントで再試行される）
+  }
+}
+
+export async function reloadDictionary(version?: string): Promise<void> {
+  const dictFile = useAppStore.getState().manifest?.dictionary ?? "dictionary.js";
+  try {
+    await injectScript(withVersion(DATA_BASE + dictFile, version));
+    const raw = staged.dictionary;
+    staged.dictionary = undefined;
+    const parsed = zDictionary.safeParse(raw);
+    if (raw !== undefined && parsed.success) {
+      useAppStore.setState({ dictionary: parsed.data });
+    }
+  } catch {
+    // 失敗時は手元の辞書を維持する
+  }
+}
+
+export async function reloadManifest(version?: string): Promise<void> {
+  try {
+    await injectScript(withVersion(DATA_BASE + "manifest.js", version));
+    const raw = staged.manifest;
+    staged.manifest = undefined;
+    const parsed = zManifest.safeParse(raw);
+    if (raw !== undefined && parsed.success) {
+      useAppStore.setState({ manifest: parsed.data });
+    }
+  } catch {
+    // 失敗時は手元の manifest を維持する
+  }
+}
+
+/** スキーマファイルの外部変更でキャッシュを無効化する（次に開いたとき読み直す） */
+export function invalidateTable(id: string): void {
+  useAppStore.setState((s) => {
+    const tables = { ...s.tables };
+    const hadTable = tables[id] !== undefined;
+    delete tables[id];
+    const tableErrors = { ...s.tableErrors };
+    const hadError = tableErrors[id] !== undefined;
+    delete tableErrors[id];
+    return {
+      tables,
+      tableErrors,
+      loadedTableCount: s.loadedTableCount - (hadTable ? 1 : 0),
+      failedTableCount: s.failedTableCount - (hadError ? 1 : 0),
+    };
+  });
 }
 
 // ---- 段階4/5: テーブルスキーマ ----

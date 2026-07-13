@@ -44,6 +44,9 @@ export interface AppState {
   searchOpen: boolean;
   /** 編集画面へのアクセス等で表示する一時通知（リロードで消えてよい） */
   notice: string | null;
+  /** 表示中の ER図ページ（SSE の外部変更分岐が「現在のページか」を判定するために使う） */
+  currentDiagramId: string | null;
+  toasts: { id: number; text: string }[];
 
   setLang(lang: Lang): void;
   setNameDisplay(mode: NameDisplay): void;
@@ -51,6 +54,8 @@ export interface AppState {
   closeDialog(): void;
   setSearchOpen(open: boolean): void;
   setNotice(notice: string | null): void;
+  setCurrentDiagramId(id: string | null): void;
+  addToast(text: string): void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -73,6 +78,8 @@ export const useAppStore = create<AppState>((set) => ({
   dialog: null,
   searchOpen: false,
   notice: null,
+  currentDiagramId: null,
+  toasts: [],
 
   setLang: (lang) => set({ lang }),
   setNameDisplay: (nameDisplay) => set({ nameDisplay }),
@@ -80,7 +87,17 @@ export const useAppStore = create<AppState>((set) => ({
   closeDialog: () => set({ dialog: null }),
   setSearchOpen: (searchOpen) => set({ searchOpen }),
   setNotice: (notice) => set({ notice }),
+  setCurrentDiagramId: (currentDiagramId) => set({ currentDiagramId }),
+  addToast: (text) => {
+    const id = ++toastSeq;
+    set((s) => ({ toasts: [...s.toasts, { id, text }] }));
+    setTimeout(() => {
+      useAppStore.setState((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
+    }, 5000);
+  },
 }));
+
+let toastSeq = 0;
 
 /** 全テーブル数（manifest 由来）。進捗表示（A-03）に使う */
 export function totalTableCount(state: Pick<AppState, "manifest">): number {

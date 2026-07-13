@@ -23,6 +23,8 @@ import {
   type NodeTypes,
 } from "@xyflow/react";
 import { useI18n } from "../i18n/useI18n";
+import { makeMove } from "../model/commands";
+import { useEditStore } from "../model/editStore";
 import { loadDiagram } from "../model/loader";
 import { formatName, resolveTableName } from "../model/logicalName";
 import { useAppStore } from "../model/store";
@@ -58,10 +60,20 @@ function ErdCanvas({ diagramId, focusTableId }: ErdPageProps) {
   const openDialog = useAppStore((s) => s.openDialog);
   const select = useCanvasStore((s) => s.select);
   const clearSelection = useCanvasStore((s) => s.clear);
+  const editing = useEditStore((s) => s.session === "editing");
+  const pushCommand = useEditStore((s) => s.push);
+  const setDragging = useEditStore((s) => s.setDragging);
+  const setCurrentDiagramId = useAppStore((s) => s.setCurrentDiagramId);
 
   useEffect(() => {
     void loadDiagram(diagramId);
   }, [diagramId]);
+
+  // SSE の外部変更分岐（H-09）が「現在のページか」を判定できるようにする
+  useEffect(() => {
+    setCurrentDiagramId(diagramId);
+    return () => setCurrentDiagramId(null);
+  }, [diagramId, setCurrentDiagramId]);
 
   const indexTables = useMemo(() => {
     const map = new Map<string, IndexTable>();
@@ -105,7 +117,6 @@ function ErdCanvas({ diagramId, focusTableId }: ErdPageProps) {
         position: { x: layout.pos[0], y: layout.pos[1] },
         width: layout.w,
         data: { primary, secondary, missing, notes },
-        draggable: false,
         connectable: false,
       };
     });
@@ -167,6 +178,24 @@ function ErdCanvas({ diagramId, focusTableId }: ErdPageProps) {
     [openDialog],
   );
 
+  // H-01 / H-02: ドラッグ確定（手を離したとき）が1操作 = コマンド1つ（§3.1）
+  const onNodeDragStart = useCallback(() => setDragging(true), [setDragging]);
+  const onNodeDragStop = useCallback(
+    (_e: unknown, _node: TableNodeType, dragged: TableNodeType[]) => {
+      setDragging(false);
+      const current = useAppStore.getState().diagrams[diagramId];
+      if (!current) return;
+      const moves = dragged.flatMap((n) => {
+        const from = current.nodes?.[n.id]?.pos;
+        if (from === undefined) return [];
+        return [{ id: n.id, from, to: [n.position.x, n.position.y] as [number, number] }];
+      });
+      const cmd = makeMove(moves);
+      if (cmd) pushCommand(diagramId, cmd);
+    },
+    [diagramId, pushCommand, setDragging],
+  );
+
   const exists = manifest?.diagrams?.some((d) => d.id === diagramId) ?? false;
   if (!exists || diagramError !== undefined) {
     return (
@@ -190,9 +219,11 @@ function ErdCanvas({ diagramId, focusTableId }: ErdPageProps) {
         fitView
         minZoom={0.1}
         maxZoom={2.5}
-        nodesDraggable={false}
+        nodesDraggable={editing}
         nodesConnectable={false}
-        elementsSelectable={false}
+        elementsSelectable={editing}
+        snapToGrid
+        snapGrid={[8, 8]}
         zoomOnDoubleClick={false}
         onlyRenderVisibleElements
         onNodeClick={onNodeClick}
@@ -200,6 +231,8 @@ function ErdCanvas({ diagramId, focusTableId }: ErdPageProps) {
         onPaneClick={() => clearSelection()}
         onNodeDoubleClick={onNodeDoubleClick}
         onEdgeDoubleClick={onEdgeDoubleClick}
+        onNodeDragStart={onNodeDragStart}
+        onNodeDragStop={onNodeDragStop}
       >
         <Background variant={BackgroundVariant.Dots} gap={16} />
         <Controls showInteractive={false} />
@@ -219,8 +252,9 @@ function ErdCanvas({ diagramId, focusTableId }: ErdPageProps) {
           </span>
         </Panel>
         <ZoomPanel />
+        {editing && <EditToolbar diagramId={diagramId} />}
         <FocusOnTable diagramId={diagramId} tableId={focusTableId} />
-        <KeyboardShortcuts />
+        <KeyboardShortcuts diagramId={diagramId} />
         {Object.keys(diagram.nodes ?? {}).length === 0 && (
           <Panel position="top-center">
             <div className="erd-empty-note">{t("canvas.empty")}</div>
@@ -267,14 +301,57 @@ function FocusOnTable({ diagramId, tableId }: { diagramId: string; tableId?: str
   return null;
 }
 
-/** N-02: Shift+1 = 全体フィット、Shift+0 = 100% */
-function KeyboardShortcuts() {
+/** Undo / Redo ボタン（H-05。閲覧中は表示しない） */
+function EditToolbar({ diagramId }: { diagramId: string }) {
+  const { t } = useI18n();
+  const page = useEditStore((s) => s.pages[diagramId]);
+  const undo = useEditStore((s) => s.undo);
+  const redo = useEditStore((s) => s.redo);
+  return (
+    <Panel position="top-center" className="erd-edit-toolbar">
+      <button
+        type="button"
+        disabled={(page?.undo.length ?? 0) === 0}
+        onClick={() => undo(diagramId)}
+        title="Ctrl+Z"
+      >
+        ↩ {t("edit.undo")}
+      </button>
+      <button
+        type="button"
+        disabled={(page?.redo.length ?? 0) === 0}
+        onClick={() => redo(diagramId)}
+        title="Ctrl+Shift+Z"
+      >
+        ↪ {t("edit.redo")}
+      </button>
+    </Panel>
+  );
+}
+
+/** N-02: Shift+1 / Shift+0、N-03: Ctrl+Z / Ctrl+Shift+Z、N-10: Ctrl+S */
+function KeyboardShortcuts({ diagramId }: { diagramId: string }) {
   const rf = useReactFlow();
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
-      if (e.shiftKey && (e.key === "!" || e.code === "Digit1")) {
+      const st = useEditStore.getState();
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+        if (st.session !== "editing") return;
+        e.preventDefault();
+        if (e.shiftKey) {
+          st.redo(diagramId);
+        } else {
+          st.undo(diagramId);
+        }
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        // 手動保存の保存手段であり、自動保存でも即時 flush できる（N-10）
+        e.preventDefault();
+        if (st.session === "editing" && useAppStore.getState().serverMode === true) {
+          st.save();
+        }
+      } else if (e.shiftKey && (e.key === "!" || e.code === "Digit1")) {
         void rf.fitView({ duration: 200 });
       } else if (e.shiftKey && (e.key === "0" || e.code === "Digit0")) {
         void rf.zoomTo(1, { duration: 200 });
@@ -282,6 +359,6 @@ function KeyboardShortcuts() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [rf]);
+  }, [rf, diagramId]);
   return null;
 }
