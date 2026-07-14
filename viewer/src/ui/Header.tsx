@@ -11,7 +11,13 @@ import type { Lang } from "../i18n/messages";
 import { Link } from "./Link";
 import { hrefs } from "./router";
 
-export function Header({ currentDiagramId }: { currentDiagramId?: string }) {
+export function Header({
+  currentDiagramId,
+  onErdRoute,
+}: {
+  currentDiagramId?: string;
+  onErdRoute?: boolean;
+}) {
   const { t, lang, setLang } = useI18n();
   const serverMode = useAppStore((s) => s.serverMode);
   const nameDisplay = useAppStore((s) => s.nameDisplay);
@@ -24,7 +30,9 @@ export function Header({ currentDiagramId }: { currentDiagramId?: string }) {
   const total = useAppStore((s) => totalTableCount(s));
 
   const firstDiagram = manifest?.diagrams?.[0]?.id;
-  const erdHref = hrefs.erd(currentDiagramId ?? firstDiagram ?? "");
+  // ページが1枚も無くても ER図 へは行ける（#/erd がページ作成の導線を出す）
+  const target = currentDiagramId ?? firstDiagram;
+  const erdHref = target !== undefined ? hrefs.erd(target) : hrefs.erdHome();
   const progress = total > 0 ? (loaded + failed) / total : 1;
 
   return (
@@ -40,11 +48,9 @@ export function Header({ currentDiagramId }: { currentDiagramId?: string }) {
       )}
       <div className="app-title">{t("app.title")}</div>
       <nav className="app-nav">
-        {firstDiagram !== undefined && (
-          <Link className="app-nav-link" href={erdHref}>
-            {t("nav.erd")}
-          </Link>
-        )}
+        <Link className="app-nav-link" href={erdHref}>
+          {t("nav.erd")}
+        </Link>
         <Link className="app-nav-link" href={hrefs.tables()}>
           {t("nav.tables")}
         </Link>
@@ -85,7 +91,10 @@ export function Header({ currentDiagramId }: { currentDiagramId?: string }) {
         <span className={"mode-badge " + (serverMode === true ? "mode-server" : "mode-static")}>
           {t("mode.label")}: {serverMode === true ? t("mode.server") : t("mode.static")}
         </span>
-        <SessionControls onErdPage={currentDiagramId !== undefined} diagramId={currentDiagramId} />
+        <SessionControls
+          onErdPage={onErdRoute === true || currentDiagramId !== undefined}
+          diagramId={currentDiagramId}
+        />
       </div>
     </header>
   );

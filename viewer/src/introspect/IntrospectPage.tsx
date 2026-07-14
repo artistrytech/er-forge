@@ -706,6 +706,10 @@ function IgnoreList({
 function ApplyResult({ result, onRestart }: { result: ApplyResponse; onRestart: () => void }) {
   const { t } = useI18n();
   const a = result.applied;
+  // 逆生成は diagrams/** を書き換えないため、初回はページが0件になる。
+  // その場合は #/erd（ページ作成の導線）へ送る。ここで行き止まりにしない
+  const firstDiagram = useAppStore((s) => s.manifest?.diagrams?.[0]?.id);
+  const placementHref = firstDiagram !== undefined ? hrefs.erd(firstDiagram) : hrefs.erdHome();
   return (
     <div className="catalog-page introspect-page">
       <div className="catalog-header">
@@ -734,6 +738,12 @@ function ApplyResult({ result, onRestart }: { result: ApplyResponse; onRestart: 
         <section className="form-section">
           <h3>{t("introspect.unplaced")}</h3>
           <p className="muted">{t("introspect.unplacedHint")}</p>
+          {/* K-12: 配置操作へ誘導する。ページが1枚も無ければ #/erd が作成の導線を出す */}
+          <p>
+            <Link className="button-link" data-testid="to-placement" href={placementHref}>
+              {t("introspect.toPlacement")}
+            </Link>
+          </p>
           <ul className="driver-list">
             {result.unplacedTables.map((id) => (
               <li key={id}>

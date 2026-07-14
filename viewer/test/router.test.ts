@@ -30,9 +30,15 @@ describe("parseHash (B-07 / 設計書 §4.4)", () => {
   it("#/columns", () => {
     expect(parseHash("#/columns")).toEqual({ kind: "columns" });
   });
+  // ページが1枚も無いとき（逆生成の直後）の着地点。ここが notFound だと、
+  // ページを作る画面に到達できず行き止まりになる（I-01）
+  it("#/erd（ページ未指定）は ER図 のホーム", () => {
+    expect(parseHash("#/erd")).toEqual({ kind: "erdHome" });
+    expect(parseHash(hrefs.erdHome())).toEqual({ kind: "erdHome" });
+  });
+
   it("未知のルートは notFound（白画面にしない。B-11）", () => {
     expect(parseHash("#/unknown/x")).toEqual({ kind: "notFound", path: "/unknown/x" });
-    expect(parseHash("#/erd")).toEqual({ kind: "notFound", path: "/erd" });
     expect(parseHash("#/tables/a/b")).toEqual({ kind: "notFound", path: "/tables/a/b" });
   });
   it("hrefs と parseHash が往復する（URI エンコード込み）", () => {

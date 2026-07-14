@@ -91,8 +91,17 @@ const ja = {
   "sidebar.tables": "テーブル",
   "sidebar.unplaced": "未配置",
   "sidebar.tableCount": "{n} テーブル",
+  // ページが1枚も無いとき（逆生成の直後）の ER図 画面
+  "erdEmpty.title": "ER図のページがありません",
+  "erdEmpty.body":
+    "テーブルは {n} 件あります。逆生成はER図の配置を書き換えないため、ページは自分で作ります。",
+  "erdEmpty.hint":
+    "ページを作成すると、未配置のテーブルをドラッグまたは [このページに追加] で配置できます。",
+  "erdEmpty.staticOnly":
+    "ページの作成はサーバーモードでのみ行えます（java -jar erd-server.jar で起動してください）。",
   // ページ管理（I-01〜I-03）
   "page.add": "ページを追加",
+  "page.createFirst": "最初のページを作成",
   "page.addTitle": "ページを追加",
   "page.id": "ページID",
   "page.idHint": "英数字と . _ - が使えます（ファイル名になります）",
@@ -368,6 +377,7 @@ const ja = {
   "introspect.unplaced": "未配置のテーブル",
   "introspect.unplacedHint":
     "追加されたテーブルはまだどのページにも配置されていません（逆生成は ER図 を書き換えません）。",
+  "introspect.toPlacement": "ER図でページを作成して配置する →",
   "introspect.orphans": "孤児ノード",
   "introspect.orphansHint":
     "スキーマから消えたテーブルのノードが ER図 に残っています。自動削除はしません（意図しない削除を防ぐため）。ページを開いて明示的に除去してください。",
@@ -418,7 +428,15 @@ const en: Record<MsgKey, string> = {
   "sidebar.tables": "Tables",
   "sidebar.unplaced": "Unplaced",
   "sidebar.tableCount": "{n} tables",
+  "erdEmpty.title": "No diagram pages yet",
+  "erdEmpty.body":
+    "There are {n} tables. Introspection never touches diagram layouts, so pages are yours to create.",
+  "erdEmpty.hint":
+    "Once a page exists, drag unplaced tables onto it or use [Add to this page].",
+  "erdEmpty.staticOnly":
+    "Pages can only be created in server mode (run java -jar erd-server.jar).",
   "page.add": "Add page",
+  "page.createFirst": "Create the first page",
   "page.addTitle": "Add a page",
   "page.id": "Page ID",
   "page.idHint": "Letters, digits and . _ - only (used as the file name)",
@@ -693,6 +711,7 @@ const en: Record<MsgKey, string> = {
   "introspect.unplaced": "Unplaced tables",
   "introspect.unplacedHint":
     "The added tables are not placed on any page yet (introspection never modifies diagrams).",
+  "introspect.toPlacement": "Create a page and place them →",
   "introspect.orphans": "Orphan nodes",
   "introspect.orphansHint":
     "Nodes for tables that no longer exist in the schema remain on the diagram. They are never removed automatically (to prevent losing layout to a mistaken scope). Open the page and remove them explicitly.",

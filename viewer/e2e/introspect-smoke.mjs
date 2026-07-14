@@ -217,25 +217,43 @@ async function main() {
       body: JSON.stringify({ lockId: lock.lockId }),
     });
 
-    // 逆生成は ER図 を作らない（配置は人の操作。INV-2）。保持の検証のためにページを1枚作る
+    // ---- K-12 / I-01: 逆生成の直後は ER図 のページが0件。そこから GUI だけで配置まで進める ----
+    // 逆生成は diagrams/** を書かない（INV-2）ため、ページは人が作る。ここに導線が無いと
+    // 「DB から生成したが ER図 を描けない」行き止まりになる（設計書 §3.4 の運用フロー）
     const diagramFile = join(dir, "data", "diagrams", "main.js");
-    mkdirSync(join(dir, "data", "diagrams"), { recursive: true });
-    writeFileSync(
-      diagramFile,
-      'ERD.diagram({\n  id: "main",\n  title: "メイン",\n  order: 1,\n  nodes: {\n' +
-        '    "public.orders": { pos: [520, 80] },\n    "public.users": { pos: [120, 80] },\n' +
-        "  },\n});\n",
-      "utf-8",
+    // 直前に API 側でロックを奪って返したため、タブは失効したロックを握ったままである
+    // （降格は次の heartbeat で起きる。H-11）。読み直してから取り直す
+    await page.goto(`${url}#/erd`);
+    await page.reload();
+    await page.waitForSelector('[data-testid="erd-empty"]', { timeout: 15000 });
+    check("K-12: the no-pages state offers page creation after introspection", true);
+
+    // 閲覧中でも押せる（押した時点でロックを取り、そのまま作成ダイアログを開く）
+    await page.getByTestId("create-first-page").click();
+    await page.waitForSelector('[data-testid="page-id"]', { timeout: 10000 });
+    await page.getByTestId("page-id").pressSequentially("main");
+    await page.getByTestId("page-title").pressSequentially("メイン");
+    await page.getByTestId("page-create").click();
+    await page.waitForFunction(() => location.hash === "#/erd/main", { timeout: 10000 });
+    check("I-01: the first page is created from the GUI", existsSync(diagramFile));
+
+    // 未配置トレイから自動配置（H-08）→ 2テーブルがページに載る
+    await page.getByTestId("tray-auto-place").click();
+    await page.waitForSelector('.react-flow__node[data-id="public.users"]', { timeout: 20000 });
+    await page.waitForFunction(
+      () => {
+        const el = document.querySelector('[data-testid="save-status"]');
+        return el !== null && (el.textContent.includes("保存済み") || el.textContent.includes("Saved"));
+      },
+      { timeout: 15000 },
     );
-    const manifestFile = join(dir, "data", "manifest.js");
-    writeFileSync(
-      manifestFile,
-      readFileSync(manifestFile, "utf-8").replace(
-        /\}\);\n$/,
-        '  diagrams: [\n    { id: "main", file: "diagrams/main.js", title: "メイン", order: 1 },\n  ],\n});\n',
-      ),
-      "utf-8",
-    );
+    const placed = readFileSync(diagramFile, "utf-8");
+    check("K-12 / I-04: unplaced tables are placed onto the new page",
+      placed.includes('"public.users"') && placed.includes('"public.orders"'));
+
+    // 編集を終える（ロックを返し、次の逆生成が取得できるようにする）
+    await page.getByTestId("session-toggle").click();
+    await page.waitForFunction(() => document.querySelector(".session-editing") === null);
     const diagramsBefore = readFileSync(diagramFile, "utf-8");
 
     // ---- 2回目: DB にカラムを追加して再実行 ----

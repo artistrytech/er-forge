@@ -14,6 +14,7 @@ import { totalTableCount, useAppStore, type Fatal } from "./model/store";
 import { useEditStore } from "./model/editStore";
 import { BootstrapScreen } from "./ui/BootstrapScreen";
 import { EditDialogs, ExternalUpdateBanner, Toasts } from "./ui/EditDialogs";
+import { ErdEmpty } from "./ui/ErdEmpty";
 import { ExportDialog } from "./ui/ExportDialog";
 import { Header } from "./ui/Header";
 import { Link } from "./ui/Link";
@@ -69,14 +70,30 @@ export function App() {
 
   const firstDiagram = manifest?.diagrams?.[0]?.id;
   const currentDiagramId = route.kind === "erd" ? route.diagramId : undefined;
+  // ページが0件の #/erd でも編集セッションを開始できなければ、ページを作れない
+  const onErdRoute = route.kind === "erd" || route.kind === "erdHome";
   const failedIds = Object.keys(tableErrors);
 
   let content: React.ReactNode;
   switch (route.kind) {
     case "home":
-      // 既定画面へリダイレクト: ページがあれば最初の ER図、なければテーブル一覧
-      replaceRoute(firstDiagram !== undefined ? hrefs.erd(firstDiagram) : hrefs.tables());
+      // 既定画面は常に ER図。ページが1枚も無い場合（逆生成の直後）は #/erd が
+      // 作成の導線を出す（テーブル一覧へ逃がすと、ページを作る画面に到達できない）
+      replaceRoute(firstDiagram !== undefined ? hrefs.erd(firstDiagram) : hrefs.erdHome());
       content = null;
+      break;
+    case "erdHome":
+      if (firstDiagram !== undefined) {
+        replaceRoute(hrefs.erd(firstDiagram));
+        content = null;
+      } else {
+        content = (
+          <div className="erd-layout">
+            <Sidebar />
+            <ErdEmpty />
+          </div>
+        );
+      }
       break;
     case "erd":
       content = (
@@ -146,7 +163,7 @@ export function App() {
 
   return (
     <div className="app-root">
-      <Header currentDiagramId={currentDiagramId} />
+      <Header currentDiagramId={currentDiagramId} onErdRoute={onErdRoute} />
       {failedIds.length > 0 && loaded + failed >= total && (
         <div className="error-banner">
           {t("banner.missingTables", { list: failedIds.join(", ") })}

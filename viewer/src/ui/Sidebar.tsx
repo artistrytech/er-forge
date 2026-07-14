@@ -17,6 +17,7 @@ import { useEditStore } from "../model/editStore";
 import { formatName, resolveIndexTableName } from "../model/logicalName";
 import { useAppStore } from "../model/store";
 import type { IndexTable } from "../model/types";
+import { AddPageButton } from "./AddPage";
 import { Dialog } from "./Dialog";
 import { Link } from "./Link";
 import { hrefs } from "./router";
@@ -108,96 +109,6 @@ export function Sidebar({ currentDiagramId }: { currentDiagramId?: string }) {
         </ul>
       </div>
     </nav>
-  );
-}
-
-// ------------------------------------------------------------- I-01: ページの追加
-
-function AddPageButton() {
-  const { t } = useI18n();
-  const [open, setOpen] = useState(false);
-  return (
-    <>
-      <button
-        type="button"
-        className="sidebar-icon-button"
-        data-testid="page-add"
-        title={t("page.add")}
-        onClick={() => setOpen(true)}
-      >
-        ＋
-      </button>
-      {open && <AddPageDialog onClose={() => setOpen(false)} />}
-    </>
-  );
-}
-
-function AddPageDialog({ onClose }: { onClose: () => void }) {
-  const { t } = useI18n();
-  const createPage = useEditStore((s) => s.createPage);
-  const addToast = useAppStore((s) => s.addToast);
-  const [id, setId] = useState("");
-  const [title, setTitle] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setBusy(true);
-    setError(null);
-    void createPage(id.trim(), title.trim()).then((result) => {
-      setBusy(false);
-      if (!result.ok) {
-        setError(result.error);
-        return;
-      }
-      addToast(t("page.created", { title: title.trim() }));
-      onClose();
-      location.hash = hrefs.erd(id.trim());
-    });
-  };
-
-  return (
-    <Dialog title={t("page.addTitle")} onClose={onClose}>
-      <form onSubmit={submit}>
-        <label className="form-row">
-          <span>{t("page.id")}</span>
-          <input
-            autoFocus
-            data-testid="page-id"
-            type="text"
-            value={id}
-            onChange={(e) => setId(e.target.value)}
-            placeholder="billing"
-          />
-        </label>
-        <p className="form-hint">{t("page.idHint")}</p>
-        <label className="form-row">
-          <span>{t("page.title")}</span>
-          <input
-            data-testid="page-title"
-            type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="課金"
-          />
-        </label>
-        {error !== null && <p className="form-error">{error}</p>}
-        <div className="dialog-actions">
-          <button
-            type="submit"
-            className="header-button-primary"
-            data-testid="page-create"
-            disabled={busy || id.trim() === "" || title.trim() === ""}
-          >
-            {t("page.add")}
-          </button>
-          <button type="button" onClick={onClose}>
-            {t("layout.cancel")}
-          </button>
-        </div>
-      </form>
-    </Dialog>
   );
 }
 

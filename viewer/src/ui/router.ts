@@ -6,6 +6,8 @@ import { useSyncExternalStore } from "react";
 
 export type Route =
   | { kind: "home" }
+  /** ページ未指定の ER図。ページがあれば先頭へ転送し、無ければ作成の導線を出す（I-01） */
+  | { kind: "erdHome" }
   | { kind: "erd"; diagramId: string; tableId?: string }
   | { kind: "tables" }
   | { kind: "table"; tableId: string }
@@ -16,6 +18,7 @@ export type Route =
 
 /** ルート → ハッシュ URL（リンク生成はすべてここを通す） */
 export const hrefs = {
+  erdHome: (): string => "#/erd",
   erd: (diagramId: string, tableId?: string): string =>
     tableId !== undefined
       ? `#/erd/${encodeURIComponent(diagramId)}/${encodeURIComponent(tableId)}`
@@ -42,9 +45,12 @@ export function parseHash(hash: string): Route {
     });
 
   const [head, a, b] = segments;
-  if (head === "erd" && a !== undefined) {
-    if (segments.length === 2) return { kind: "erd", diagramId: a };
-    if (segments.length === 3 && b !== undefined) return { kind: "erd", diagramId: a, tableId: b };
+  if (head === "erd") {
+    if (segments.length === 1) return { kind: "erdHome" };
+    if (a !== undefined) {
+      if (segments.length === 2) return { kind: "erd", diagramId: a };
+      if (segments.length === 3 && b !== undefined) return { kind: "erd", diagramId: a, tableId: b };
+    }
   }
   if (head === "tables") {
     if (segments.length === 1) return { kind: "tables" };
