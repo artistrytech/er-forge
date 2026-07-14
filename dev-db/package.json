@@ -1,0 +1,13 @@
+{
+  "name": "erd-dev-db",
+  "private": true,
+  "type": "module",
+  "description": "動作確認用の PostgreSQL（docker compose）と、最小のマイグレーション実行ツール",
+  "scripts": {
+    "status": "node migrate.mjs status",
+    "up": "node migrate.mjs up"
+  },
+  "dependencies": {
+    "pg": "^8.13.1"
+  }
+}

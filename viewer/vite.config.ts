@@ -44,55 +44,49 @@ function escapeRegExp(s: string): string {
 }
 
 /**
- * 開発サーバーは2通りある。
+ * 開発サーバー（`npm run dev`）は、**配布物とまったく同じ経路**でデータを読む。
  *
- * - `npm run dev`        : ビューア単体。データは `public/data/**`（静的モード相当の固定データ）
- * - `npm run dev:server` : Java サーバー（`gradlew devServer`）と繋ぐ。**サーバーモードで動く**
+ * 配布物では Java サーバーが `index.html` と `data/**.js` を配信し、ビューアは
+ * `<script src="data/**.js">` の相対パスで読む（設計書 §4.3。読み込み経路はモードによらず1本）。
+ * dev でもこれを崩さないため、`/data` と `/__erd` を Java サーバー（`gradlew devServer`）へ
+ * プロキシする。`GET /__erd/health` が通ることでサーバーモードとして起動する（A-01）。
  *
- * ビューアはデータを常に `<script src="data/**.js">` の相対パスで読む（設計書 §4.3。
- * 読み込み経路はモードによらず1本）。dev:server でも本番とまったく同じ経路を通すため、
- * `/data` と `/__erd` を Java サーバーへプロキシする。`GET /__erd/health` が通ることで、
- * ビューアはサーバーモードとして起動する（A-01）。
- *
- * このとき `public/` を無効化する。有効なままだと `public/data/**`（単体 dev 用の固定データ）が
- * `/data` を先に掴みうるため、**サーバーの実データではなく古い固定データを見て**しまう。
- * どちらのデータを見ているのか分からない状態が一番たちが悪いので、明示的に外す。
+ * `publicDir` は無効にする。vite の `public/` は `/data` を先に掴みうるため、有効なままだと
+ * **サーバーの実データではなく `public/data/**` を見てしまう**ことがある。
+ * どちらを見ているのか分からない状態が一番たちが悪いので、経路を1本に固定する。
+ * （静的モードの確認は `npm run build` した index.html を data/ の隣に置いて file:// で開く。
+ *   e2e/smoke.mjs がまさにそれをしている）
  *
  * トークンは Java 側を ERD_TOKEN で固定し、開く URL に埋めておく（§8.1 の `?t=`）。
  */
 const BACKEND = `http://127.0.0.1:${process.env.ERD_PORT ?? 5321}`;
 const DEV_TOKEN = process.env.ERD_TOKEN ?? "erd-dev";
 
-export default defineConfig(({ mode }) => {
-  const withServer = mode === "server";
-  return {
-    plugins: [react(), inlineSingleFile()],
-    base: "./",
-    publicDir: withServer ? false : "public",
-    server: {
-      port: 5173,
-      strictPort: true,
-      open: withServer ? `/?t=${DEV_TOKEN}` : "/",
-      proxy: withServer
-        ? {
-            // SSE（GET /__erd/events）もそのまま流れる
-            "/__erd": { target: BACKEND, changeOrigin: false },
-            "/data": { target: BACKEND, changeOrigin: false },
-          }
-        : undefined,
+export default defineConfig({
+  plugins: [react(), inlineSingleFile()],
+  base: "./",
+  publicDir: false,
+  server: {
+    port: 5173,
+    strictPort: true,
+    open: `/?t=${DEV_TOKEN}`,
+    proxy: {
+      // SSE（GET /__erd/events）もそのまま流れる
+      "/__erd": { target: BACKEND, changeOrigin: false },
+      "/data": { target: BACKEND, changeOrigin: false },
     },
-    build: {
-      target: "es2019",
-      cssCodeSplit: false,
-      assetsInlineLimit: 100000000,
-      chunkSizeWarningLimit: 2000,
-      modulePreload: false,
-      rollupOptions: {
-        output: {
-          format: "iife",
-          inlineDynamicImports: true,
-        },
+  },
+  build: {
+    target: "es2019",
+    cssCodeSplit: false,
+    assetsInlineLimit: 100000000,
+    chunkSizeWarningLimit: 2000,
+    modulePreload: false,
+    rollupOptions: {
+      output: {
+        format: "iife",
+        inlineDynamicImports: true,
       },
     },
-  };
+  },
 });

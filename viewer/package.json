@@ -5,7 +5,6 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:server": "vite --mode server",
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",

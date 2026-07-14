@@ -1,20 +1,38 @@
 /**
  * file:// スモークテスト（Phase1 の完了条件の検証）。
  *
- * `npm run build` 後に `npm run e2e` で実行する。dist/index.html をブラウザの
- * file:// で開き、以下を確認する:
+ * `npm run build` 後に `npm run e2e` で実行する。**配布物と同じ構成**
+ * （`index.html` の隣に `data/`。設計書 §3.3 の `erd/`）を一時ディレクトリに組み立て、
+ * それを file:// で開いて以下を確認する:
  * - ER図が描画される（ノード = テーブル名、エッジ = 物理FK実線 / 論理FK破線、カーディナリティ記号）
  * - ER図 ⇔ テーブルカタログをブラウザ標準のリンクで行き来できる（X-04 / B-10）
  * - ページ切替・検索（Ctrl+K）・詳細ダイアログ・未知ルート・言語切替・戻る
  *
+ * データは e2e/fixtures/data（このテスト専用の小さな固定データ）を使う。
+ * ビルド成果物に data/ を含めないため（配布物は index.html だけを配る）、ここで組み立てる。
+ *
  * ブラウザはシステムの Edge / Chrome を使う（playwright のブラウザダウンロード不要）。
  */
 import { chromium } from "playwright";
+import { cpSync, copyFileSync, existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const DIST = resolve(here, "..", "dist", "index.html").replace(/\\/g, "/");
+const INDEX = resolve(here, "..", "dist", "index.html");
+const FIXTURE = resolve(here, "fixtures", "data");
+
+if (!existsSync(INDEX)) {
+  console.error("dist/index.html がありません。先に npm run build を実行してください。");
+  process.exit(1);
+}
+
+// 配布物と同じ構成を組み立てる（index.html の隣に data/）
+const workDir = mkdtempSync(join(tmpdir(), "erd-static-"));
+copyFileSync(INDEX, join(workDir, "index.html"));
+cpSync(FIXTURE, join(workDir, "data"), { recursive: true });
+const DIST = join(workDir, "index.html").replace(/\\/g, "/");
 
 const results = [];
 const errors = [];
@@ -155,7 +173,11 @@ async function main() {
   }
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+main()
+  .catch((e) => {
+    console.error(e);
+    process.exitCode = 1;
+  })
+  .finally(() => {
+    rmSync(workDir, { recursive: true, force: true });
+  });

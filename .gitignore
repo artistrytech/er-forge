@@ -6,5 +6,12 @@ node_modules/
 *.class
 viewer/dist/
 
-# 開発用サーバー（gradlew run）のプロジェクトディレクトリ。生成物であり、コミットしない
+# 開発用サーバー（gradlew devServer）のプロジェクトディレクトリ。生成物であり、コミットしない
 dev/
+
+# vite の public/ は使わない（dev のデータは Java サーバーが配信する。配布物と同じ経路）。
+# ここに data/ を置くと /data を先に掴んでサーバーの実データを隠しうるため、Git にも載せない
+viewer/public/
+
+# docker compose の DB データ（dev-db）
+dev-db/pgdata/
