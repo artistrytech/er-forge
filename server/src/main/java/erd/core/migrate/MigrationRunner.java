@@ -74,7 +74,7 @@ public final class MigrationRunner {
         try {
             ProjectStore.LoadResult loaded = store.read(dataDir);
             if (!loaded.fileErrors().isEmpty()) {
-                throw new IllegalStateException("移行を中止しました。壊れたファイルがあります: "
+                throw new IllegalStateException("Migration aborted because some files are invalid: "
                         + loaded.fileErrors());
             }
             ProjectModel model = loaded.model();
@@ -102,7 +102,7 @@ public final class MigrationRunner {
                     .filter(m -> m.fromVersion() == fv)
                     .findFirst()
                     .orElseThrow(() -> new IllegalStateException(
-                            "v" + fv + " からの移行が見つかりません（サーバーの実装不備）"));
+                            "No migration found from v" + fv + " (server implementation error)"));
             plan.add(next);
             v = next.toVersion();
         }

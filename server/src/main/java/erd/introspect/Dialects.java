@@ -56,7 +56,7 @@ public final class Dialects {
                 current = enhancer.enhance(conn, current);
             } catch (SQLException | RuntimeException e) {
                 warnings.add(enhancer.getClass().getSimpleName()
-                        + ": DB固有情報を取得できませんでした（" + e.getMessage() + "）");
+                        + ": Could not read database-specific metadata (" + e.getMessage() + ")");
             }
         }
         if (warnings.size() == current.warnings().size()) return current;

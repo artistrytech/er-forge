@@ -30,16 +30,16 @@ public final class Main {
             try {
                 MigrationRunner.Result result = new MigrationRunner().run(root);
                 if (result.migrated()) {
-                    System.out.println("データ形式を v" + result.fromVersion() + " → v"
-                            + result.toVersion() + " に移行しました。"
-                            + "差分は単独のコミットにすることを推奨します。");
+                    System.out.println("Migrated data format from v" + result.fromVersion() + " to v"
+                            + result.toVersion() + ". "
+                            + "Consider committing this migration separately.");
                 }
             } catch (NewerDataException e) {
                 System.err.println(e.getMessage());
                 System.exit(1);
             } catch (RuntimeException e) {
                 // 壊れたデータでも閲覧（欠損表示）はできるため、起動自体は続ける
-                System.err.println("警告: データを検査できませんでした: " + e.getMessage());
+                System.err.println("Warning: Could not inspect data: " + e.getMessage());
             }
         }
 
@@ -54,8 +54,8 @@ public final class Main {
 
         String url = "http://127.0.0.1:" + port + "/?t=" + token;
         System.out.println("ERD server: " + url);
-        System.out.println("プロジェクト: " + root);
-        System.out.println("終了するには Ctrl+C を押してください。");
+        System.out.println("Project: " + root);
+        System.out.println("Press Ctrl+C to stop.");
 
         if (System.getenv("ERD_NO_BROWSER") == null) {
             openBrowser(url);
@@ -104,7 +104,7 @@ public final class Main {
             }
             pb.start();
         } catch (Exception e) {
-            System.err.println("ブラウザを自動で開けませんでした。上記 URL を手動で開いてください。");
+            System.err.println("Could not open the browser automatically. Open the URL above manually.");
         }
     }
 

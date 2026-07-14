@@ -79,7 +79,7 @@ val devDir = file("../dev")
 
 tasks.register<JavaExec>("devServer") {
     group = "application"
-    description = "開発用サーバーを起動する（データは ../dev/、ビューアは npm run dev:server）"
+    description = "Starts the development server (data: ../dev/, viewer: npm run dev:server)"
     mainClass = "erd.web.Main"
     classpath = sourceSets["main"].runtimeClasspath
     workingDir = devDir
@@ -132,4 +132,3 @@ tasks.register<Zip>("packageDist") {
         }
     }
 }
-

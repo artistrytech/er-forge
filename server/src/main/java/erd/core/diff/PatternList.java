@@ -50,7 +50,7 @@ public final class PatternList {
                 try {
                     entries.add(new Entry(p, Pattern.compile(body), null));
                 } catch (PatternSyntaxException e) {
-                    warnings.add("無効な正規表現のため無視します: " + p + " (" + e.getDescription() + ")");
+                    warnings.add("Ignoring invalid regular expression: " + p + " (" + e.getDescription() + ")");
                 }
             } else if (p.indexOf('*') >= 0 || p.indexOf('?') >= 0) {
                 entries.add(new Entry(p, Pattern.compile(globToRegex(p)), null));

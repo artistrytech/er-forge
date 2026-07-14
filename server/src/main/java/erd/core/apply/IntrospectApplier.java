@@ -62,7 +62,7 @@ public final class IntrospectApplier {
             }
         }
         if (!violations.isEmpty()) {
-            throw new DependencyException("依存する項目が選択されていません", violations);
+            throw new DependencyException("Dependent items are not selected.", violations);
         }
 
         Map<String, Table> byId = new LinkedHashMap<>();
@@ -154,8 +154,8 @@ public final class IntrospectApplier {
                 for (ForeignKey fk : t.schema().foreignKeys()) {
                     if (!ids.contains(fk.ref().table())) {
                         warnings.add(new ApplyResult.Warning("FK_DROPPED",
-                                t.id() + " の外部キー " + fk.name() + " は参照先 "
-                                        + fk.ref().table() + " が存在しないため除去しました"));
+                                "Dropped foreign key " + fk.name() + " on " + t.id()
+                                        + " because target table " + fk.ref().table() + " does not exist."));
                     }
                 }
                 pruned.add(t.withSchema(withForeignKeys(t.schema(), keep)));
@@ -206,8 +206,8 @@ public final class IntrospectApplier {
             for (LogicalForeignKey lfk : t.meta().logicalForeignKeys()) {
                 if (!ids.contains(lfk.ref().table())) {
                     warnings.add(new ApplyResult.Warning("LOGICAL_FK_DANGLING",
-                            t.id() + " の論理外部制約 " + lfk.name() + " が参照する "
-                                    + lfk.ref().table() + " が存在しません"));
+                            "Logical foreign key " + lfk.name() + " on " + t.id()
+                                    + " references missing table " + lfk.ref().table() + "."));
                 }
             }
         }

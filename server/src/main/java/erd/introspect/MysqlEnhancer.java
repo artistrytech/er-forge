@@ -42,7 +42,7 @@ public final class MysqlEnhancer implements DialectEnhancer {
             checks(conn, ns, byTable);
         } catch (SQLException e) {
             // MySQL 8.0.16 未満 / MariaDB 10.2 未満。CHECK 制約が取れないだけで内省は続行する
-            warnings.add("CHECK 制約を取得できませんでした（この DB バージョンでは未対応の可能性があります）");
+            warnings.add("Could not read CHECK constraints. This database version may not support them.");
         }
         enums(conn, ns, byTable);
         RawSchema merged = Dialects.merge(schema, byTable);

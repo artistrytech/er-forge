@@ -64,7 +64,7 @@ public final class WebServer {
                 if (!isBindError(e)) throw e;
             }
         }
-        throw new IllegalStateException("空きポートが見つかりません: " + basePort + "〜" + (basePort + 19));
+        throw new IllegalStateException("No available port found: " + basePort + "-" + (basePort + 19));
     }
 
     public void stop() {
@@ -540,7 +540,7 @@ public final class WebServer {
         } else if (outcome instanceof IntrospectService.Stale stale) {
             ctx.status(409).json(Map.of("code", "STALE",
                     "currentFingerprint", stale.currentFingerprint(),
-                    "message", "プレビュー後にファイルが変更されました。再プレビューしてください。"));
+                    "message", "Files changed after the preview. Run the preview again."));
         } else if (outcome instanceof IntrospectService.Bad bad) {
             ctx.status(400).json(Map.of("code", bad.code(), "message", bad.message(),
                     "itemIds", bad.itemIds()));
@@ -597,7 +597,7 @@ public final class WebServer {
             return;
         }
         int tables = SampleData.writeTo(root.resolve("data"));
-        System.out.println("サンプルデータを書き出しました（" + tables + " テーブル）: "
+        System.out.println("Wrote sample data (" + tables + " tables): "
                 + root.resolve("data"));
         ctx.json(Map.of("ok", true, "tables", tables));
     }
@@ -631,7 +631,7 @@ public final class WebServer {
         Path index = root.resolve("index.html");
         if (!Files.isRegularFile(index)) {
             ctx.status(404).contentType("text/plain; charset=utf-8")
-                    .result("index.html が erd-server.jar と同じディレクトリにありません。");
+                    .result("index.html is not in the same directory as erd-server.jar.");
             return;
         }
         ctx.header("Cache-Control", "no-cache");

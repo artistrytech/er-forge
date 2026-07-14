@@ -140,7 +140,7 @@ final class IntrospectService {
     Outcome reload(Path erdDir, Path dataDir, String sessionId, List<RenameDecision> decisions) {
         Session session = session(sessionId);
         if (session == null) {
-            return new Gone("プレビューの有効期限が切れました。再実行してください。");
+            return new Gone("The preview has expired. Run it again.");
         }
         DiffPlan plan = plan(dataDir, session, decisions);
         return new Ok(response(erdDir, session, plan, decisions), null, Map.of());
@@ -175,7 +175,8 @@ final class IntrospectService {
         String last = connections.lastUrl(erdDir);
         if (last != null && !last.isEmpty() && !last.equals(session.url())) {
             guards.add(new DiffPlan.Guard("DIFFERENT_DB", "warn",
-                    "前回とは異なる DB に接続しています（前回: " + last + " / 今回: " + session.url() + "）"));
+                    "You are connected to a different database than last time (previous: "
+                            + last + " / current: " + session.url() + ")."));
         }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("sessionId", session.id());
@@ -204,7 +205,7 @@ final class IntrospectService {
     Outcome apply(Path erdDir, Path dataDir, JsonNode body) {
         Session session = session(body.path("sessionId").asText(""));
         if (session == null) {
-            return new Gone("プレビューの有効期限が切れました。再実行してください。");
+            return new Gone("The preview has expired. Run it again.");
         }
         // TOCTOU の回避: 適用直前に必ず取り直して照合する（§6.1 チェック2）
         String current = Hashes.fingerprint(dataDir);
@@ -224,7 +225,7 @@ final class IntrospectService {
                 .map(RenameCandidate::id).filter(id -> !decided.contains(id)).toList();
         if (!undecided.isEmpty()) {
             return new Bad("UNDECIDED_RENAME",
-                    undecided.size() + " 件のリネーム候補が未決定です", undecided);
+                    undecided.size() + " rename candidates are undecided.", undecided);
         }
 
         // チェック5: ガードに該当する場合、confirmed が必要（§8.5）
@@ -246,14 +247,14 @@ final class IntrospectService {
         Map<String, String> rendered = store.renderAll(result.model());
         List<String> failures = validate(dataDir, result.model(), rendered);
         if (!failures.isEmpty()) {
-            return new Failed("検証に失敗したため適用を中止しました: " + String.join(" / ", failures));
+            return new Failed("Apply was aborted because validation failed: " + String.join(" / ", failures));
         }
 
         Map<String, String> written;
         try {
             written = write(erdDir, dataDir, rendered);
         } catch (IOException e) {
-            return new Failed("書き込みに失敗しました: " + e.getMessage());
+            return new Failed("Write failed: " + e.getMessage());
         }
 
         sessions.remove(session.id());
@@ -279,7 +280,7 @@ final class IntrospectService {
         for (Map.Entry<String, String> e : rendered.entrySet()) {
             Path target = base.resolve(e.getKey()).normalize();
             if (!target.startsWith(base)) {
-                failures.add("V-7 パスが data/ の外を指しています: " + e.getKey());
+                failures.add("V-7 path points outside data/: " + e.getKey());
             }
         }
         for (Table t : model.tables()) {
@@ -287,16 +288,16 @@ final class IntrospectService {
                     + t.schema().name() + ".js";
             String content = rendered.get(path);
             if (content == null) {
-                failures.add("V-4 スキーマファイルが生成されていません: " + t.id());
+                failures.add("V-4 schema file was not generated: " + t.id());
                 continue;
             }
             try {
                 Table parsed = parser.parseTable(content).value();
                 if (!printer.printTable(parsed).equals(content)) {
-                    failures.add("V-1 往復で一致しませんでした: " + t.id());
+                    failures.add("V-1 round trip did not match: " + t.id());
                 }
             } catch (RuntimeException ex) {
-                failures.add("V-1 読み戻しに失敗しました: " + t.id() + " (" + ex.getMessage() + ")");
+                failures.add("V-1 readback failed: " + t.id() + " (" + ex.getMessage() + ")");
             }
             Set<String> ids = new LinkedHashSet<>();
             for (Table other : model.tables()) {
@@ -304,14 +305,14 @@ final class IntrospectService {
             }
             for (var fk : t.schema().foreignKeys()) {
                 if (!ids.contains(fk.ref().table())) {
-                    failures.add("V-2 FK の参照先が存在しません: " + t.id() + "." + fk.name());
+                    failures.add("V-2 FK target does not exist: " + t.id() + "." + fk.name());
                 }
             }
         }
         for (DiagramPage d : model.diagrams()) {
             String content = rendered.get("diagrams/" + d.id() + ".js");
             if (content == null) {
-                failures.add("V-4 ページファイルが生成されていません: " + d.id());
+                failures.add("V-4 diagram file was not generated: " + d.id());
             }
         }
         return failures;

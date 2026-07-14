@@ -101,7 +101,7 @@ public final class DataWatcher implements AutoCloseable {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } catch (IOException e) {
-            System.err.println("警告: ファイル監視を開始できませんでした: " + e.getMessage());
+            System.err.println("Warning: Could not start file watching: " + e.getMessage());
         }
     }
 

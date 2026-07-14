@@ -73,7 +73,7 @@ public final class DiagramService {
             return new Stale(currentHash);
         }
         if (body.has("title") && body.get("title").asText("").isBlank()) {
-            return new Invalid("ページ名を入力してください");
+            return new Invalid("Enter a page title.");
         }
 
         DiagramPage page = parser.parseDiagram(new String(current, StandardCharsets.UTF_8)).value();
@@ -108,10 +108,10 @@ public final class DiagramService {
     public Outcome create(Path dataDir, JsonNode body) {
         String id = body.path("id").asText("").trim();
         if (!SAFE_ID.matcher(id).matches()) {
-            return new Invalid("ページID は英数字と . _ - のみ使えます: " + id);
+            return new Invalid("Page ID may only contain letters, numbers, dots, underscores, and hyphens: " + id);
         }
         String title = body.path("title").asText("").trim();
-        if (title.isEmpty()) return new Invalid("ページ名を入力してください");
+        if (title.isEmpty()) return new Invalid("Enter a page title.");
 
         Path file = dataDir.resolve("diagrams/" + id + ".js");
         if (Files.exists(file)) return new Duplicate(id);

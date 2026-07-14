@@ -47,7 +47,7 @@ public final class Drivers {
                         .sorted()
                         .toList();
             } catch (IOException e) {
-                System.err.println("警告: drivers/ を読めませんでした: " + e.getMessage());
+                System.err.println("Warning: Could not read drivers/: " + e.getMessage());
             }
         }
         if (!jars.isEmpty()) {
@@ -59,7 +59,7 @@ public final class Drivers {
                     LOADED.add(new Info(d.getClass().getName(),
                             d.getMajorVersion() + "." + d.getMinorVersion(), "drivers/"));
                 } catch (SQLException e) {
-                    System.err.println("警告: ドライバを登録できませんでした: "
+                    System.err.println("Warning: Could not register driver: "
                             + d.getClass().getName() + " (" + e.getMessage() + ")");
                 }
             }

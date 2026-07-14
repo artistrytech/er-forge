@@ -71,7 +71,7 @@ public final class JdbcIntrospector implements Introspector {
                 } else {
                     // 不明（""）は NULL 可として扱い、その旨を警告に出す（§2.3）
                     nullable = true;
-                    warnings.add(table + "." + name + ": IS_NULLABLE が不明のため NULL 可として扱いました");
+                    warnings.add(table + "." + name + ": IS_NULLABLE is unknown; treating as nullable");
                 }
                 boolean autoIncrement = "YES".equalsIgnoreCase(rs.getString("IS_AUTOINCREMENT"));
                 boolean generated = "YES".equalsIgnoreCase(rs.getString("IS_GENERATEDCOLUMN"));
@@ -90,7 +90,7 @@ public final class JdbcIntrospector implements Introspector {
         for (String name : names) {
             List<Column> cols = columns.get(name);
             if (cols == null) {
-                warnings.add(name + ": カラムを取得できませんでした（権限を確認してください）");
+                warnings.add(name + ": Could not read columns. Check permissions.");
                 continue;
             }
             List<String> pk = primaryKey(md, catalog, schema, name);

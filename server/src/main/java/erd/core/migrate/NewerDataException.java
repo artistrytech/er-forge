@@ -9,8 +9,8 @@ public class NewerDataException extends RuntimeException {
     private final int serverVersion;
 
     public NewerDataException(int dataVersion, int serverVersion) {
-        super("このデータは新しい形式（v" + dataVersion + "）です。erd-server.jar を更新してください"
-                + "（サーバーは v" + serverVersion + " まで対応）");
+        super("This data uses a newer format (v" + dataVersion + "). Update erd-server.jar. "
+                + "This server supports up to v" + serverVersion + ".");
         this.dataVersion = dataVersion;
         this.serverVersion = serverVersion;
     }

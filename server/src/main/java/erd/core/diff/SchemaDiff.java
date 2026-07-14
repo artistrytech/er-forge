@@ -497,12 +497,12 @@ public final class SchemaDiff {
         List<DiffPlan.Guard> guards = new ArrayList<>();
         if (raw.tables().isEmpty()) {
             guards.add(new DiffPlan.Guard("EMPTY_RESULT", "error",
-                    "テーブルが1件も見つかりませんでした。ネームスペースの指定を確認してください。"));
+                    "No tables were found. Check the namespace setting."));
         }
         if (existingCount > 0 && stats.removed() * 2 >= existingCount) {
             guards.add(new DiffPlan.Guard("MASS_DELETE", "warn",
-                    "既存 " + existingCount + " 件のうち " + stats.removed()
-                            + " 件が削除対象です。接続先とフィルタ設定を確認してください。"));
+                    stats.removed() + " of " + existingCount
+                            + " existing tables will be removed. Check the connection and filter settings."));
         }
         int placed = 0;
         Set<String> pages = new LinkedHashSet<>();
@@ -516,8 +516,8 @@ public final class SchemaDiff {
         }
         if (placed > 0) {
             guards.add(new DiffPlan.Guard("PLACED_DELETE", "warn",
-                    "削除対象の " + placed + " テーブルは合計 " + pages.size()
-                            + " ページに配置されています。ノードは孤児として残ります。"));
+                    placed + " tables marked for removal are placed on " + pages.size()
+                            + " pages. Their nodes will remain as orphans."));
         }
         return guards;
     }
