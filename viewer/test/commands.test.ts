@@ -6,7 +6,15 @@
  *   committed に戻っているノードは送らない（動かして Undo した場合など）
  */
 import { describe, expect, it } from "vitest";
-import { applyCommands, foldToPayload, invert, makeMove, snap } from "../src/model/commands";
+import {
+  applyCommands,
+  foldToPayload,
+  invert,
+  makeAdd,
+  makeMove,
+  makeRemove,
+  snap,
+} from "../src/model/commands";
 import type { Diagram } from "../src/model/types";
 
 const diagram: Diagram = {
@@ -79,5 +87,68 @@ describe("foldToPayload（§4.2 / T-4 / T-13）", () => {
     const c1 = makeMove([{ id: "public.users", from: [120, 80], to: [200, 80] }])!;
     const payload = foldToPayload([c1, invert(c1)], diagram);
     expect(payload).toEqual({});
+  });
+});
+
+describe("makeAdd / makeRemove（I-04 / I-06）", () => {
+  it("すでにページ上にあるテーブルは追加しない（二重配置しない）", () => {
+    expect(makeAdd(diagram, [{ id: "public.users", pos: [0, 0] }])).toBeNull();
+    const cmd = makeAdd(diagram, [
+      { id: "public.users", pos: [0, 0] },
+      { id: "public.items", pos: [203.7, 197] },
+    ])!;
+    // 追加時も 8px スナップ（INV-2。ドロップ位置は端数を持つ）
+    expect(cmd.nodes).toEqual({ "public.items": { pos: [200, 200] } });
+  });
+
+  it("除去コマンドは除去前の値を持つ（Undo で座標ごと復元できる）", () => {
+    const d: Diagram = { id: "core", nodes: { a: { pos: [8, 8], w: 260 } }, edges: {} };
+    const cmd = makeRemove(d, ["a", "not-on-page"])!;
+    expect(cmd.nodes).toEqual({ a: { pos: [8, 8], w: 260 } });
+
+    const removed = applyCommands(d, [cmd]);
+    expect(removed.nodes).toEqual({});
+    // 反転（= 追加）で幅まで含めて元に戻る
+    expect(applyCommands(removed, [invert(cmd)]).nodes).toEqual({ a: { pos: [8, 8], w: 260 } });
+  });
+
+  it("ページ上に無いノードだけを指定したら null（dirty にしない）", () => {
+    expect(makeRemove(diagram, ["public.nope"])).toBeNull();
+  });
+});
+
+describe("foldToPayload: 追加と除去（I-04 / I-06）", () => {
+  it("新規ノードは全体を、既存ノードの移動は pos だけを送る", () => {
+    const add = makeAdd(diagram, [{ id: "public.items", pos: [40, 40] }])!;
+    const move = makeMove([{ id: "public.users", from: [120, 80], to: [200, 80] }])!;
+    expect(foldToPayload([add, move], diagram)).toEqual({
+      "public.items": { pos: [40, 40] },
+      "public.users": { pos: [200, 80] },
+    });
+  });
+
+  it("除去は null として送る（サーバー側はこれをページからの除去として扱う）", () => {
+    const cmd = makeRemove(diagram, ["public.orders"])!;
+    expect(foldToPayload([cmd], diagram)).toEqual({ "public.orders": null });
+  });
+
+  it("追加してから除去したノードは送らない（committed には元から無い）", () => {
+    const add = makeAdd(diagram, [{ id: "public.items", pos: [40, 40] }])!;
+    const view = applyCommands(diagram, [add]);
+    const remove = makeRemove(view, ["public.items"])!;
+    expect(foldToPayload([add, remove], diagram)).toEqual({});
+  });
+
+  it("除去してから Undo で戻したノードは送らない（正味の変更なし）", () => {
+    const remove = makeRemove(diagram, ["public.orders"])!;
+    expect(foldToPayload([remove, invert(remove)], diagram)).toEqual({});
+  });
+
+  it("配置直後に動かしたノードは、最終座標つきの新規ノードとして1回だけ送る", () => {
+    const add = makeAdd(diagram, [{ id: "public.items", pos: [40, 40] }])!;
+    const move = makeMove([{ id: "public.items", from: [40, 40], to: [120, 40] }])!;
+    expect(foldToPayload([add, move], diagram)).toEqual({
+      "public.items": { pos: [120, 40] },
+    });
   });
 });

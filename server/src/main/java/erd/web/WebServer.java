@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import erd.core.io.ProjectStore;
 import erd.core.migrate.SchemaVersions;
 import erd.introspect.Drivers;
+import erd.layout.AutoLayout;
 import io.javalin.Javalin;
 import io.javalin.http.Context;
 import io.javalin.http.sse.SseClient;
@@ -35,6 +36,7 @@ public final class WebServer {
     private final LockManager locks = new LockManager();
     private final Revisions revisions = new Revisions();
     private final DiagramService diagrams = new DiagramService();
+    private final AutoLayout layout = new AutoLayout();
     private final TableService tables = new TableService();
     private final DictionaryService dictionary = new DictionaryService();
     private final ConfigService config = new ConfigService();
@@ -87,7 +89,12 @@ public final class WebServer {
         // sendBeacon は POST しか送れないため、タブ閉じ用の別名を用意する（§2.1）
         javalin.post("/__erd/lock/release", this::lockRelease);
 
+        // ページ管理（I-01〜I-03 / I-06）とレイアウト
+        javalin.get("/__erd/diagrams/{id}", this::getDiagram);
+        javalin.post("/__erd/diagrams", this::createDiagram);
+        javalin.delete("/__erd/diagrams/{id}", this::deleteDiagram);
         javalin.patch("/__erd/diagrams/{id}", this::patchDiagram);
+        javalin.post("/__erd/layout/auto", this::layoutAuto);
 
         javalin.get("/__erd/tables/{id}", this::getTable);
         javalin.put("/__erd/tables/{id}", this::putTable);
@@ -185,27 +192,111 @@ public final class WebServer {
 
     // -------------------------------------------------------------- diagrams
 
-    /** レイアウトの差分保存（§4.4）。lockId と baseHash が必須。 */
+    /** ページの baseHash（編集開始前の取得用）。データ本体は返さない（§4.3）。 */
+    private void getDiagram(Context ctx) {
+        if (!authorized(ctx)) {
+            ctx.status(403).json(Map.of("error", "forbidden"));
+            return;
+        }
+        String hash = diagrams.baseHash(root.resolve("data"), ctx.pathParam("id"));
+        if (hash == null) {
+            ctx.status(404).json(Map.of("error", "not found"));
+            return;
+        }
+        ctx.json(Map.of("baseHash", hash));
+    }
+
+    /**
+     * レイアウトの差分保存（§4.4）およびページ名・表示順の変更（I-03）。
+     * lockId と baseHash が必須。
+     */
     private void patchDiagram(Context ctx) throws Exception {
+        writeDiagram(ctx, (dataDir, body) -> diagrams.patch(dataDir, ctx.pathParam("id"), body));
+    }
+
+    /** I-01: ページの追加。 */
+    private void createDiagram(Context ctx) throws Exception {
+        writeDiagram(ctx, diagrams::create);
+    }
+
+    /** I-02: ページの削除（スキーマ情報には影響しない）。 */
+    private void deleteDiagram(Context ctx) throws Exception {
+        writeDiagram(ctx, (dataDir, body) -> diagrams.delete(dataDir, ctx.pathParam("id"), body));
+    }
+
+    /** ページ書き込み系の共通処理（ロック検証 → 実行 → リビジョン払い出し）。 */
+    private void writeDiagram(Context ctx,
+                              java.util.function.BiFunction<Path, JsonNode, DiagramService.Outcome> op)
+            throws Exception {
+        if (!authorized(ctx)) {
+            ctx.status(403).json(Map.of("error", "forbidden"));
+            return;
+        }
+        JsonNode body = ctx.body().isEmpty() ? mapper.createObjectNode() : mapper.readTree(ctx.body());
+        if (!locks.isValid(body.path("lockId").asText(null))) {
+            ctx.status(423).json(Map.of("code", "LOCK_LOST"));
+            return;
+        }
+        DiagramService.Outcome outcome = op.apply(root.resolve("data"), body);
+        if (outcome instanceof DiagramService.NotFound) {
+            ctx.status(404).json(Map.of("error", "not found"));
+        } else if (outcome instanceof DiagramService.Stale stale) {
+            ctx.status(409).json(Map.of("code", "STALE", "currentHash", stale.currentHash()));
+        } else if (outcome instanceof DiagramService.Duplicate dup) {
+            ctx.status(409).json(Map.of("code", "DUPLICATE_ID", "id", dup.id()));
+        } else if (outcome instanceof DiagramService.Invalid invalid) {
+            ctx.status(400).json(Map.of("code", "VALIDATION", "message", invalid.message()));
+        } else if (outcome instanceof DiagramService.Ok ok) {
+            String revision = revisions.next();
+            ok.writtenFiles().forEach((rel, hash) -> revisions.recordWrite(rel, hash, revision));
+            ObjectNode res = mapper.createObjectNode();
+            res.put("revision", revision);
+            res.put("newHash", ok.newHash());
+            // 何を書いたかを返す。ノードの追加 / 除去（I-04 / I-06）は index.js の
+            // tables[].diagrams を、ページ名・表示順（I-03）は manifest.js を動かす。
+            // 自分の書き込みは SSE では無視される（INV-3）ため、ここで伝えないと
+            // ビューアの派生データ（未配置トレイ・所属ページ）が古いままになる
+            var files = res.putArray("files");
+            ok.writtenFiles().keySet().forEach(files::add);
+            ctx.json(res);
+        }
+    }
+
+    // -------------------------------------------------------- 自動レイアウト（H-07 / H-08）
+
+    /**
+     * ELK による座標計算。<b>書き込みをしないためロックは不要</b>（§9 の API 仕様）。
+     * 既存ノードとの衝突回避・オフセットはビューア側の責務（H-08 は既存を1つも動かさない）。
+     */
+    private void layoutAuto(Context ctx) throws Exception {
         if (!authorized(ctx)) {
             ctx.status(403).json(Map.of("error", "forbidden"));
             return;
         }
         JsonNode body = mapper.readTree(ctx.body());
-        if (!locks.isValid(body.path("lockId").asText(null))) {
-            ctx.status(423).json(Map.of("code", "LOCK_LOST"));
-            return;
+        List<AutoLayout.Node> nodes = new java.util.ArrayList<>();
+        for (JsonNode n : body.path("nodes")) {
+            String id = n.path("id").asText("");
+            if (!id.isEmpty()) {
+                nodes.add(new AutoLayout.Node(id, n.path("w").asDouble(0), n.path("h").asDouble(0)));
+            }
         }
-        DiagramService.Outcome outcome = diagrams.patch(root.resolve("data"), ctx.pathParam("id"), body);
-        if (outcome instanceof DiagramService.NotFound) {
-            ctx.status(404).json(Map.of("error", "not found"));
-        } else if (outcome instanceof DiagramService.Stale stale) {
-            ctx.status(409).json(Map.of("code", "STALE", "currentHash", stale.currentHash()));
-        } else if (outcome instanceof DiagramService.Ok ok) {
-            String revision = revisions.next();
-            ok.writtenFiles().forEach((rel, hash) -> revisions.recordWrite(rel, hash, revision));
-            ctx.json(Map.of("revision", revision, "newHash", ok.newHash()));
+        List<AutoLayout.Edge> edges = new java.util.ArrayList<>();
+        for (JsonNode e : body.path("edges")) {
+            String from = e.path("from").asText("");
+            String to = e.path("to").asText("");
+            if (!from.isEmpty() && !to.isEmpty()) {
+                edges.add(new AutoLayout.Edge(from, to));
+            }
         }
+        ObjectNode res = mapper.createObjectNode();
+        ObjectNode positions = res.putObject("positions");
+        layout.layout(nodes, edges).forEach((id, pos) -> {
+            var arr = positions.putArray(id);
+            arr.add(pos[0]);
+            arr.add(pos[1]);
+        });
+        ctx.json(res);
     }
 
     // ---------------------------------------------------- tables / dictionary

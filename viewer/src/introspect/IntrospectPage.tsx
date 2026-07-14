@@ -219,6 +219,9 @@ export function IntrospectPage() {
           return;
         }
         await reloadAfterApply(body.revision);
+        // K-12 §7.2: 今回の新規テーブルを未配置トレイで「NEW」として先頭に寄せる。
+        // セッション限定のメモリ状態であり、リロードで消える（ファイルには残さない）
+        useAppStore.getState().setRecentTables(body.unplacedTables);
         setResult(body);
         setStep("done");
         return;

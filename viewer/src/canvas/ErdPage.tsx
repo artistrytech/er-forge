@@ -1,12 +1,12 @@
 /**
  * ER図キャンバス（C-01〜C-09 / E-01〜E-05 / D-01〜D-06）。
  * ノードとエッジは index.js + diagrams/<id>.js だけで描く（設計書 §6.1）。
- * Phase1 は閲覧専用（編集セッションはフェーズ3）。ノードは動かせない。
+ * 編集セッション中は配置（H-01 移動 / I-04 追加 / I-06 除去 / H-07・H-08 自動レイアウト）を扱う。
  *
  * nodes / edges の配列は選択状態に依存させない（選択で作り直すと React Flow が
  * 計測をやり直し、ダブルクリックが成立しなくなる。canvasStore.ts 参照）。
  */
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Background,
   BackgroundVariant,
@@ -23,18 +23,33 @@ import {
   type NodeTypes,
 } from "@xyflow/react";
 import { useI18n } from "../i18n/useI18n";
-import { makeMove } from "../model/commands";
-import { useEditStore } from "../model/editStore";
+import { makeAdd, makeMove, makeRemove, snap, type Pos } from "../model/commands";
+import { requestAutoLayout, useEditStore } from "../model/editStore";
 import { loadDiagram } from "../model/loader";
 import { formatName, resolveTableName } from "../model/logicalName";
 import { useAppStore } from "../model/store";
 import type { IndexTable, Relation } from "../model/types";
+import { Dialog } from "../ui/Dialog";
 import { useCanvasStore } from "./canvasStore";
 import { RelationEdge, type RelationEdgeType } from "./RelationEdge";
 import { TableNode, type TableNodeType } from "./TableNode";
 
 const nodeTypes: NodeTypes = { table: TableNode };
 const edgeTypes: EdgeTypes = { relation: RelationEdge };
+
+/** 自動レイアウトのプレビューで「現在の配置」を薄く重ねるノードのID接頭辞（H-07 §7.2） */
+const GHOST = "ghost:";
+/** H-08: 既存ノードのバウンディングボックスから、新規ノードを離す距離 */
+const PLACE_GAP = 120;
+/** ドラッグ&ドロップの MIME（トレイ → キャンバス。I-04） */
+export const TABLE_DND_TYPE = "application/x-erd-table";
+
+const isGhost = (id: string): boolean => id.startsWith(GHOST);
+
+/** 未配置テーブルはまだ描画されておらず実測サイズが無い。ラベル長から見積もる */
+function estimateSize(label: string): { w: number; h: number } {
+  return { w: Math.min(320, Math.max(140, label.length * 9 + 48)), h: 44 };
+}
 
 interface ErdPageProps {
   diagramId: string;
@@ -51,6 +66,7 @@ export function ErdPage(props: ErdPageProps) {
 
 function ErdCanvas({ diagramId, focusTableId }: ErdPageProps) {
   const { t } = useI18n();
+  const rf = useReactFlow();
   const manifest = useAppStore((s) => s.manifest);
   const diagram = useAppStore((s) => s.diagrams[diagramId]);
   const diagramError = useAppStore((s) => s.diagramErrors[diagramId]);
@@ -58,12 +74,22 @@ function ErdCanvas({ diagramId, focusTableId }: ErdPageProps) {
   const tableErrors = useAppStore((s) => s.tableErrors);
   const nameDisplay = useAppStore((s) => s.nameDisplay);
   const openDialog = useAppStore((s) => s.openDialog);
+  const addToast = useAppStore((s) => s.addToast);
+  const serverMode = useAppStore((s) => s.serverMode === true);
   const select = useCanvasStore((s) => s.select);
   const clearSelection = useCanvasStore((s) => s.clear);
+  const setPlaceTables = useCanvasStore((s) => s.setPlaceTables);
   const editing = useEditStore((s) => s.session === "editing");
   const pushCommand = useEditStore((s) => s.push);
   const setDragging = useEditStore((s) => s.setDragging);
   const setCurrentDiagramId = useAppStore((s) => s.setCurrentDiagramId);
+
+  /** H-07 のプレビュー中の提案座標（null = プレビューしていない）。確定するまで書き込まない */
+  const [preview, setPreview] = useState<Record<string, Pos> | null>(null);
+  const [layoutBusy, setLayoutBusy] = useState(false);
+  const [removeConfirm, setRemoveConfirm] = useState<string[] | null>(null);
+  /** 配置編集ができるのは「サーバーモード × 編集中」だけ（§9.6） */
+  const canPlace = editing && serverMode;
 
   useEffect(() => {
     void loadDiagram(diagramId);
@@ -196,6 +222,225 @@ function ErdCanvas({ diagramId, focusTableId }: ErdPageProps) {
     [diagramId, pushCommand, setDragging],
   );
 
+  // ---------------------------------------------- I-04: テーブルのページ追加（トレイ / ドロップ）
+
+  const labelOf = useCallback(
+    (tableId: string): string => {
+      const it = indexTables.get(tableId);
+      if (!it) return tableId;
+      return formatName(resolveTableName(it.name, it.displayName), it.name, nameDisplay);
+    },
+    [indexTables, nameDisplay],
+  );
+
+  /**
+   * H-08: 未配置テーブルのみを ELK で配置する。**既存ノードの座標は1つも変えない**
+   * （配置の質より「既存を動かさない」ことを優先する。詳細設計 §7.3）。
+   * 既存のバウンディングボックスの右側へ丸ごとオフセットするため、衝突は起こりえない。
+   */
+  const autoPlacePositions = useCallback(
+    async (ids: string[]): Promise<Record<string, Pos> | null> => {
+      const relations = (index?.relations ?? []).filter(
+        (r) => ids.includes(r.from) && ids.includes(r.to),
+      );
+      const raw = await requestAutoLayout(
+        ids.map((id) => ({ id, ...estimateSize(labelOf(id)) })),
+        relations.map((r) => ({ from: r.from, to: r.to })),
+      );
+      if (raw === null) return null;
+
+      const existing = rf.getNodes().filter((n) => !isGhost(n.id));
+      let ox = 0;
+      let oy = 0;
+      if (existing.length > 0) {
+        const right = Math.max(
+          ...existing.map((n) => n.position.x + (n.measured?.width ?? 180)),
+        );
+        const top = Math.min(...existing.map((n) => n.position.y));
+        [ox, oy] = snap(right + PLACE_GAP, top);
+      }
+      const out: Record<string, Pos> = {};
+      for (const [id, p] of Object.entries(raw)) {
+        out[id] = snap(p[0] + ox, p[1] + oy);
+      }
+      return out;
+    },
+    [index, labelOf, rf],
+  );
+
+  const placeTables = useCallback(
+    (tableIds: string[], at?: Pos) => {
+      void (async () => {
+        const current = useAppStore.getState().diagrams[diagramId];
+        if (!current) return;
+        const toAdd = tableIds.filter((id) => current.nodes?.[id] === undefined);
+        if (toAdd.length === 0) return;
+
+        let positions: Record<string, Pos> | null;
+        if (at !== undefined) {
+          // ドロップ位置に置く（複数まとめてドロップした場合はずらす）
+          positions = {};
+          toAdd.forEach((id, i) => {
+            positions![id] = snap(at[0] + (i % 3) * 240, at[1] + Math.floor(i / 3) * 96);
+          });
+        } else {
+          setLayoutBusy(true);
+          positions = await autoPlacePositions(toAdd);
+          setLayoutBusy(false);
+          if (positions === null) {
+            addToast(t("layout.failed"));
+            return;
+          }
+        }
+        const cmd = makeAdd(
+          current,
+          toAdd.map((id) => ({ id, pos: positions[id] ?? [0, 0] })),
+        );
+        if (!cmd) return;
+        pushCommand(diagramId, cmd);
+        addToast(t("tray.added", { n: Object.keys(cmd.nodes).length }));
+        // 配置後は新規ノードが見えるようスクロールする（K-12 §7.3）
+        setTimeout(() => {
+          void rf.fitView({ nodes: toAdd.map((id) => ({ id })), duration: 400, maxZoom: 1 });
+        }, 60);
+      })();
+    },
+    [addToast, autoPlacePositions, diagramId, pushCommand, rf, t],
+  );
+
+  // トレイ（キャンバス外）からの配置を受け付ける。閲覧中・静的モードでは登録しない
+  useEffect(() => {
+    setPlaceTables(canPlace ? placeTables : null);
+    return () => setPlaceTables(null);
+  }, [canPlace, placeTables, setPlaceTables]);
+
+  const onDrop = useCallback(
+    (e: React.DragEvent) => {
+      if (!canPlace) return;
+      const raw = e.dataTransfer.getData(TABLE_DND_TYPE);
+      if (raw === "") return;
+      e.preventDefault();
+      const at = rf.screenToFlowPosition({ x: e.clientX, y: e.clientY });
+      placeTables(raw.split(","), [at.x, at.y]);
+    },
+    [canPlace, placeTables, rf],
+  );
+
+  const onDragOver = useCallback(
+    (e: React.DragEvent) => {
+      if (!canPlace) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+    },
+    [canPlace],
+  );
+
+  // ------------------------------------------------------- I-06 / N-04: ページからの除去
+
+  const requestRemove = useCallback(() => {
+    const ids = rf.getNodes().filter((n) => n.selected && !isGhost(n.id)).map((n) => n.id);
+    if (ids.length > 0) setRemoveConfirm(ids);
+  }, [rf]);
+
+  const confirmRemove = useCallback(() => {
+    const ids = removeConfirm ?? [];
+    setRemoveConfirm(null);
+    const current = useAppStore.getState().diagrams[diagramId];
+    if (!current) return;
+    // 除去前の値をコマンドに残すため、Undo で座標ごと復元できる（H-05）
+    const cmd = makeRemove(current, ids);
+    if (!cmd) return;
+    pushCommand(diagramId, cmd);
+    clearSelection();
+    addToast(t("node.removed", { n: Object.keys(cmd.nodes).length }));
+  }, [addToast, clearSelection, diagramId, pushCommand, removeConfirm, t]);
+
+  // -------------------------------------------------- H-07: 自動レイアウト（ページ全体）
+
+  /**
+   * ページ全体の再配置は破壊的である（手で整えた配置が全部飛ぶ）。プレビューなしに適用しない。
+   * 提案配置を実線で、現在の配置をゴーストとして薄く重ねる（詳細設計 §7.2）。
+   */
+  const startLayoutPreview = useCallback(() => {
+    void (async () => {
+      const nodes = rf.getNodes().filter((n) => !isGhost(n.id));
+      if (nodes.length === 0) {
+        addToast(t("layout.empty"));
+        return;
+      }
+      setLayoutBusy(true);
+      const raw = await requestAutoLayout(
+        nodes.map((n) => ({
+          id: n.id,
+          w: n.measured?.width ?? 180,
+          h: n.measured?.height ?? 44,
+        })),
+        pageRelations.map((r) => ({ from: r.from, to: r.to })),
+      );
+      setLayoutBusy(false);
+      if (raw === null) {
+        addToast(t("layout.failed"));
+        return;
+      }
+      // ELK の座標は原点基準。現在の左上に合わせ、図が遠くへ飛ばないようにする
+      const [ox, oy] = snap(
+        Math.min(...nodes.map((n) => n.position.x)),
+        Math.min(...nodes.map((n) => n.position.y)),
+      );
+      const proposed: Record<string, Pos> = {};
+      for (const [id, p] of Object.entries(raw)) {
+        proposed[id] = snap(p[0] + ox, p[1] + oy);
+      }
+      setPreview(proposed);
+      setNodes((ns) => {
+        const real = ns.filter((n) => !isGhost(n.id));
+        const ghosts: TableNodeType[] = real.map((n) => ({
+          ...n,
+          id: GHOST + n.id,
+          data: { ...n.data, ghost: true },
+          selected: false,
+          draggable: false,
+          selectable: false,
+          zIndex: 0,
+        }));
+        const moved = real.map((n) => {
+          const p = proposed[n.id];
+          return p === undefined ? n : { ...n, position: { x: p[0], y: p[1] } };
+        });
+        return [...ghosts, ...moved];
+      });
+    })();
+  }, [addToast, pageRelations, rf, setNodes, t]);
+
+  const applyLayoutPreview = useCallback(() => {
+    const proposed = preview;
+    setPreview(null);
+    setNodes(builtNodes); // ゴーストを畳む。コマンドの結果は builtNodes 経由で戻ってくる
+    const current = useAppStore.getState().diagrams[diagramId];
+    if (!proposed || !current) return;
+    // 50ノードを動かしても moveNodes コマンド1個 = Undo 1回で完全に戻る（T-17）
+    const cmd = makeMove(
+      Object.entries(proposed).flatMap(([id, to]) => {
+        const from = current.nodes?.[id]?.pos;
+        return from === undefined ? [] : [{ id, from, to }];
+      }),
+    );
+    if (cmd) pushCommand(diagramId, cmd);
+  }, [builtNodes, diagramId, preview, pushCommand, setNodes]);
+
+  const cancelLayoutPreview = useCallback(() => {
+    setPreview(null);
+    setNodes(builtNodes);
+  }, [builtNodes, setNodes]);
+
+  // プレビュー中にページを離れる・編集を終える場合は破棄する（未確定の座標を残さない）
+  useEffect(() => {
+    if (!editing && preview !== null) {
+      setPreview(null);
+      setNodes(builtNodes);
+    }
+  }, [builtNodes, editing, preview, setNodes]);
+
   const exists = manifest?.diagrams?.some((d) => d.id === diagramId) ?? false;
   if (!exists || diagramError !== undefined) {
     return (
@@ -208,8 +453,10 @@ function ErdCanvas({ diagramId, focusTableId }: ErdPageProps) {
     return <div className="empty-state">{t("canvas.loading")}</div>;
   }
 
+  const previewing = preview !== null;
+
   return (
-    <div className="erd-canvas">
+    <div className="erd-canvas" onDrop={onDrop} onDragOver={onDragOver}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -219,9 +466,9 @@ function ErdCanvas({ diagramId, focusTableId }: ErdPageProps) {
         fitView
         minZoom={0.1}
         maxZoom={2.5}
-        nodesDraggable={editing}
+        nodesDraggable={editing && !previewing}
         nodesConnectable={false}
-        elementsSelectable={editing}
+        elementsSelectable={editing && !previewing}
         snapToGrid
         snapGrid={[8, 8]}
         zoomOnDoubleClick={false}
@@ -252,16 +499,72 @@ function ErdCanvas({ diagramId, focusTableId }: ErdPageProps) {
           </span>
         </Panel>
         <ZoomPanel />
-        {editing && <EditToolbar diagramId={diagramId} />}
+        {editing && !previewing && (
+          <EditToolbar
+            diagramId={diagramId}
+            canPlace={canPlace}
+            busy={layoutBusy}
+            onAutoLayout={startLayoutPreview}
+            onRemove={requestRemove}
+          />
+        )}
+        {previewing && (
+          <Panel position="top-center" className="erd-layout-preview">
+            <span>{t("layout.previewing")}</span>
+            <button type="button" className="header-button-primary" onClick={applyLayoutPreview}>
+              {t("layout.apply")}
+            </button>
+            <button type="button" onClick={cancelLayoutPreview}>
+              {t("layout.cancel")}
+            </button>
+          </Panel>
+        )}
         <FocusOnTable diagramId={diagramId} tableId={focusTableId} />
-        <KeyboardShortcuts diagramId={diagramId} />
-        {Object.keys(diagram.nodes ?? {}).length === 0 && (
-          <Panel position="top-center">
+        <KeyboardShortcuts
+          diagramId={diagramId}
+          canRemove={canPlace && !previewing}
+          onRemove={requestRemove}
+        />
+        {Object.keys(diagram.nodes ?? {}).length === 0 && !previewing && (
+          <Panel position="bottom-center">
             <div className="erd-empty-note">{t("canvas.empty")}</div>
           </Panel>
         )}
       </ReactFlow>
+      {removeConfirm !== null && (
+        <ConfirmRemoveDialog
+          count={removeConfirm.length}
+          onCancel={() => setRemoveConfirm(null)}
+          onConfirm={confirmRemove}
+        />
+      )}
     </div>
+  );
+}
+
+/** I-06 / N-04: 除去は配置だけを消す（テーブル定義は残る）。Undo で戻せる */
+function ConfirmRemoveDialog({
+  count,
+  onCancel,
+  onConfirm,
+}: {
+  count: number;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const { t } = useI18n();
+  return (
+    <Dialog title={t("node.removeConfirmTitle")} onClose={onCancel}>
+      <p>{t("node.removeConfirmBody", { n: count })}</p>
+      <div className="dialog-actions">
+        <button type="button" className="header-button-primary" data-testid="remove-confirm" onClick={onConfirm}>
+          {t("node.remove")}
+        </button>
+        <button type="button" onClick={onCancel}>
+          {t("layout.cancel")}
+        </button>
+      </div>
+    </Dialog>
   );
 }
 
@@ -301,8 +604,20 @@ function FocusOnTable({ diagramId, tableId }: { diagramId: string; tableId?: str
   return null;
 }
 
-/** Undo / Redo ボタン（H-05。閲覧中は表示しない） */
-function EditToolbar({ diagramId }: { diagramId: string }) {
+/** Undo / Redo・自動レイアウト・除去（H-05 / H-07 / I-06。閲覧中は表示しない） */
+function EditToolbar({
+  diagramId,
+  canPlace,
+  busy,
+  onAutoLayout,
+  onRemove,
+}: {
+  diagramId: string;
+  canPlace: boolean;
+  busy: boolean;
+  onAutoLayout: () => void;
+  onRemove: () => void;
+}) {
   const { t } = useI18n();
   const page = useEditStore((s) => s.pages[diagramId]);
   const undo = useEditStore((s) => s.undo);
@@ -325,19 +640,43 @@ function EditToolbar({ diagramId }: { diagramId: string }) {
       >
         ↪ {t("edit.redo")}
       </button>
+      <button
+        type="button"
+        data-testid="auto-layout"
+        disabled={!canPlace || busy}
+        onClick={onAutoLayout}
+        // 静的モードでは ELK（サーバー API）が使えない。理由を明示する（詳細設計 §8.1）
+        title={canPlace ? t("layout.auto") : t("layout.staticDisabled")}
+      >
+        ⇉ {busy ? t("layout.computing") : t("layout.auto")}
+      </button>
+      <button type="button" data-testid="remove-node" disabled={!canPlace} onClick={onRemove} title="Delete">
+        🗑 {t("node.remove")}
+      </button>
     </Panel>
   );
 }
 
-/** N-02: Shift+1 / Shift+0、N-03: Ctrl+Z / Ctrl+Shift+Z、N-10: Ctrl+S */
-function KeyboardShortcuts({ diagramId }: { diagramId: string }) {
+/** N-02: Shift+1 / Shift+0、N-03: Ctrl+Z / Ctrl+Shift+Z、N-04: Delete、N-10: Ctrl+S */
+function KeyboardShortcuts({
+  diagramId,
+  canRemove,
+  onRemove,
+}: {
+  diagramId: string;
+  canRemove: boolean;
+  onRemove: () => void;
+}) {
   const rf = useReactFlow();
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
       const st = useEditStore.getState();
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+      if (e.key === "Delete" && canRemove && st.session === "editing") {
+        e.preventDefault();
+        onRemove();
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
         if (st.session !== "editing") return;
         e.preventDefault();
         if (e.shiftKey) {
@@ -359,6 +698,6 @@ function KeyboardShortcuts({ diagramId }: { diagramId: string }) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [rf, diagramId]);
+  }, [rf, diagramId, canRemove, onRemove]);
   return null;
 }

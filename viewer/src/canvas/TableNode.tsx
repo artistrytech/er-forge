@@ -16,6 +16,8 @@ export interface TableNodeData extends Record<string, unknown> {
   missing?: boolean;
   /** meta.notes があるテーブル（D-04 簡易対応: ホバーで表示） */
   notes?: string;
+  /** 自動レイアウトのプレビュー中に「現在の配置」を薄く重ねるゴースト（H-07 §7.2） */
+  ghost?: boolean;
 }
 
 export type TableNodeType = Node<TableNodeData, "table">;
@@ -24,12 +26,15 @@ export const TableNode = memo(function TableNode({ id, data }: NodeProps<TableNo
   const selected = useCanvasStore(
     (s) => s.selection?.type === "node" && s.selection.id === id,
   );
-  const dimmed = useCanvasStore((s) => s.selection !== null && !s.relatedNodes.has(id));
+  const dimmed = useCanvasStore(
+    (s) => !data.ghost && s.selection !== null && !s.relatedNodes.has(id),
+  );
   const cls =
     "erd-node" +
     (data.missing ? " erd-node-missing" : "") +
+    (data.ghost ? " erd-node-ghost" : "") +
     (dimmed ? " erd-dimmed" : "") +
-    (selected ? " erd-node-selected" : "");
+    (selected && !data.ghost ? " erd-node-selected" : "");
   return (
     <div className={cls} title={data.notes}>
       <Handle type="target" position={Position.Top} className="erd-handle" isConnectable={false} />

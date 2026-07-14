@@ -32,6 +32,9 @@ export type EditDialog =
   | { type: "conflict"; diagramId: string }
   | { type: "lockLost" };
 
+/** ページ管理（I-01〜I-03）の結果。エラーは呼び出し元がフォームに表示する */
+export type PageOpResult = { ok: true } | { ok: false; error: string };
+
 export interface PageEdit {
   pending: Command[];
   undo: Command[];
@@ -71,6 +74,12 @@ interface EditState {
   openExport(diagramId: string): void;
   closeExport(): void;
   setDragging(dragging: boolean): void;
+
+  /** ページ管理（I-01〜I-03）。編集ロックを共有し、書き込みは保存経路と直列化する */
+  createPage(id: string, title: string): Promise<PageOpResult>;
+  renamePage(diagramId: string, title: string): Promise<PageOpResult>;
+  reorderPage(diagramId: string, direction: "up" | "down"): Promise<PageOpResult>;
+  deletePage(diagramId: string): Promise<PageOpResult>;
 }
 
 // ---------------------------------------------------------- モジュール内部状態
@@ -326,7 +335,155 @@ export const useEditStore = create<EditState>((set, get) => ({
       for (const ev of events) handleChangeEvent(ev);
     }
   },
+
+  // ---- ページ管理（I-01〜I-03 / §8.2） ----
+
+  createPage: (id, title) =>
+    pageOp(() => apiPost("/__erd/diagrams", { lockId, id, title })),
+
+  renamePage: (diagramId, title) =>
+    pageOp(() =>
+      apiPatch(`/__erd/diagrams/${encodeURIComponent(diagramId)}`, {
+        lockId,
+        baseHash: baseHashes.get(`diagrams/${diagramId}.js`) ?? "",
+        title,
+      }),
+    ),
+
+  reorderPage: (diagramId, direction) => {
+    // order は manifest 上の相対順序でしかないため、隣のページと入れ替える。
+    // 2ページ分の書き込みになるが、pageOp が直列化するため順に届く（INV-6）
+    const pages = [...(useAppStore.getState().manifest?.diagrams ?? [])].sort(
+      (a, b) => (a.order ?? 0) - (b.order ?? 0),
+    );
+    const i = pages.findIndex((p) => p.id === diagramId);
+    const j = direction === "up" ? i - 1 : i + 1;
+    if (i < 0 || j < 0 || j >= pages.length) return Promise.resolve({ ok: true } as PageOpResult);
+    const self = pages[i]!;
+    const other = pages[j]!;
+    const selfOrder = self.order ?? i + 1;
+    const otherOrder = other.order ?? j + 1;
+    // 同じ order 値だと入れ替えても順序が変わらない（id 順のタイブレークに落ちる）
+    const [a, b] = selfOrder === otherOrder
+      ? (direction === "up" ? [otherOrder - 1, otherOrder] : [otherOrder + 1, otherOrder])
+      : [otherOrder, selfOrder];
+
+    return pageOp(() =>
+      apiPatch(`/__erd/diagrams/${encodeURIComponent(self.id)}`, {
+        lockId,
+        baseHash: baseHashes.get(`diagrams/${self.id}.js`) ?? "",
+        order: a,
+      }),
+    ).then((first) =>
+      !first.ok
+        ? first
+        : pageOp(() =>
+            apiPatch(`/__erd/diagrams/${encodeURIComponent(other.id)}`, {
+              lockId,
+              baseHash: baseHashes.get(`diagrams/${other.id}.js`) ?? "",
+              order: b,
+            }),
+          ),
+    );
+  },
+
+  deletePage: (diagramId) =>
+    pageOp(
+      () =>
+        apiDelete(`/__erd/diagrams/${encodeURIComponent(diagramId)}`, {
+          lockId,
+          baseHash: baseHashes.get(`diagrams/${diagramId}.js`) ?? "",
+        }),
+      diagramId,
+    ),
 }));
+
+/**
+ * ページ管理の書き込み（I-01〜I-03）。レイアウトの保存（flush）と同じ1本の経路に載せる
+ * （INV-6。並行して投げると、後から届いた古い index.js が新しいものを上書きしうる）。
+ *
+ * 成功後は manifest / index を読み直す。ページの追加・削除・改名はいずれも派生ファイルを
+ * 動かすため、何が変わったかを判定せず、まとめて追随させる（§8.2 と同じ方針）。
+ */
+async function pageOp(
+  request: () => Promise<{ status: number; body: string }>,
+  removedDiagramId?: string,
+): Promise<PageOpResult> {
+  if (!serverMode() || lockId === null) {
+    return { ok: false, error: t9n("page.editHint") };
+  }
+  await waitForIdle();
+  inflight = true;
+  try {
+    const res = await request();
+    if (res.status === 200) {
+      const body = JSON.parse(res.body) as { revision: string };
+      rememberRevision(body.revision);
+      if (removedDiagramId !== undefined) forgetDiagram(removedDiagramId);
+      await Promise.all([reloadManifest(body.revision), reloadIndex(body.revision)]);
+      await refreshHashes();
+      return { ok: true };
+    }
+    if (res.status === 423) {
+      onLockLost();
+      return { ok: false, error: t9n("edit.lockLost.title") };
+    }
+    const body = JSON.parse(res.body) as { code?: string; id?: string; message?: string };
+    if (body.code === "DUPLICATE_ID") {
+      return { ok: false, error: t9n("page.duplicateId", { id: body.id ?? "" }) };
+    }
+    return { ok: false, error: body.message ?? `HTTP ${res.status}` };
+  } catch {
+    return { ok: false, error: t9n("save.failed") };
+  } finally {
+    inflight = false;
+    void continueFlush();
+  }
+}
+
+/** 飛行中の保存が終わるまで待つ（書き込みは常に1本。INV-6） */
+async function waitForIdle(): Promise<void> {
+  while (inflight) {
+    await new Promise((resolve) => setTimeout(resolve, 30));
+  }
+}
+
+/** 削除されたページのキャッシュ・編集状態を捨てる */
+function forgetDiagram(diagramId: string): void {
+  committed.delete(diagramId);
+  baseHashes.delete(`diagrams/${diagramId}.js`);
+  useEditStore.setState((s) => {
+    const pages = { ...s.pages };
+    delete pages[diagramId];
+    return { pages, pendingCount: countPending(pages) };
+  });
+  useAppStore.setState((s) => {
+    const diagrams = { ...s.diagrams };
+    delete diagrams[diagramId];
+    const diagramErrors = { ...s.diagramErrors };
+    delete diagramErrors[diagramId];
+    return { diagrams, diagramErrors };
+  });
+}
+
+/**
+ * ELK による自動レイアウト（H-07 / H-08）。書き込みをしないためロックは不要。
+ * 返る座標は原点 (0,0) 基準の相対座標であり、ページ上のどこへ置くかは呼び出し側が決める。
+ */
+export async function requestAutoLayout(
+  nodes: { id: string; w: number; h: number }[],
+  edges: { from: string; to: string }[],
+): Promise<Record<string, [number, number]> | null> {
+  if (!serverMode() || nodes.length === 0) return null;
+  try {
+    const res = await apiPost("/__erd/layout/auto", { nodes, edges });
+    if (res.status !== 200) return null;
+    const body = JSON.parse(res.body) as { positions?: Record<string, [number, number]> };
+    return body.positions ?? null;
+  } catch {
+    return null;
+  }
+}
 
 function statusAfterEdit(current: SaveStatus): SaveStatus {
   // 保存失敗中の追加編集は failed のまま（M-02: 失敗表示は消えない）
@@ -475,11 +632,20 @@ async function flush(forceFor?: string): Promise<void> {
     });
     inflight = false;
     if (res.status === 200) {
-      const body = JSON.parse(res.body) as { revision: string; newHash: string };
+      const body = JSON.parse(res.body) as {
+        revision: string;
+        newHash: string;
+        files?: string[];
+      };
       rememberRevision(body.revision);
       baseHashes.set(rel, body.newHash);
       committed.set(diagramId, applyCommands(base, sent));
       retryCount = 0;
+      // 自分の書き込みは SSE では無視される（INV-3）ため、派生ファイルはここで追随させる。
+      // ノードの追加 / 除去（I-04 / I-06）は index.js の tables[].diagrams を動かし、
+      // 未配置トレイ（K-12）・サイドバーの所属ページがそれに依存している
+      if (body.files?.includes("index.js")) void reloadIndex(body.revision);
+      if (body.files?.includes("manifest.js")) void reloadManifest(body.revision);
       finishIfIdle();
       void continueFlush();
     } else if (res.status === 409) {
@@ -689,8 +855,8 @@ async function refreshHashes(): Promise<void> {
 
 // トースト文言はコンポーネント外から出すため、ここで直接解決する
 // （i18n フックは React 専用。キーは messages.ts に定義済み）
-function t9n(key: MsgKey): string {
-  return translate(useAppStore.getState().lang, key);
+function t9n(key: MsgKey, vars?: Record<string, string | number>): string {
+  return translate(useAppStore.getState().lang, key, vars);
 }
 
 // -------------------------------------------------------- タブ閉じ・離脱（§2.1）

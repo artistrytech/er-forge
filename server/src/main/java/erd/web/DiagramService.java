@@ -6,15 +6,16 @@ import erd.core.io.DataFilePrinter;
 import erd.core.io.ProjectStore;
 import erd.core.model.DiagramPage;
 import erd.core.model.EdgeLayout;
+import erd.core.model.Manifest;
 import erd.core.model.NodeLayout;
 import erd.core.model.Point;
+import erd.core.model.Table;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -37,7 +38,7 @@ public final class DiagramService {
     private final DataFilePrinter printer = new DataFilePrinter();
     private final ProjectStore store = new ProjectStore();
 
-    public sealed interface Outcome permits Ok, Stale, NotFound {}
+    public sealed interface Outcome permits Ok, Stale, NotFound, Duplicate, Invalid {}
 
     /** writtenFiles: relPath → 新しい内容ハッシュ（SSE の自己判定・応答の newHash に使う）。 */
     public record Ok(String newHash, Map<String, String> writtenFiles) implements Outcome {}
@@ -46,8 +47,13 @@ public final class DiagramService {
 
     public record NotFound() implements Outcome {}
 
+    /** I-01: 既に同じ ID のページがある（既存ページを黙って潰さない）。 */
+    public record Duplicate(String id) implements Outcome {}
+
+    public record Invalid(String message) implements Outcome {}
+
     /**
-     * @param body { baseHash, force, nodes: { id: {pos,w}|null }, edges: { id: {waypoints}|null } }
+     * @param body { baseHash, force, title, order, nodes: { id: {pos,w}|null }, edges: { id: {waypoints}|null } }
      */
     public Outcome patch(Path dataDir, String diagramId, JsonNode body) {
         if (!SAFE_ID.matcher(diagramId).matches()) return new NotFound();
@@ -66,6 +72,9 @@ public final class DiagramService {
         if (!force && !currentHash.equals(baseHash)) {
             return new Stale(currentHash);
         }
+        if (body.has("title") && body.get("title").asText("").isBlank()) {
+            return new Invalid("ページ名を入力してください");
+        }
 
         DiagramPage page = parser.parseDiagram(new String(current, StandardCharsets.UTF_8)).value();
         DiagramPage patched = apply(page, body);
@@ -78,18 +87,114 @@ public final class DiagramService {
                 FileWrites.writeAtomic(file, content);
                 written.put("diagrams/" + diagramId + ".js", newHash);
             }
-            // ノードの追加 / 除去は index.js の tables[].diagrams に影響する。
-            // 条件分岐で最適化せず、書き込み後は必ず再生成する（§8.2 と同じ方針）
-            ProjectStore.LoadResult loaded = store.read(dataDir);
-            String indexHash = FileWrites.regenerateIndex(
-                    dataDir, loaded.model().tables(), loaded.model().diagrams());
-            if (indexHash != null) {
-                written.put("index.js", indexHash);
-            }
+            // ノードの追加 / 除去は index.js の tables[].diagrams に、タイトル・表示順（I-03）は
+            // manifest.js に影響する。条件分岐で最適化せず、書き込み後は必ず両方を再生成する
+            // （何が変わったかを判定すると必ず漏れる。§8.2 と同じ方針）
+            regenerateDerived(dataDir, written, page.id(), patched);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
         return new Ok(newHash, written);
+    }
+
+    // ----------------------------------------------------- ページの追加 / 削除（I-01 / I-02）
+
+    /**
+     * I-01: ページの追加。空のページファイルを作り、manifest.js を再生成する。
+     * 新規ページにノードは無いため、スキーマ情報には一切影響しない。
+     *
+     * @param body { id, title, order }
+     */
+    public Outcome create(Path dataDir, JsonNode body) {
+        String id = body.path("id").asText("").trim();
+        if (!SAFE_ID.matcher(id).matches()) {
+            return new Invalid("ページID は英数字と . _ - のみ使えます: " + id);
+        }
+        String title = body.path("title").asText("").trim();
+        if (title.isEmpty()) return new Invalid("ページ名を入力してください");
+
+        Path file = dataDir.resolve("diagrams/" + id + ".js");
+        if (Files.exists(file)) return new Duplicate(id);
+
+        ProjectStore.LoadResult loaded = store.read(dataDir);
+        List<DiagramPage> pages = new ArrayList<>(loaded.model().diagrams());
+        if (pages.stream().anyMatch(d -> d.id().equals(id))) return new Duplicate(id);
+
+        int order = body.has("order") ? body.get("order").asInt()
+                : pages.stream().mapToInt(DiagramPage::order).max().orElse(0) + 1;
+        DiagramPage page = new DiagramPage(id, title, order, Map.of(), Map.of());
+        pages.add(page);
+
+        String content = printer.printDiagram(page);
+        String newHash = Hashes.sha256(content.getBytes(StandardCharsets.UTF_8));
+        Map<String, String> written = new LinkedHashMap<>();
+        try {
+            Files.createDirectories(file.getParent());
+            FileWrites.writeAtomic(file, content);
+            written.put("diagrams/" + id + ".js", newHash);
+            regenerateDerived(dataDir, written, loaded.model().manifest(),
+                    loaded.model().tables(), pages);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        return new Ok(newHash, written);
+    }
+
+    /**
+     * I-02: ページの削除。ダイアグラムファイルを消すだけで、スキーマ情報には影響しない。
+     * baseHash はページファイルに対して検証する（外部で編集されたページを黙って消さない）。
+     */
+    public Outcome delete(Path dataDir, String diagramId, JsonNode body) {
+        if (!SAFE_ID.matcher(diagramId).matches()) return new NotFound();
+        Path file = dataDir.resolve("diagrams/" + diagramId + ".js");
+        if (!Files.isRegularFile(file)) return new NotFound();
+
+        String currentHash = Hashes.sha256(file);
+        boolean force = body.path("force").asBoolean(false);
+        if (!force && !currentHash.equals(body.path("baseHash").asText(""))) {
+            return new Stale(currentHash);
+        }
+
+        ProjectStore.LoadResult loaded = store.read(dataDir);
+        List<DiagramPage> pages = loaded.model().diagrams().stream()
+                .filter(d -> !d.id().equals(diagramId)).toList();
+
+        Map<String, String> written = new LinkedHashMap<>();
+        try {
+            Files.delete(file);
+            written.put("diagrams/" + diagramId + ".js", null);
+            regenerateDerived(dataDir, written, loaded.model().manifest(),
+                    loaded.model().tables(), pages);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        return new Ok(null, written);
+    }
+
+    /** ページの baseHash（編集開始前の取得用）。 */
+    public String baseHash(Path dataDir, String diagramId) {
+        if (!SAFE_ID.matcher(diagramId).matches()) return null;
+        Path file = dataDir.resolve("diagrams/" + diagramId + ".js");
+        return Files.isRegularFile(file) ? Hashes.sha256(file) : null;
+    }
+
+    // ------------------------------------------------------------- 派生ファイル
+
+    /** patch 経路: ディスク上のモデルを読み直し、対象ページだけ patch 後の値に差し替える。 */
+    private void regenerateDerived(Path dataDir, Map<String, String> written, String diagramId,
+                                   DiagramPage patched) throws IOException {
+        ProjectStore.LoadResult loaded = store.read(dataDir);
+        List<DiagramPage> pages = loaded.model().diagrams().stream()
+                .map(d -> d.id().equals(diagramId) ? patched : d).toList();
+        regenerateDerived(dataDir, written, loaded.model().manifest(), loaded.model().tables(), pages);
+    }
+
+    private void regenerateDerived(Path dataDir, Map<String, String> written, Manifest manifest,
+                                   List<Table> tables, List<DiagramPage> pages) throws IOException {
+        String manifestHash = FileWrites.regenerateManifest(dataDir, manifest, tables, pages);
+        if (manifestHash != null) written.put("manifest.js", manifestHash);
+        String indexHash = FileWrites.regenerateIndex(dataDir, tables, pages);
+        if (indexHash != null) written.put("index.js", indexHash);
     }
 
     // ------------------------------------------------------------ patch 適用
@@ -117,7 +222,10 @@ public final class DiagramService {
                 edges.put(id, mergeEdge(edges.get(id), v));
             }
         }
-        return new DiagramPage(page.id(), page.title(), page.order(), nodes, edges, page.unknown());
+        // I-03: ページ名・表示順の変更。省略時は既存値のまま
+        String title = body.has("title") ? body.get("title").asText().trim() : page.title();
+        int order = body.has("order") ? body.get("order").asInt() : page.order();
+        return new DiagramPage(page.id(), title, order, nodes, edges, page.unknown());
     }
 
     /** 既存ノードの unknown / 省略されたキー（w）は保持する。座標は防御的に再正規化する（INV-2）。 */

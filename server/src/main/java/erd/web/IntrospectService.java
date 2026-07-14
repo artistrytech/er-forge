@@ -20,6 +20,7 @@ import erd.core.model.Manifest;
 import erd.core.model.ProjectConfig;
 import erd.core.model.ProjectModel;
 import erd.core.model.Table;
+import erd.introspect.Dialects;
 import erd.introspect.Drivers;
 import erd.introspect.IntrospectOptions;
 import erd.introspect.JdbcIntrospector;
@@ -121,7 +122,8 @@ final class IntrospectService {
 
         RawSchema raw;
         try (Connection conn = connect(body)) {
-            raw = new JdbcIntrospector().introspect(conn, options);
+            // 層1（JDBC 標準）→ 層2（DialectEnhancer。§7.1）。層2の失敗は警告に落として続行する
+            raw = Dialects.enhance(conn, new JdbcIntrospector().introspect(conn, options));
         }
 
         String url = body.path("connection").path("url").asText("");

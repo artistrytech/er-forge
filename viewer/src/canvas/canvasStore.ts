@@ -14,12 +14,21 @@ export type CanvasSelection =
   | { type: "edge"; id: string }
   | null;
 
+/**
+ * キャンバス外の UI（未配置トレイ。K-12）からの配置操作。
+ * 配置には React Flow の実測サイズ・座標変換が要るため、ErdCanvas 側が実装を登録し、
+ * トレイはそれを呼ぶだけにする（ER図が開かれていなければ null）。
+ */
+export type PlaceTables = (tableIds: string[], at?: [number, number]) => void;
+
 interface CanvasState {
   selection: CanvasSelection;
   relatedNodes: ReadonlySet<string>;
   relatedEdges: ReadonlySet<string>;
+  placeTables: PlaceTables | null;
   select(selection: CanvasSelection, relations: readonly Relation[]): void;
   clear(): void;
+  setPlaceTables(fn: PlaceTables | null): void;
 }
 
 const EMPTY: ReadonlySet<string> = new Set();
@@ -28,6 +37,8 @@ export const useCanvasStore = create<CanvasState>((set) => ({
   selection: null,
   relatedNodes: EMPTY,
   relatedEdges: EMPTY,
+  placeTables: null,
+  setPlaceTables: (placeTables) => set({ placeTables }),
   select: (selection, relations) => {
     if (selection === null) {
       set({ selection: null, relatedNodes: EMPTY, relatedEdges: EMPTY });

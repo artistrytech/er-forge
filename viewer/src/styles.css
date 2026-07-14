@@ -1420,3 +1420,156 @@ button.button-link.danger {
   align-items: center;
   background: var(--bg);
 }
+
+/* ---- ページ管理（I-01〜I-03）と未配置トレイ（K-12） ---- */
+
+.sidebar-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.sidebar-icon-button {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.sidebar-icon-button:hover:not(:disabled) {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.sidebar-icon-button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.sidebar-page-row {
+  display: flex;
+  align-items: center;
+}
+
+.sidebar-page-row .sidebar-link {
+  flex: 1;
+  min-width: 0;
+}
+
+/*
+ * 操作アイコンは行のホバー・フォーカス時にだけ見せる（一覧のノイズを増やさない）。
+ * visibility / display ではなく opacity で隠す: 前者ではボタンが Tab で辿れなくなり、
+ * キーボードだけでページ管理ができなくなる（N-07）
+ */
+.sidebar-page-controls {
+  display: flex;
+  gap: 0;
+  padding-right: 6px;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+
+.sidebar-page-row:hover .sidebar-page-controls,
+.sidebar-page-row:focus-within .sidebar-page-controls {
+  opacity: 1;
+}
+
+.tray-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 0 14px 8px;
+}
+
+.tray-actions .form-hint {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.tray-actions button {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.tray-actions button:hover {
+  background: var(--accent-soft);
+}
+
+.tray-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 8px;
+}
+
+.tray-item {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.tray-item-draggable {
+  cursor: grab;
+}
+
+.tray-new {
+  flex: none;
+  margin-right: 10px;
+  padding: 1px 5px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.form-error {
+  margin: 4px 0 8px;
+  color: var(--danger, #d33);
+  font-size: 12px;
+}
+
+/* ---- 自動レイアウト（H-07）のプレビュー ---- */
+
+/* 提案配置を実線で、現在の配置をゴーストとして薄く重ねる（詳細設計 §7.2） */
+.erd-node-ghost {
+  opacity: 0.28;
+  border-style: dashed;
+  pointer-events: none;
+}
+
+.erd-layout-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 12%);
+  font-size: 12px;
+}
+
+.erd-layout-preview button {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}

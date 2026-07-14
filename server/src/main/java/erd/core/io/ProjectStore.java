@@ -109,21 +109,28 @@ public final class ProjectStore {
         }
     }
 
+    /**
+     * manifest.js は派生ファイルである（テーブル・ページの一覧から一意に決まる）。
+     * schemaVersion / generatedAt / source / 未知キーは既存の manifest から引き継ぐ。
+     */
+    public Manifest deriveManifest(Manifest old, List<Table> tables, List<DiagramPage> diagrams) {
+        Map<String, String> tablePaths = new LinkedHashMap<>();
+        for (Table t : tables.stream().sorted(Comparator.comparing(Table::id)).toList()) {
+            tablePaths.put(t.id(), tablePath(t));
+        }
+        List<Manifest.DiagramRef> diagramRefs = diagrams.stream()
+                .sorted(Comparator.comparingInt(DiagramPage::order).thenComparing(DiagramPage::id))
+                .map(d -> new Manifest.DiagramRef(d.id(), "diagrams/" + d.id() + ".js", d.title(), d.order()))
+                .toList();
+        return new Manifest(old.schemaVersion(), old.generatedAt(), old.source(),
+                "config.js", "dictionary.js", tablePaths, diagramRefs, old.unknown());
+    }
+
     /** 相対パス → ファイル内容（書き込みはせず、レンダリングのみ）。 */
     public Map<String, String> renderAll(ProjectModel model) {
         Map<String, String> files = new LinkedHashMap<>();
 
-        Map<String, String> tablePaths = new LinkedHashMap<>();
-        for (Table t : model.tablesSorted()) {
-            tablePaths.put(t.id(), tablePath(t));
-        }
-        List<Manifest.DiagramRef> diagramRefs = model.diagramsSorted().stream()
-                .map(d -> new Manifest.DiagramRef(d.id(), "diagrams/" + d.id() + ".js", d.title(), d.order()))
-                .toList();
-
-        Manifest old = model.manifest();
-        Manifest manifest = new Manifest(old.schemaVersion(), old.generatedAt(), old.source(),
-                "config.js", "dictionary.js", tablePaths, diagramRefs, old.unknown());
+        Manifest manifest = deriveManifest(model.manifest(), model.tables(), model.diagrams());
 
         files.put("manifest.js", printer.printManifest(manifest));
         files.put("config.js", printer.printConfig(model.config()));

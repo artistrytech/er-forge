@@ -49,6 +49,12 @@ export interface AppState {
   /** 表示中の ER図ページ（SSE の外部変更分岐が「現在のページか」を判定するために使う） */
   currentDiagramId: string | null;
   toasts: { id: number; text: string }[];
+  /**
+   * 直近の逆生成で追加されたテーブル（K-12 §7.2）。未配置トレイで「NEW」として先頭に寄せる。
+   * **セッション限定のメモリ状態**であり、リロードで消える（ファイルには残さない。
+   * 「未配置」自体は index.tables[].diagrams が空という導出結果であって、フラグではない）。
+   */
+  recentTables: string[];
 
   setLang(lang: Lang): void;
   setNameDisplay(mode: NameDisplay): void;
@@ -58,6 +64,7 @@ export interface AppState {
   setNotice(notice: string | null): void;
   setCurrentDiagramId(id: string | null): void;
   addToast(text: string): void;
+  setRecentTables(ids: string[]): void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -83,6 +90,7 @@ export const useAppStore = create<AppState>((set) => ({
   notice: null,
   currentDiagramId: null,
   toasts: [],
+  recentTables: [],
 
   setLang: (lang) => set({ lang }),
   setNameDisplay: (nameDisplay) => set({ nameDisplay }),
@@ -91,6 +99,7 @@ export const useAppStore = create<AppState>((set) => ({
   setSearchOpen: (searchOpen) => set({ searchOpen }),
   setNotice: (notice) => set({ notice }),
   setCurrentDiagramId: (currentDiagramId) => set({ currentDiagramId }),
+  setRecentTables: (recentTables) => set({ recentTables }),
   addToast: (text) => {
     const id = ++toastSeq;
     set((s) => ({ toasts: [...s.toasts, { id, text }] }));

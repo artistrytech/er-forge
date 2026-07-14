@@ -20,6 +20,11 @@ dependencies {
     implementation("io.javalin:javalin:6.7.0")
     implementation("org.slf4j:slf4j-simple:2.0.17")
 
+    // 自動レイアウト（H-07 / H-08）。layered アルゴリズムのメタデータは
+    // ServiceLoader で発見されるため、shadowJar 側の mergeServiceFiles が必須
+    implementation("org.eclipse.elk:org.eclipse.elk.core:0.10.0")
+    implementation("org.eclipse.elk:org.eclipse.elk.alg.layered:0.10.0")
+
     testImplementation(platform("org.junit:junit-bom:5.10.2"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
