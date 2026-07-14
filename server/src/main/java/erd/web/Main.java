@@ -16,7 +16,7 @@ import java.util.Locale;
  *
  * <p>サブコマンド・フラグは持たない（全操作は GUI。§1.2）。カレントディレクトリを
  * プロジェクトルート（erd/）として扱う。テスト・自動化用に環境変数のみ許す:
- * ERD_PORT（基点ポート）/ ERD_NO_BROWSER（自動オープン抑止）。
+ * ERD_PORT（基点ポート）/ ERD_NO_BROWSER（自動オープン抑止）/ ERD_TOKEN（トークン固定）。
  */
 public final class Main {
 
@@ -47,7 +47,7 @@ public final class Main {
         // ここで登録しないと、URLClassLoader で読んだドライバは DriverManager から見えない
         erd.introspect.Drivers.scan(root.resolve("drivers"));
 
-        String token = newToken();
+        String token = token();
         WebServer server = new WebServer(root, token);
         int basePort = envInt("ERD_PORT", DEFAULT_PORT);
         int port = server.start(basePort);
@@ -62,7 +62,16 @@ public final class Main {
         }
     }
 
-    private static String newToken() {
+    /**
+     * 既定は起動ごとのランダムトークン（§8.5）。
+     *
+     * <p>ERD_TOKEN が設定されている場合のみそれを使う。**開発時に vite dev サーバーから
+     * API を叩くため**の逃げ道であり（トークンが毎回変わると dev の URL を固定できない）、
+     * 配布物の既定にはしない。いずれにせよサーバーは 127.0.0.1 にしか bind しない。
+     */
+    private static String token() {
+        String fixed = System.getenv("ERD_TOKEN");
+        if (fixed != null && !fixed.isEmpty()) return fixed;
         byte[] bytes = new byte[16];
         new SecureRandom().nextBytes(bytes);
         return HexFormat.of().formatHex(bytes);

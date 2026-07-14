@@ -43,20 +43,56 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-export default defineConfig({
-  plugins: [react(), inlineSingleFile()],
-  base: "./",
-  build: {
-    target: "es2019",
-    cssCodeSplit: false,
-    assetsInlineLimit: 100000000,
-    chunkSizeWarningLimit: 2000,
-    modulePreload: false,
-    rollupOptions: {
-      output: {
-        format: "iife",
-        inlineDynamicImports: true,
+/**
+ * 開発サーバーは2通りある。
+ *
+ * - `npm run dev`        : ビューア単体。データは `public/data/**`（静的モード相当の固定データ）
+ * - `npm run dev:server` : Java サーバー（`gradlew devServer`）と繋ぐ。**サーバーモードで動く**
+ *
+ * ビューアはデータを常に `<script src="data/**.js">` の相対パスで読む（設計書 §4.3。
+ * 読み込み経路はモードによらず1本）。dev:server でも本番とまったく同じ経路を通すため、
+ * `/data` と `/__erd` を Java サーバーへプロキシする。`GET /__erd/health` が通ることで、
+ * ビューアはサーバーモードとして起動する（A-01）。
+ *
+ * このとき `public/` を無効化する。有効なままだと `public/data/**`（単体 dev 用の固定データ）が
+ * `/data` を先に掴みうるため、**サーバーの実データではなく古い固定データを見て**しまう。
+ * どちらのデータを見ているのか分からない状態が一番たちが悪いので、明示的に外す。
+ *
+ * トークンは Java 側を ERD_TOKEN で固定し、開く URL に埋めておく（§8.1 の `?t=`）。
+ */
+const BACKEND = `http://127.0.0.1:${process.env.ERD_PORT ?? 5321}`;
+const DEV_TOKEN = process.env.ERD_TOKEN ?? "erd-dev";
+
+export default defineConfig(({ mode }) => {
+  const withServer = mode === "server";
+  return {
+    plugins: [react(), inlineSingleFile()],
+    base: "./",
+    publicDir: withServer ? false : "public",
+    server: {
+      port: 5173,
+      strictPort: true,
+      open: withServer ? `/?t=${DEV_TOKEN}` : "/",
+      proxy: withServer
+        ? {
+            // SSE（GET /__erd/events）もそのまま流れる
+            "/__erd": { target: BACKEND, changeOrigin: false },
+            "/data": { target: BACKEND, changeOrigin: false },
+          }
+        : undefined,
+    },
+    build: {
+      target: "es2019",
+      cssCodeSplit: false,
+      assetsInlineLimit: 100000000,
+      chunkSizeWarningLimit: 2000,
+      modulePreload: false,
+      rollupOptions: {
+        output: {
+          format: "iife",
+          inlineDynamicImports: true,
+        },
       },
     },
-  },
+  };
 });

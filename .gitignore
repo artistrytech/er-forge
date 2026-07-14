@@ -5,3 +5,6 @@ node_modules/
 .erd/
 *.class
 viewer/dist/
+
+# 開発用サーバー（gradlew run）のプロジェクトディレクトリ。生成物であり、コミットしない
+dev/

@@ -60,6 +60,37 @@ tasks.register<JavaExec>("generateSampleData") {
     )
 }
 
+// ------------------------------------------------------------------ 開発用の起動
+
+// 開発用サーバー: gradlew devServer（ビューアは別ターミナルで npm run dev:server）
+//
+// プロジェクトディレクトリ（＝設計書 §3.3 の erd/）として ../dev/ を使う。
+// 初回は data/ が空なのでブートストラップ画面が出る（サンプル取り込みですぐ試せる）。
+// JDBC ドライバを使うなら dev/drivers/ に jar を置く。
+//
+// index.html はここからは配信しない（vite dev が配信し、/__erd と /data をここへプロキシする）。
+// トークンは vite 側が URL に埋められるよう固定する（Main の ERD_TOKEN。127.0.0.1 限定は不変）。
+//
+// 注意: ここを /** ... */ の KDoc にしないこと。Kotlin のブロックコメントは入れ子になるため、
+// 本文に "drivers/*.jar" のような /* を含む文字列があると、そこから内側のコメントが開き、
+// 閉じ */ は内側を閉じるだけになる。以降のスクリプト全体が静かにコメント化され、
+// 構文エラーも出ないままタスクが丸ごと消える（実際にこれを踏んだ）。
+val devDir = file("../dev")
+
+tasks.register<JavaExec>("devServer") {
+    group = "application"
+    description = "開発用サーバーを起動する（データは ../dev/、ビューアは npm run dev:server）"
+    mainClass = "erd.web.Main"
+    classpath = sourceSets["main"].runtimeClasspath
+    workingDir = devDir
+    environment("ERD_NO_BROWSER", "1")
+    environment("ERD_TOKEN", System.getenv("ERD_TOKEN") ?: "erd-dev")
+    System.getenv("ERD_PORT")?.let { environment("ERD_PORT", it) }
+    doFirst {
+        devDir.resolve("drivers").mkdirs()
+    }
+}
+
 // ---------------------------------------------------------------- 配布物（§3.1）
 
 tasks.shadowJar {
@@ -101,3 +132,4 @@ tasks.register<Zip>("packageDist") {
         }
     }
 }
+
