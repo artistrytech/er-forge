@@ -11,7 +11,7 @@
 | `viewer/` | TypeScript / React / Vite。単一 `index.html` に全アセットをインライン化 |
 | `fixtures/` | Java / TS 共通の golden fixture（プリンタ出力の一致を保証） |
 | `distribution/` | 配布 ZIP に同梱する固定ファイル（起動スクリプト・README） |
-| `dev-db/` | 動作確認用の PostgreSQL（docker compose）とマイグレーション（→ [README](dev-db/README.md)） |
+| `dev-db/` | 動作確認用の DB（PostgreSQL / SQL Server / Oracle の docker compose）とマイグレーション・検証用 DDL（→ [README](dev-db/README.md)） |
 
 ## 開発環境の起動
 
@@ -65,6 +65,11 @@ PowerShell では `$env:ERD_PORT="5400"` を先に実行する。
 cd dev-db && docker compose up -d && npm install
 node migrate.mjs up 001     # ENUM / CHECK / 部分・式インデックスまで適用
 ```
+
+追加 DB の内省検証（Phase 7）として **SQL Server / Oracle**（docker compose の profile 分け）と
+**SQLite**（docker 不要・プロセス内）も用意している。詳細は
+[dev-db/README.md](dev-db/README.md#追加-db-の検証phase-7-sql-server--oracle--sqlite) と
+[追加 DB の検証](.docs/function-details/Phase7_additional-db-verification.md) を参照。
 
 ## ビルド
 

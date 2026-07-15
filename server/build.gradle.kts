@@ -29,14 +29,22 @@ dependencies {
     testImplementation("org.junit.jupiter:junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 
-    // JDBC 標準内省（層1）の検証用。実 DB（PostgreSQL / MySQL）に対する検証は
-    // Testcontainers で別途行う（Docker が要るため CI の必須ゲートからは外す）
+    // JDBC 標準内省（層1）の検証用。H2 と SQLite はプロセス内で完結するため常時実行できる。
+    // SQL Server / Oracle は dev-db の docker compose に接続して検証する（未起動なら skip）。
+    // これらのドライバは配布物には同梱しない（利用者が drivers/ に自分で置く。§7.2）ため
+    // すべて testImplementation にとどめる。
     testImplementation("com.h2database:h2:2.2.224")
+    testImplementation("org.xerial:sqlite-jdbc:3.46.1.3")
+    testImplementation("com.microsoft.sqlserver:mssql-jdbc:12.8.1.jre11")
+    testImplementation("com.oracle.database.jdbc:ojdbc11:23.5.0.24.07")
 }
 
 tasks.test {
     useJUnitPlatform()
     systemProperty("fixtures.dir", file("../fixtures").absolutePath)
+    // 追加 DB 検証用の DDL 置き場（Phase 7）。SQL Server / Oracle のテストは
+    // dev-db の docker compose に接続し、ここの DDL を流してから内省する。
+    systemProperty("devdb.dir", file("../dev-db").absolutePath)
 }
 
 // golden fixture の再生成（出力を目視確認してコミットする。CI では実行しない）

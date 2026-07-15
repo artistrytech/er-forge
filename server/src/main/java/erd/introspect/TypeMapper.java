@@ -46,9 +46,17 @@ public final class TypeMapper {
         return new ColumnType(type, logicalType(lower, type, dataType), dialect);
     }
 
+    /**
+     * 実在する宣言長として意味を持つ上限。これを超える COLUMN_SIZE は「無制限（LOB / 可変長）」を
+     * 表す番兵とみなし、桁として書き出さない。SQLite（xerial）は TEXT・NUMERIC に対して
+     * {@code 2000000000} を、他のドライバも無制限型に {@code Integer.MAX_VALUE} 近傍を返すため、
+     * これをそのまま付けると {@code text(2000000000)} のような無意味な型が data/schema/**.js に載る。
+     */
+    private static final int MAX_DECLARED_SIZE = 1_000_000;
+
     /** TYPE_NAME に桁が含まれない場合に COLUMN_SIZE / DECIMAL_DIGITS から補う。 */
     private static String withPrecision(String lower, int dataType, int size, int decimalDigits) {
-        if (lower.indexOf('(') >= 0 || size <= 0) return lower;
+        if (lower.indexOf('(') >= 0 || size <= 0 || size > MAX_DECLARED_SIZE) return lower;
         return switch (dataType) {
             case Types.CHAR, Types.VARCHAR, Types.NCHAR, Types.NVARCHAR,
                  Types.BINARY, Types.VARBINARY -> lower + "(" + size + ")";
@@ -69,7 +77,11 @@ public final class TypeMapper {
                  Types.NCHAR, Types.NVARCHAR, Types.LONGNVARCHAR, Types.CLOB, Types.NCLOB ->
                     named(lower, LogicalType.STRING);
             case Types.TINYINT, Types.SMALLINT, Types.INTEGER, Types.BIGINT -> LogicalType.INT;
-            case Types.REAL, Types.FLOAT, Types.DOUBLE -> LogicalType.FLOAT;
+            // SQLite は型アフィニティのため NUMERIC / DECIMAL を DATA_TYPE=FLOAT で返す。
+            // TYPE_NAME が numeric / decimal のものは固定小数点として救う（type は原文を保持）。
+            case Types.REAL, Types.FLOAT, Types.DOUBLE ->
+                    lower.startsWith("numeric") || lower.startsWith("decimal")
+                            ? LogicalType.DECIMAL : LogicalType.FLOAT;
             case Types.DECIMAL, Types.NUMERIC -> LogicalType.DECIMAL;
             case Types.BIT, Types.BOOLEAN -> LogicalType.BOOL;
             case Types.DATE -> LogicalType.DATE;

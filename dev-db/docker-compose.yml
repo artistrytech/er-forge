@@ -1,10 +1,21 @@
-# 動作確認用の PostgreSQL。
+# 動作確認用の DB 群。
 #
-# 初期 DDL は .docs/sample-schema.sql（同梱サンプルの元データ）をそのまま流用する。
+# 既定（`docker compose up -d`）では PostgreSQL（db）だけが起動する。
+# 追加 DB 検証（Phase 7）の SQL Server / Oracle は profiles で分けてあり、
+# 明示的に起動する（重いので普段は落としておく）:
+#   docker compose --profile mssql  up -d      # SQL Server（+ erd_sample DB を作る init）
+#   docker compose --profile oracle up -d      # Oracle（gvenzl/oracle-free）
+#
+# PostgreSQL の初期 DDL は .docs/sample-schema.sql（同梱サンプルの元データ）をそのまま流用する。
 # コンテナの初回起動時にだけ /docker-entrypoint-initdb.d/*.sql が実行される。
 # 作り直したいときは `docker compose down -v`（ボリュームごと消す）→ `up -d`。
 #
-# ポートは既存の PostgreSQL とぶつからないよう 5442 にしている。
+# SQL Server / Oracle は空の DB / ユーザーだけ用意し、テーブルの DDL（dev-db/ddl/*.sql）は
+# 内省テスト（Sql*IntrospectorTest）が接続後に自分で流す。手動 GUI 検証で使うときは
+# README の手順で DDL を流す。
+#
+# ポートは既存のインスタンスとぶつからないよう PostgreSQL は 5442 にしている
+# （SQL Server 1433 / Oracle 1521 は既定のまま）。
 services:
   db:
     image: postgres:16
@@ -25,6 +36,59 @@ services:
       interval: 3s
       timeout: 3s
       retries: 20
+
+  # ---- SQL Server（Phase 7 検証。profile: mssql）----------------------------
+  # 既定 DB（master）には erd_sample が無いため、init サービスで作成する。
+  # JDBC URL: jdbc:sqlserver://localhost:1433;databaseName=erd_sample;encrypt=false;trustServerCertificate=true
+  # ユーザー / パスワード: sa / Erd_password1
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: erd-dev-mssql
+    profiles: ["mssql"]
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "Erd_password1"
+    ports:
+      - "1433:1433"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$${MSSQL_SA_PASSWORD}\" -C -Q 'SELECT 1' || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  # erd_sample データベースを作るだけの使い捨て init（healthy を待ってから1回走る）
+  sqlserver-init:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: erd-dev-mssql-init
+    profiles: ["mssql"]
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    entrypoint:
+      - /bin/bash
+      - -c
+      - /opt/mssql-tools18/bin/sqlcmd -S sqlserver -U sa -P "Erd_password1" -C -Q "IF DB_ID('erd_sample') IS NULL CREATE DATABASE erd_sample"
+    restart: "no"
+
+  # ---- Oracle（Phase 7 検証。profile: oracle）--------------------------------
+  # gvenzl/oracle-free は APP_USER / APP_USER_PASSWORD でアプリ用ユーザーを作る。
+  # JDBC URL: jdbc:oracle:thin:@localhost:1521/FREEPDB1
+  # ユーザー / パスワード: ERD / erd（Oracle は識別子を大文字に畳むため実体は ERD）
+  oracle:
+    image: gvenzl/oracle-free:23-slim-faststart
+    container_name: erd-dev-oracle
+    profiles: ["oracle"]
+    environment:
+      ORACLE_PASSWORD: erd       # SYS / SYSTEM のパスワード
+      APP_USER: erd              # → スキーマ ERD
+      APP_USER_PASSWORD: erd
+    ports:
+      - "1521:1521"
+    healthcheck:
+      test: ["CMD", "healthcheck.sh"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
 
 volumes:
   erd-dev-db-data:

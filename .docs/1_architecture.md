@@ -987,7 +987,7 @@ React Flow の標準機能（d3-zoom ベース）を使用する。
 | **4** | テーブル編集画面、論理名（テーブル / カラム個別）、カラム論理名の横断一括編集画面、論理一意制約 / 論理外部制約の編集 | 論理名・論理制約を GUI で設定でき、ER図に破線エッジとして反映される |
 | **5** | `server/introspect`: JDBC 標準内省、ドライバ動的ロード、テーブル無視リスト、差分プレビュー、リネーム検出、部分適用、コメントからの論理名補完、アトミック適用（[詳細設計](function-details/K08-K13_introspect-diff-apply.md)） | PostgreSQL / MySQL から逆生成しても `data/diagrams/**` と `meta`（論理名・論理制約）が保持される |
 | **6** | `DialectEnhancer`（PostgreSQL / MySQL）、ページ管理UI、ELK 自動レイアウト、未配置トレイ | |
-| **7** | 追加 DB の検証（SQL Server / Oracle / SQLite）、ドキュメント整備 | |
+| **7** | 追加 DB の検証（SQL Server / Oracle / SQLite）、ドキュメント整備（[詳細設計](function-details/Phase7_additional-db-verification.md)） | SQLite / SQL Server / Oracle を層1（JDBC 標準）だけで内省でき、DB ごとの癖（SQLite の型アフィニティ・番兵 COLUMN_SIZE、Oracle の大文字畳み・`remarksReporting`）を吸収できる |
 
 ### 11.1 リスクと対策
 
