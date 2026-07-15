@@ -216,6 +216,41 @@ async function main() {
     check("I-01: every table is now unplaced-free but the tray stays empty",
         (await page.locator('[data-testid="unplaced-tray"]').count()) === 0);
 
+    // ---- 4b. I-04 / §5.9: 別ページに配置済みのテーブルを、この空ページへ配置する ----
+    // users ページにあるテーブルを billing にも足す（移動ではなく複数ページ配置）
+    const usersBefore = nodesInFile(dir, "users");
+
+    // (a) ＋ ボタン（ドラッグ以外の導線）
+    await page.getByTestId("add-to-page-public.roles").click();
+    await page.waitForSelector('.react-flow__node[data-id="public.roles"]', { timeout: 20000 });
+    await waitSaved(page);
+    check("I-04: the + button adds an already-placed table to the current page",
+        nodesInFile(dir, "billing")["public.roles"] !== undefined);
+
+    // (b) サイドバーからキャンバスへドラッグ
+    await page
+        .locator('.sidebar-table-row:has([data-testid="add-to-page-public.user_profiles"]) .sidebar-table-item')
+        .dragTo(page.locator(".react-flow__pane"), { targetPosition: { x: 300, y: 300 } });
+    await page.waitForSelector('.react-flow__node[data-id="public.user_profiles"]', { timeout: 20000 });
+    await waitSaved(page);
+    check("I-04: dragging a placed table from the sidebar adds it to the current page",
+        nodesInFile(dir, "billing")["public.user_profiles"] !== undefined);
+
+    // §5.9: 元のページからは消えていない（移動ではなく複数ページ配置）
+    const usersAfter = nodesInFile(dir, "users");
+    check("§5.9: the table remains on its original page (placed on both, not moved)",
+        usersAfter["public.roles"] !== undefined
+        && usersAfter["public.user_profiles"] !== undefined
+        && JSON.stringify(usersAfter) === JSON.stringify(usersBefore));
+
+    // 同じテーブルをもう一度足しても二重配置にならない（makeAdd がスキップする）
+    const billingCount = Object.keys(nodesInFile(dir, "billing")).length;
+    await page.getByTestId("add-to-page-public.roles").count().then(async (n) => {
+      // roles は billing に載ったので ＋ ではなく ✓ になっている（＋ は出ない）
+      check("I-04: a table already on the page shows no + button", n === 0);
+    });
+    check("I-04: no double placement", Object.keys(nodesInFile(dir, "billing")).length === billingCount);
+
     // ---- 5. I-03: 改名 → manifest とページファイルの両方に反映される ----
     await page.click('[data-testid="page-rename-billing"]');
     await page.locator('[data-testid="page-rename-input"]').fill("");

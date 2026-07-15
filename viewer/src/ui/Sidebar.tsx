@@ -26,7 +26,6 @@ export function Sidebar({ currentDiagramId }: { currentDiagramId?: string }) {
   const { t } = useI18n();
   const manifest = useAppStore((s) => s.manifest);
   const index = useAppStore((s) => s.index);
-  const nameDisplay = useAppStore((s) => s.nameDisplay);
   const serverMode = useAppStore((s) => s.serverMode === true);
   const editing = useEditStore((s) => s.session === "editing");
   const canManage = editing && serverMode;
@@ -85,30 +84,89 @@ export function Sidebar({ currentDiagramId }: { currentDiagramId?: string }) {
 
       <UnplacedTray tables={unplaced} canManage={canManage} inErd={currentDiagramId !== undefined} />
 
-      <div className="sidebar-section">
-        <div className="sidebar-heading">{t("sidebar.tables")}</div>
-        <ul>
-          {placed.map((it) => {
-            // 現在のページにあればそのページへ、なければ最初の所属ページへ（B-04）
-            const target =
-              currentDiagramId !== undefined && (it.diagrams ?? []).includes(currentDiagramId)
-                ? currentDiagramId
-                : it.diagrams?.[0];
-            const label = formatName(resolveIndexTableName(it), it.name, nameDisplay);
-            return (
-              <li key={it.id}>
+      <PlacedTables tables={placed} currentDiagramId={currentDiagramId} canManage={canManage} />
+    </nav>
+  );
+}
+
+// ------------------------------------------- 配置済みテーブル一覧（B-03 / B-04 / I-04）
+
+/**
+ * 全テーブル（配置済み）の一覧。編集中 × サーバーモードで ER図 を開いているときは、
+ * **各テーブルを現在のページへドラッグ / ＋ で追加できる**（I-04）。同一テーブルを複数ページに
+ * 配置してよい（§5.9）ため、すでに別ページにあるテーブルもここから現在のページに足せる。
+ */
+function PlacedTables({
+  tables,
+  currentDiagramId,
+  canManage,
+}: {
+  tables: IndexTable[];
+  currentDiagramId?: string;
+  canManage: boolean;
+}) {
+  const { t } = useI18n();
+  const nameDisplay = useAppStore((s) => s.nameDisplay);
+  // canvas が登録するときだけ配置できる（編集中 × サーバーモード × ER図 を開いている）
+  const placeTables = useCanvasStore((s) => s.placeTables);
+  const canPlace = canManage && currentDiagramId !== undefined && placeTables !== null;
+
+  return (
+    <div className="sidebar-section">
+      <div className="sidebar-heading">{t("sidebar.tables")}</div>
+      {canPlace && <p className="form-hint sidebar-drag-hint">{t("sidebar.dragToPlace")}</p>}
+      <ul>
+        {tables.map((it) => {
+          const onPage =
+            currentDiagramId !== undefined && (it.diagrams ?? []).includes(currentDiagramId);
+          // 現在のページにあればそのページへ（フォーカス）、なければ最初の所属ページへ（B-04）
+          const target = onPage ? currentDiagramId : it.diagrams?.[0];
+          const label = formatName(resolveIndexTableName(it), it.name, nameDisplay);
+          const draggable = canPlace && !onPage;
+          return (
+            <li key={it.id} className="sidebar-table-row">
+              <span
+                className={"sidebar-table-item" + (draggable ? " tray-item-draggable" : "")}
+                draggable={draggable}
+                onDragStart={
+                  draggable
+                    ? (e) => {
+                        e.dataTransfer.setData(TABLE_DND_TYPE, it.id);
+                        e.dataTransfer.effectAllowed = "copy";
+                      }
+                    : undefined
+                }
+              >
                 <Link
                   className="sidebar-link"
                   href={target !== undefined ? hrefs.erd(target, it.id) : hrefs.table(it.id)}
+                  // 内側の <a> の既定ドラッグ（URL のドラッグ）を止め、行を配置ドラッグの起点にする
+                  draggable={false}
                 >
                   {label}
                 </Link>
-              </li>
-            );
-          })}
-        </ul>
-      </div>
-    </nav>
+              </span>
+              {canPlace &&
+                (onPage ? (
+                  <span className="sidebar-onpage" title={t("table.onThisPage")} aria-hidden="true">
+                    ✓
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    className="sidebar-icon-button sidebar-add-to-page"
+                    data-testid={`add-to-page-${it.id}`}
+                    title={t("table.addToCurrentPage")}
+                    onClick={() => placeTables?.([it.id])}
+                  >
+                    ＋
+                  </button>
+                ))}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
 
@@ -354,7 +412,7 @@ function UnplacedTray({
               }}
               className={"tray-item" + (canPlace ? " tray-item-draggable" : "")}
             >
-              <Link className="sidebar-link muted" href={hrefs.table(it.id)}>
+              <Link className="sidebar-link muted" href={hrefs.table(it.id)} draggable={false}>
                 {formatName(resolveIndexTableName(it), it.name, nameDisplay)}
               </Link>
               {recent.includes(it.id) && <span className="tray-new">{t("tray.new")}</span>}

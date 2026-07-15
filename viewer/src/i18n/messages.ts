@@ -91,6 +91,10 @@ const ja = {
   "sidebar.tables": "テーブル",
   "sidebar.unplaced": "未配置",
   "sidebar.tableCount": "{n} テーブル",
+  // 配置済みテーブルを現在のページへ追加（I-04 / §5.9 の複数ページ配置）
+  "sidebar.dragToPlace": "ドラッグ、または ＋ で現在のページに追加できます",
+  "table.addToCurrentPage": "このページに追加",
+  "table.onThisPage": "このページにあります",
   // ページが1枚も無いとき（逆生成の直後）の ER図 画面
   "erdEmpty.title": "ER図のページがありません",
   "erdEmpty.body":
@@ -428,6 +432,9 @@ const en: Record<MsgKey, string> = {
   "sidebar.tables": "Tables",
   "sidebar.unplaced": "Unplaced",
   "sidebar.tableCount": "{n} tables",
+  "sidebar.dragToPlace": "Drag, or use +, to add to the current page",
+  "table.addToCurrentPage": "Add to this page",
+  "table.onThisPage": "On this page",
   "erdEmpty.title": "No diagram pages yet",
   "erdEmpty.body":
     "There are {n} tables. Introspection never touches diagram layouts, so pages are yours to create.",

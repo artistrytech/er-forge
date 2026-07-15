@@ -1525,6 +1525,51 @@ button.button-link.danger {
   cursor: grab;
 }
 
+/* ---- 配置済みテーブル一覧: 現在のページへドラッグ / ＋ で追加（I-04） ---- */
+
+.sidebar-drag-hint {
+  margin: 0 0 4px;
+  padding: 0 14px;
+  color: var(--text-muted);
+}
+
+.sidebar-table-row {
+  display: flex;
+  align-items: center;
+}
+
+.sidebar-table-item {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+}
+
+.sidebar-table-item .sidebar-link {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ＋（このページに追加）は行のホバー / フォーカス時にだけ見せる（一覧のノイズを増やさない）。
+   opacity で隠す: display/visibility ではキーボードで辿れなくなる（N-07） */
+.sidebar-add-to-page {
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+
+.sidebar-table-row:hover .sidebar-add-to-page,
+.sidebar-table-row:focus-within .sidebar-add-to-page {
+  opacity: 1;
+}
+
+/* 現在のページに配置済みであることの目印（ドラッグ / ＋ の代わりに出る） */
+.sidebar-onpage {
+  flex: none;
+  padding: 0 8px;
+  color: var(--accent);
+  font-size: 11px;
+}
+
 .tray-new {
   flex: none;
   margin-right: 10px;
