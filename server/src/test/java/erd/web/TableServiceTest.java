@@ -88,7 +88,7 @@ class TableServiceTest {
 
     private TableService.Outcome put(String tableId, String tableJson, String baseHash) throws Exception {
         var body = json.readTree("""
-                { "lockId": "l-1", "baseHash": "%s", "table": %s }
+                { "baseHash": "%s", "table": %s }
                 """.formatted(baseHash, tableJson));
         return service.put(dataDir, tableId, body);
     }

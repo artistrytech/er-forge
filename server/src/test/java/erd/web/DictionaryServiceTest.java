@@ -42,7 +42,7 @@ class DictionaryServiceTest {
     @Test
     void putReplacesWholeDictionary() throws Exception {
         var body = json.readTree("""
-                { "lockId": "l-1", "baseHash": "%s",
+                { "baseHash": "%s",
                   "columns": { "id": "ID", "created_at": "登録日時", "blank": "" } }
                 """.formatted(service.baseHash(dataDir)));
         var outcome = service.put(dataDir, body);
@@ -59,7 +59,7 @@ class DictionaryServiceTest {
     void staleBaseHashRejectsWrite() throws Exception {
         byte[] before = Files.readAllBytes(dataDir.resolve("dictionary.js"));
         var body = json.readTree("""
-                { "lockId": "l-1", "baseHash": "sha256:0000", "columns": { "id": "ID" } }
+                { "baseHash": "sha256:0000", "columns": { "id": "ID" } }
                 """);
         var outcome = service.put(dataDir, body);
 
@@ -75,7 +75,7 @@ class DictionaryServiceTest {
         assertEquals("", service.baseHash(dataDir));
 
         var body = json.readTree("""
-                { "lockId": "l-1", "baseHash": "", "columns": { "id": "ID" } }
+                { "baseHash": "", "columns": { "id": "ID" } }
                 """);
         assertInstanceOf(DictionaryService.Ok.class, service.put(dataDir, body));
         assertTrue(Files.isRegularFile(dataDir.resolve("dictionary.js")));

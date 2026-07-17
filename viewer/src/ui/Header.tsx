@@ -54,11 +54,9 @@ export function Header({
         <Link className="app-nav-link" href={hrefs.tables()}>
           {t("nav.tables")}
         </Link>
-        {serverMode === true && (
-          <Link className="app-nav-link" href={hrefs.columns()}>
-            {t("nav.columns")}
-          </Link>
-        )}
+        <Link className="app-nav-link" href={hrefs.columns()}>
+          {t("nav.columns")}
+        </Link>
         {serverMode === true && (
           <Link className="app-nav-link" href={hrefs.introspect()}>
             {t("nav.introspect")}
@@ -102,7 +100,11 @@ export function Header({
 
 /**
  * 編集セッションの表示と切替（A-02 / H-10）+ 保存状態（H-04）。
- * 動作モードと編集セッションは直交する別概念であり、両方を常時表示する。
+ * 閲覧ルート ⇄ 編集ルートを URL で分ける（§4.4）。編集は [編集開始] リンクで
+ * 編集ルートへ遷移して初めて始まり、[編集終了] で閲覧ルートへ戻る（未保存があれば
+ * ErdPage の離脱ガードが確認する）。自動保存は無く、保存はすべて明示（H-03）。
+ * ER図ページ以外ではここに何も出さない（テーブル編集・カラム論理名は各画面が
+ * 独自の編集 UI を持つ）。
  */
 function SessionControls({ onErdPage, diagramId }: { onErdPage: boolean; diagramId?: string }) {
   const { t } = useI18n();
@@ -111,14 +113,11 @@ function SessionControls({ onErdPage, diagramId }: { onErdPage: boolean; diagram
   const status = useEditStore((s) => s.status);
   const failMessage = useEditStore((s) => s.failMessage);
   const pendingCount = useEditStore((s) => s.pendingCount);
-  const saveMode = useEditStore((s) => s.saveMode);
-  const setSaveMode = useEditStore((s) => s.setSaveMode);
-  const requestStart = useEditStore((s) => s.requestStartEditing);
-  const requestStop = useEditStore((s) => s.requestStopEditing);
   const save = useEditStore((s) => s.save);
   const retry = useEditStore((s) => s.retry);
   const openExport = useEditStore((s) => s.openExport);
 
+  if (!onErdPage || diagramId === undefined) return null;
   const editing = session === "editing";
 
   return (
@@ -132,41 +131,35 @@ function SessionControls({ onErdPage, diagramId }: { onErdPage: boolean; diagram
         </span>
       )}
       {editing && serverMode === true && (
-        <>
-          <select
-            className="header-select"
-            data-testid="save-mode"
-            value={saveMode}
-            onChange={(e) => setSaveMode(e.target.value as "auto" | "manual")}
-            title={t("save.mode.label")}
-          >
-            <option value="auto">{t("save.mode.auto")}</option>
-            <option value="manual">{t("save.mode.manual")}</option>
-          </select>
-          <SaveStatus
-            status={status}
-            failMessage={failMessage}
-            pendingCount={pendingCount}
-            manual={saveMode === "manual"}
-            onSave={save}
-            onRetry={retry}
-          />
-        </>
+        <SaveStatus
+          status={status}
+          failMessage={failMessage}
+          pendingCount={pendingCount}
+          onSave={save}
+          onRetry={retry}
+        />
       )}
-      {editing && onErdPage && diagramId !== undefined && (
+      {editing && (
         <button type="button" className="header-button" onClick={() => openExport(diagramId)}>
           {t("edit.exportButton")}
         </button>
       )}
-      {onErdPage && (
-        <button
-          type="button"
-          className={"header-button" + (editing ? "" : " header-button-primary")}
+      {editing ? (
+        <Link
+          className="header-button"
           data-testid="session-toggle"
-          onClick={() => (editing ? requestStop() : requestStart())}
+          href={hrefs.erd(diagramId)}
         >
-          {editing ? t("session.endEdit") : t("session.startEdit")}
-        </button>
+          {t("session.endEdit")}
+        </Link>
+      ) : (
+        <Link
+          className="header-button header-button-primary"
+          data-testid="session-toggle"
+          href={hrefs.erdEdit(diagramId)}
+        >
+          {t("session.startEdit")}
+        </Link>
       )}
     </>
   );
@@ -176,14 +169,12 @@ function SaveStatus({
   status,
   failMessage,
   pendingCount,
-  manual,
   onSave,
   onRetry,
 }: {
   status: "saved" | "dirty" | "saving" | "failed";
   failMessage: string | null;
   pendingCount: number;
-  manual: boolean;
   onSave: () => void;
   onRetry: () => void;
 }) {
@@ -199,7 +190,7 @@ function SaveStatus({
       </span>
     );
   }
-  if (status === "saving" || (status === "dirty" && !manual)) {
+  if (status === "saving") {
     return (
       <span className="save-status" data-testid="save-status">
         {t("save.saving")}

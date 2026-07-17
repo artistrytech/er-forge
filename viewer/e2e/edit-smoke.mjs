@@ -123,12 +123,14 @@ async function main() {
     const posBefore = usersPosInFile(dir);
     check("initial users pos is [360, 56]", posBefore?.[0] === 360 && posBefore?.[1] === 56);
 
+    // [編集開始] は編集ルート #/erd/<id>/edit へのリンク（ロックは無い。H-11 廃止）
     await page.click('[data-testid="session-toggle"]');
     await page.waitForSelector(".session-editing", { timeout: 5000 });
-    check("editing session starts (lock acquired)", true);
+    check("editing route entered (no lock)", true);
 
-    // ---- 2. ドラッグ → 自動保存（H-01 / H-03 / T-2） ----
+    // ---- 2. ドラッグ → 明示保存（H-01 / H-03 / T-2。自動保存は無い） ----
     await dragNode(page, "public.users", 120, 40);
+    await page.keyboard.press("Control+s");
     await waitSaved(page);
     const posAfterDrag = usersPosInFile(dir);
     const uiPos = await nodePosOnCanvas(page, "public.users");
@@ -140,6 +142,7 @@ async function main() {
 
     // ---- 3. Undo は新しい編集として保存される（H-05 / §5.2） ----
     await page.keyboard.press("Control+z");
+    await page.keyboard.press("Control+s");
     await waitSaved(page);
     const posAfterUndo = usersPosInFile(dir);
     check("Ctrl+Z restores original pos in file",
@@ -150,10 +153,14 @@ async function main() {
     const redoEnabled = await page.locator(".erd-edit-toolbar button:nth-child(2)").isEnabled();
     check("own save does not clear stacks (T-6)", redoEnabled);
 
-    // ---- 4. 外部変更・未保存なし → 静かに反映（H-09 / §6.2） ----
+    // ---- 4. 編集ルートでの外部変更 → バナー[再読込]で反映（H-09 / §6.2） ----
+    // 編集中は自動再読込せず、バナーで選ばせる（未保存の有無に関わらず。§6.2）
     const file = join(dir, "data", "diagrams", "users.js");
     writeFileSync(file, readFileSync(file, "utf-8")
         .replace(/"public\.users": \{ pos: \[\d+, \d+\]/, '"public.users": { pos: [96, 96]'));
+    await page.waitForSelector('[data-testid="external-banner"]', { timeout: 10000 });
+    check("editing + external change shows banner (no silent reload)", true);
+    await page.click('[data-testid="external-reload"]');
     await page.waitForFunction(
       () => {
         const el = document.querySelector('.react-flow__node[data-id="public.users"]');
@@ -161,28 +168,30 @@ async function main() {
       },
       { timeout: 10000 },
     );
-    check("external change reloads silently and moves node", true);
+    check("external reload moves node", true);
     const undoDisabled = await page.locator(".erd-edit-toolbar button:nth-child(1)").isDisabled();
     check("undo stack cleared after external reload (T-10)", undoDisabled);
 
-    // ---- 5. 手動保存モード + 未保存あり + 外部変更 → バナー（H-09 / T-7、上書きは部分更新） ----
-    await page.selectOption('[data-testid="save-mode"]', "manual");
+    // ---- 5. 未保存 + 外部変更 → バナー[無視] → 保存で 409 STALE → 上書き（部分更新。T-7/§4.3） ----
     await dragNode(page, "public.user_profiles", 100, 60); // user_profiles を動かす（未保存）
     await page.waitForFunction(() => {
       const el = document.querySelector('[data-testid="save-status"]');
       return el !== null && (el.textContent.includes("未保存") || el.textContent.includes("unsaved"));
     });
-    // 外部で users を動かす（自分は orders しか触っていない）
+    // 外部で users を動かす（自分は user_profiles しか触っていない）
     writeFileSync(file, readFileSync(file, "utf-8")
         .replace(/"public\.users": \{ pos: \[\d+, \d+\]/, '"public.users": { pos: [160, 160]'));
     await page.waitForSelector('[data-testid="external-banner"]', { timeout: 10000 });
     check("dirty + external change shows banner, no auto reload (T-7)", true);
-    const ordersBeforeOverwrite = usersPosInFile(dir);
+    const usersBeforeOverwrite = usersPosInFile(dir);
     check("file untouched while banner shown (INV-1)",
-        ordersBeforeOverwrite[0] === 160 && ordersBeforeOverwrite[1] === 160);
+        usersBeforeOverwrite[0] === 160 && usersBeforeOverwrite[1] === 160);
 
-    // 「自分の変更を保存して上書き」→ 部分更新なので users の外部変更は残る
-    await page.click('[data-testid="external-banner"] button:nth-of-type(1)');
+    // [無視] で編集継続 → 保存すると baseHash 不一致で 409 → [自分の内容で上書き保存]
+    await page.click('[data-testid="external-ignore"]');
+    await page.keyboard.press("Control+s");
+    await page.waitForSelector('[data-testid="conflict-overwrite"]', { timeout: 10000 });
+    await page.click('[data-testid="conflict-overwrite"]');
     await waitSaved(page);
     const text = readFileSync(file, "utf-8");
     check("overwrite keeps external users pos (partial patch)",
@@ -198,7 +207,7 @@ async function main() {
     check("export equals file on disk byte-for-byte (T-15)", exported === onDisk);
     await page.keyboard.press("Escape");
 
-    // 編集終了（未保存なし）
+    // 編集終了（未保存なし）→ 閲覧ルートへ戻る
     await page.click('[data-testid="session-toggle"]');
     await page.waitForFunction(() => document.querySelector(".session-editing") === null);
     check("session ends back to viewing", true);
@@ -212,11 +221,10 @@ async function main() {
     const staticPage = await browser.newPage({ viewport: { width: 1400, height: 900 } });
     await staticPage.goto("file:///" + join(dir, "index.html").replaceAll("\\", "/"));
     await staticPage.waitForSelector(".erd-node", { timeout: 15000 });
+    // 静的モードでも [編集開始] で編集ルートへ入れる（ロック無し。警告はヘッダに常時表示）
     await staticPage.click('[data-testid="session-toggle"]');
-    await staticPage.waitForSelector('[data-testid="static-edit-ok"]');
-    await staticPage.click('[data-testid="static-edit-ok"]');
     await staticPage.waitForSelector(".session-editing");
-    check("static mode: editing starts after warning", true);
+    check("static mode: editing starts (no lock)", true);
     check("static mode: not-saved warning shown",
         await staticPage.locator(".save-warn").isVisible());
 

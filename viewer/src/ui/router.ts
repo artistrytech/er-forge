@@ -9,10 +9,14 @@ export type Route =
   /** ページ未指定の ER図。ページがあれば先頭へ転送し、無ければ作成の導線を出す（I-01） */
   | { kind: "erdHome" }
   | { kind: "erd"; diagramId: string; tableId?: string }
+  /** ER図の配置編集（閲覧ルートから [編集開始] で遷移。§4.4 / H-10） */
+  | { kind: "erdEdit"; diagramId: string }
   | { kind: "tables" }
   | { kind: "table"; tableId: string }
   | { kind: "tableEdit"; tableId: string }
   | { kind: "columns" }
+  /** カラム論理名の一括編集（閲覧ルートから [編集開始] で遷移。P-03） */
+  | { kind: "columnsEdit" }
   | { kind: "introspect" }
   | { kind: "notFound"; path: string };
 
@@ -23,10 +27,12 @@ export const hrefs = {
     tableId !== undefined
       ? `#/erd/${encodeURIComponent(diagramId)}/${encodeURIComponent(tableId)}`
       : `#/erd/${encodeURIComponent(diagramId)}`,
+  erdEdit: (diagramId: string): string => `#/erd/${encodeURIComponent(diagramId)}/edit`,
   tables: (): string => "#/tables",
   table: (tableId: string): string => `#/tables/${encodeURIComponent(tableId)}`,
   tableEdit: (tableId: string): string => `#/tables/${encodeURIComponent(tableId)}/edit`,
   columns: (): string => "#/columns",
+  columnsEdit: (): string => "#/columns/edit",
   introspect: (): string => "#/introspect",
 };
 
@@ -49,6 +55,7 @@ export function parseHash(hash: string): Route {
     if (segments.length === 1) return { kind: "erdHome" };
     if (a !== undefined) {
       if (segments.length === 2) return { kind: "erd", diagramId: a };
+      if (segments.length === 3 && b === "edit") return { kind: "erdEdit", diagramId: a };
       if (segments.length === 3 && b !== undefined) return { kind: "erd", diagramId: a, tableId: b };
     }
   }
@@ -59,7 +66,10 @@ export function parseHash(hash: string): Route {
       return { kind: "tableEdit", tableId: a };
     }
   }
-  if (head === "columns" && segments.length === 1) return { kind: "columns" };
+  if (head === "columns") {
+    if (segments.length === 1) return { kind: "columns" };
+    if (segments.length === 2 && a === "edit") return { kind: "columnsEdit" };
+  }
   if (head === "introspect" && segments.length === 1) return { kind: "introspect" };
   return { kind: "notFound", path: raw };
 }

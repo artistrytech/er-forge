@@ -53,7 +53,7 @@ final class ConfigService {
         }
     }
 
-    /** @param body { lockId, baseHash, force, ignoreTables: [...] } */
+    /** @param body { baseHash, force, ignoreTables: [...] } */
     Outcome put(Path dataDir, JsonNode body) {
         Path file = dataDir.resolve("config.js");
         String currentHash = Files.isRegularFile(file) ? Hashes.sha256(file) : null;

@@ -6,12 +6,17 @@
  * - pending:   まだ書かれていないコマンド列（store の pages[*].pending）
  * - view:      committed + pending。appStore.diagrams に反映し、描画側は常にこれを読む
  *
+ * 編集は URL で表す（閲覧ルート `#/erd/<id>` / 編集ルート `#/erd/<id>/edit`。§4.4）。
+ * `session` はそのルートに追従する（App が enterEditing / leaveEditing で切り替える）。
+ * 編集ロックは設けない（H-11 廃止）。複数タブ・外部変更は SSE のバナー通知（§6）で検知し、
+ * 保存時の baseHash 検証（§4.3）で最終的に守る。自動保存はしない（明示保存のみ。H-03）。
+ *
  * 不変条件: INV-1 変更を黙って捨てない / INV-2 スナップは入力時 / INV-3 自リビジョン無視 /
  * INV-4 編集はコマンド経由 / INV-5 baseHash 不一致で書かない / INV-6 書き込みは直列。
  */
 import { create } from "zustand";
 import { translate, type MsgKey } from "../i18n/messages";
-import { apiDelete, apiGet, apiPatch, apiPost, apiPut, apiToken } from "./api";
+import { apiDelete, apiGet, apiPatch, apiPost } from "./api";
 import { applyCommands, foldToPayload, invert, type Command } from "./commands";
 import {
   forceReloadDiagram,
@@ -25,12 +30,8 @@ import type { Diagram } from "./types";
 
 export type SaveStatus = "saved" | "dirty" | "saving" | "failed";
 
-export type EditDialog =
-  | { type: "staticWarn" }
-  | { type: "lockBusy"; lastHeartbeat?: string }
-  | { type: "stopConfirm" }
-  | { type: "conflict"; diagramId: string }
-  | { type: "lockLost" };
+/** 保存時の競合（409 STALE。§4.3）— 自動でどちらかを選ばない（INV-1） */
+export type EditDialog = { type: "conflict"; diagramId: string };
 
 /** ページ管理（I-01〜I-03）の結果。エラーは呼び出し元がフォームに表示する */
 export type PageOpResult = { ok: true } | { ok: false; error: string };
@@ -43,24 +44,25 @@ export interface PageEdit {
 
 const EMPTY_PAGE: PageEdit = { pending: [], undo: [], redo: [] };
 
+/** 「このタブ内では通知しない」（§6.2）。タブを閉じるまで有効 */
+const MUTE_KEY = "erd-mute-external";
+
 interface EditState {
   session: "viewing" | "editing";
-  saveMode: "auto" | "manual";
   status: SaveStatus;
   failMessage: string | null;
   pages: Record<string, PageEdit>;
   pendingCount: number;
   dialog: EditDialog | null;
-  /** 現在ページが外部で更新された（未保存ありのため自動反映しない）バナー（H-09） */
+  /** 現在ページが外部で更新された（編集ルート滞在中のバナー。§6.2） */
   externalUpdate: { diagramId: string; revision: string } | null;
   exportDiagramId: string | null;
 
-  requestStartEditing(): void;
-  confirmStartEditing(force: boolean): void;
-  requestStopEditing(): void;
-  stopEditing(action: "save" | "discard" | "cancel"): void;
+  /** 編集ルートへ入った（App がルートに追従して呼ぶ） */
+  enterEditing(): void;
+  /** 編集ルートから離脱した。未保存は破棄して committed に戻す（離脱ガードは呼び出し側） */
+  leaveEditing(): void;
   closeDialog(): void;
-  setSaveMode(mode: "auto" | "manual"): void;
 
   push(diagramId: string, cmd: Command): void;
   undo(diagramId: string): void;
@@ -69,13 +71,16 @@ interface EditState {
   save(): void;
   retry(): void;
   resolveConflict(action: "overwrite" | "reload"): void;
-  resolveExternal(action: "overwrite" | "reload"): void;
+  /** 外部変更バナー: reload=破棄して再読込 / ignore=無視して編集継続（§6.2） */
+  resolveExternal(action: "reload" | "ignore"): void;
+  /** このタブ内では以後通知しない（sessionStorage に保持。§6.2） */
+  muteExternalForTab(): void;
 
   openExport(diagramId: string): void;
   closeExport(): void;
   setDragging(dragging: boolean): void;
 
-  /** ページ管理（I-01〜I-03）。編集ロックを共有し、書き込みは保存経路と直列化する */
+  /** ページ管理（I-01〜I-03）。書き込みは保存経路と直列化する */
   createPage(id: string, title: string): Promise<PageOpResult>;
   renamePage(diagramId: string, title: string): Promise<PageOpResult>;
   reorderPage(diagramId: string, direction: "up" | "down"): Promise<PageOpResult>;
@@ -93,20 +98,12 @@ const myRevisions: string[] = [];
 /** ドラッグ中に届いた SSE イベントの保留（§6.2） */
 const deferredEvents: { revision: string; files: string[] }[] = [];
 
-let lockId: string | null = null;
-let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-let saveTimer: ReturnType<typeof setTimeout> | null = null;
-let saveTimerStartedAt = 0;
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
 let retryCount = 0;
 let inflight = false;
 let queuedFlush = false;
-let stopAfterSave = false;
 let dragging = false;
 
-const AUTO_SAVE_DEBOUNCE_MS = 300;
-const AUTO_SAVE_MAX_WAIT_MS = 2000;
-const HEARTBEAT_MS = 15_000;
 const RETRY_DELAYS_MS = [1000, 4000, 10_000];
 
 function rememberRevision(rev: string): void {
@@ -130,6 +127,14 @@ function toast(text: string): void {
   useAppStore.getState().addToast(text);
 }
 
+function isMuted(): boolean {
+  try {
+    return sessionStorage.getItem(MUTE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
 /** 初回編集時に committed を確保する（その時点では view == committed） */
 function ensureCommitted(diagramId: string): void {
   if (!committed.has(diagramId)) {
@@ -146,7 +151,6 @@ function setView(diagramId: string, diagram: Diagram): void {
 
 export const useEditStore = create<EditState>((set, get) => ({
   session: "viewing",
-  saveMode: "auto",
   status: "saved",
   failMessage: null,
   pages: {},
@@ -155,72 +159,31 @@ export const useEditStore = create<EditState>((set, get) => ({
   externalUpdate: null,
   exportDiagramId: null,
 
-  // ---- 編集セッション（H-10 / §2） ----
+  // ---- 編集セッション（H-10 / §2。ルートに追従する） ----
 
-  requestStartEditing: () => {
+  enterEditing: () => {
     if (get().session === "editing") return;
-    if (!serverMode()) {
-      set({ dialog: { type: "staticWarn" } });
-      return;
-    }
-    void acquireLock(false);
+    set({ session: "editing", failMessage: null });
+    // 編集開始時に最新の baseHash を取り直す（§4.3）。静的モードは保存しないため不要
+    if (serverMode()) void refreshHashes();
   },
 
-  confirmStartEditing: (force) => {
-    if (!serverMode()) {
-      // 静的モード: 警告を了解した。保存はできない（H-13 のエクスポートで持ち出す）
-      set({ session: "editing", dialog: null });
-      return;
-    }
-    void acquireLock(force);
-  },
-
-  requestStopEditing: () => {
+  leaveEditing: () => {
+    if (get().session !== "editing") return;
+    // 未保存の変更を捨てて committed に戻す（離脱してよいかの確認は呼び出し側の責務）
     const st = get();
-    if (st.session !== "editing") return;
-    if (serverMode() && st.pendingCount > 0) {
-      set({ dialog: { type: "stopConfirm" } });
-      return;
-    }
-    get().stopEditing("discard");
-  },
-
-  stopEditing: (action) => {
-    if (action === "cancel") {
-      set({ dialog: null });
-      return;
-    }
-    if (action === "save") {
-      stopAfterSave = true;
-      set({ dialog: null });
-      void flush();
-      return;
-    }
-    // discard: 未保存の変更を捨てて committed に戻す（静的モードでは pending は無いか、
-    // あっても保存手段が無いため view を保ったまま閲覧に戻る）
-    const st = get();
-    if (serverMode()) {
-      const pages: Record<string, PageEdit> = {};
-      for (const [id, page] of Object.entries(st.pages)) {
-        if (page.pending.length > 0) {
-          const base = committed.get(id);
-          if (base) setView(id, base);
-          pages[id] = { pending: [], undo: [], redo: [] };
-        } else {
-          pages[id] = page;
-        }
+    const pages: Record<string, PageEdit> = {};
+    for (const [id, page] of Object.entries(st.pages)) {
+      if (page.pending.length > 0) {
+        const base = committed.get(id);
+        if (base) setView(id, base);
       }
-      set({ pages, pendingCount: 0 });
+      pages[id] = { pending: [], undo: [], redo: [] };
     }
-    endSession();
+    set({ pages, pendingCount: 0, session: "viewing", status: "saved", failMessage: null, externalUpdate: null });
   },
 
   closeDialog: () => set({ dialog: null }),
-
-  setSaveMode: (saveMode) => {
-    set({ saveMode });
-    if (saveMode === "auto") scheduleAutoSave();
-  },
 
   // ---- コマンド（INV-4 / H-01 / H-02 / H-05） ----
 
@@ -238,7 +201,6 @@ export const useEditStore = create<EditState>((set, get) => ({
       [diagramId]: { pending: [...page.pending, cmd], undo: undoStack, redo: [] },
     };
     set({ pages, pendingCount: countPending(pages), status: statusAfterEdit(st.status) });
-    scheduleAutoSave();
   },
 
   undo: (diagramId) => {
@@ -260,7 +222,6 @@ export const useEditStore = create<EditState>((set, get) => ({
       },
     };
     set({ pages, pendingCount: countPending(pages), status: statusAfterEdit(st.status) });
-    scheduleAutoSave();
   },
 
   redo: (diagramId) => {
@@ -281,16 +242,11 @@ export const useEditStore = create<EditState>((set, get) => ({
       },
     };
     set({ pages, pendingCount: countPending(pages), status: statusAfterEdit(st.status) });
-    scheduleAutoSave();
   },
 
-  // ---- 保存（H-03 / H-04 / §4） ----
+  // ---- 保存（H-03 / H-04 / §4。明示保存のみ） ----
 
   save: () => {
-    if (saveTimer !== null) {
-      clearTimeout(saveTimer);
-      saveTimer = null;
-    }
     void flush();
   },
 
@@ -316,11 +272,19 @@ export const useEditStore = create<EditState>((set, get) => ({
     const ext = st.externalUpdate;
     if (!ext) return;
     set({ externalUpdate: null });
-    if (action === "overwrite") {
-      void overwriteAndSync(ext.diagramId);
-    } else {
+    if (action === "reload") {
       void discardAndReload(ext.diagramId, ext.revision);
     }
+    // ignore: バナーを閉じるだけ。編集を続け、保存時に 409 STALE で守られる（§6.2）
+  },
+
+  muteExternalForTab: () => {
+    try {
+      sessionStorage.setItem(MUTE_KEY, "1");
+    } catch {
+      // sessionStorage 不可でも致命的ではない（バナーが再度出るだけ）
+    }
+    set({ externalUpdate: null });
   },
 
   // ---- エクスポート（H-13） ----
@@ -339,12 +303,11 @@ export const useEditStore = create<EditState>((set, get) => ({
   // ---- ページ管理（I-01〜I-03 / §8.2） ----
 
   createPage: (id, title) =>
-    pageOp(() => apiPost("/__erd/diagrams", { lockId, id, title })),
+    pageOp(() => apiPost("/__erd/diagrams", { id, title })),
 
   renamePage: (diagramId, title) =>
     pageOp(() =>
       apiPatch(`/__erd/diagrams/${encodeURIComponent(diagramId)}`, {
-        lockId,
         baseHash: baseHashes.get(`diagrams/${diagramId}.js`) ?? "",
         title,
       }),
@@ -370,7 +333,6 @@ export const useEditStore = create<EditState>((set, get) => ({
 
     return pageOp(() =>
       apiPatch(`/__erd/diagrams/${encodeURIComponent(self.id)}`, {
-        lockId,
         baseHash: baseHashes.get(`diagrams/${self.id}.js`) ?? "",
         order: a,
       }),
@@ -379,7 +341,6 @@ export const useEditStore = create<EditState>((set, get) => ({
         ? first
         : pageOp(() =>
             apiPatch(`/__erd/diagrams/${encodeURIComponent(other.id)}`, {
-              lockId,
               baseHash: baseHashes.get(`diagrams/${other.id}.js`) ?? "",
               order: b,
             }),
@@ -391,7 +352,6 @@ export const useEditStore = create<EditState>((set, get) => ({
     pageOp(
       () =>
         apiDelete(`/__erd/diagrams/${encodeURIComponent(diagramId)}`, {
-          lockId,
           baseHash: baseHashes.get(`diagrams/${diagramId}.js`) ?? "",
         }),
       diagramId,
@@ -409,7 +369,7 @@ async function pageOp(
   request: () => Promise<{ status: number; body: string }>,
   removedDiagramId?: string,
 ): Promise<PageOpResult> {
-  if (!serverMode() || lockId === null) {
+  if (!serverMode()) {
     return { ok: false, error: t9n("page.editHint") };
   }
   await waitForIdle();
@@ -423,10 +383,6 @@ async function pageOp(
       await Promise.all([reloadManifest(body.revision), reloadIndex(body.revision)]);
       await refreshHashes();
       return { ok: true };
-    }
-    if (res.status === 423) {
-      onLockLost();
-      return { ok: false, error: t9n("edit.lockLost.title") };
     }
     const body = JSON.parse(res.body) as { code?: string; id?: string; message?: string };
     if (body.code === "DUPLICATE_ID") {
@@ -467,7 +423,7 @@ function forgetDiagram(diagramId: string): void {
 }
 
 /**
- * ELK による自動レイアウト（H-07 / H-08）。書き込みをしないためロックは不要。
+ * ELK による自動レイアウト（H-07 / H-08）。書き込みをしない。
  * 返る座標は原点 (0,0) 基準の相対座標であり、ページ上のどこへ置くかは呼び出し側が決める。
  */
 export async function requestAutoLayout(
@@ -490,94 +446,7 @@ function statusAfterEdit(current: SaveStatus): SaveStatus {
   return current === "failed" || current === "saving" ? current : "dirty";
 }
 
-// ------------------------------------------------------------- 編集ロック（H-11）
-
-async function acquireLock(force: boolean): Promise<void> {
-  try {
-    const res = await apiPost("/__erd/lock", force ? { force: true } : {});
-    if (res.status === 200) {
-      const body = JSON.parse(res.body) as { lockId: string };
-      lockId = body.lockId;
-      startHeartbeat();
-      await refreshHashes();
-      useEditStore.setState({ session: "editing", dialog: null, status: "saved", failMessage: null });
-      return;
-    }
-    if (res.status === 423) {
-      const body = JSON.parse(res.body) as { lastHeartbeat?: string };
-      useEditStore.setState({ dialog: { type: "lockBusy", lastHeartbeat: body.lastHeartbeat } });
-      return;
-    }
-    toast(`lock error: HTTP ${res.status}`);
-  } catch {
-    toast("lock error: network");
-  }
-}
-
-function startHeartbeat(): void {
-  stopHeartbeat();
-  heartbeatTimer = setInterval(() => {
-    if (lockId === null) return;
-    apiPut("/__erd/lock", { lockId }).then(
-      (res) => {
-        if (res.status === 409) onLockLost();
-      },
-      () => {
-        // サーバー不達は保存経路のエラーで扱う（heartbeat では何もしない）
-      },
-    );
-  }, HEARTBEAT_MS);
-}
-
-function stopHeartbeat(): void {
-  if (heartbeatTimer !== null) {
-    clearInterval(heartbeatTimer);
-    heartbeatTimer = null;
-  }
-}
-
-/** ロック喪失（強制取得された / 失効）: 閲覧中へ強制降格。未保存の変更は保持する（INV-1） */
-function onLockLost(): void {
-  stopHeartbeat();
-  lockId = null;
-  stopAfterSave = false;
-  useEditStore.setState({ session: "viewing", dialog: { type: "lockLost" } });
-}
-
-function endSession(): void {
-  const id = lockId;
-  stopHeartbeat();
-  lockId = null;
-  stopAfterSave = false;
-  if (id !== null) {
-    void apiDelete("/__erd/lock", { lockId: id }).catch(() => undefined);
-  }
-  useEditStore.setState({ session: "viewing", dialog: null, status: "saved", failMessage: null });
-}
-
 // ------------------------------------------------------------------ 保存エンジン
-
-function scheduleAutoSave(): void {
-  const st = useEditStore.getState();
-  if (!serverMode() || st.saveMode !== "auto" || st.session !== "editing") return;
-  if (st.pendingCount === 0) return;
-  const now = Date.now();
-  if (saveTimer === null) {
-    saveTimerStartedAt = now;
-  } else {
-    clearTimeout(saveTimer);
-    // debounce しすぎない（maxWait 2000ms）
-    if (now - saveTimerStartedAt >= AUTO_SAVE_MAX_WAIT_MS) {
-      saveTimer = null;
-      void flush();
-      return;
-    }
-  }
-  saveTimer = setTimeout(() => {
-    saveTimer = null;
-    void flush();
-  }, AUTO_SAVE_DEBOUNCE_MS);
-}
 
 /**
  * 書き込みは常に1本だけ（INV-6）。pending のあるページを順に1ページずつ送る。
@@ -588,7 +457,7 @@ async function flush(forceFor?: string): Promise<void> {
     queuedFlush = true;
     return;
   }
-  if (!serverMode() || lockId === null) return;
+  if (!serverMode()) return;
   const st = useEditStore.getState();
   const entry = forceFor !== undefined
     ? ([forceFor, pageOf(st, forceFor)] as const)
@@ -625,7 +494,6 @@ async function flush(forceFor?: string): Promise<void> {
   inflight = true;
   try {
     const res = await apiPatch(`/__erd/diagrams/${diagramId}`, {
-      lockId,
       baseHash: baseHashes.get(rel) ?? "",
       force: forceFor === diagramId,
       nodes,
@@ -651,10 +519,6 @@ async function flush(forceFor?: string): Promise<void> {
     } else if (res.status === 409) {
       restorePending(diagramId, sent);
       useEditStore.setState({ status: "failed", failMessage: null, dialog: { type: "conflict", diagramId } });
-    } else if (res.status === 423) {
-      restorePending(diagramId, sent);
-      useEditStore.setState({ status: "failed", failMessage: null });
-      onLockLost();
     } else {
       restorePending(diagramId, sent);
       scheduleRetry(`HTTP ${res.status}`);
@@ -687,10 +551,6 @@ function finishIfIdle(): void {
   const st = useEditStore.getState();
   if (st.pendingCount === 0) {
     useEditStore.setState({ status: "saved", failMessage: null });
-    if (stopAfterSave) {
-      stopAfterSave = false;
-      endSession();
-    }
   } else {
     useEditStore.setState({ status: "dirty" });
   }
@@ -716,7 +576,7 @@ let eventSource: EventSource | null = null;
 /** サーバーモードで1回だけ呼ぶ（boot 後）。SSE を張り、外部変更を反映する */
 export function connectEvents(): void {
   if (eventSource !== null || !serverMode()) return;
-  eventSource = new EventSource(`/__erd/events?t=${encodeURIComponent(apiToken())}`);
+  eventSource = new EventSource(`/__erd/events?t=${encodeURIComponent(apiTokenForEvents())}`);
   eventSource.addEventListener("change", (e) => {
     try {
       const data = JSON.parse((e as MessageEvent).data as string) as {
@@ -728,6 +588,10 @@ export function connectEvents(): void {
       // 壊れたイベントは無視する
     }
   });
+}
+
+function apiTokenForEvents(): string {
+  return new URLSearchParams(location.search).get("t") ?? "";
 }
 
 function handleChangeEvent(ev: { revision: string; files: string[] }): void {
@@ -747,13 +611,15 @@ function handleChangeEvent(ev: { revision: string; files: string[] }): void {
     applyOtherChanges(others, ev.revision);
   }
   if (touchesCurrent && currentId !== null) {
-    const st = useEditStore.getState();
-    const page = pageOf(st, currentId);
-    const busy = page.pending.length > 0 || inflight || st.status === "failed";
-    if (st.session === "editing" && busy) {
-      // 未保存あり: 自動で何もしない。バナーで選ばせる（INV-1）
-      useEditStore.setState({ externalUpdate: { diagramId: currentId, revision: ev.revision } });
+    const editing = useEditStore.getState().session === "editing";
+    if (editing) {
+      // 編集ルート滞在中: 自動で何もしない。バナーで選ばせる（§6.2 / INV-1）。
+      // 「このタブ内では通知しない」が選ばれていれば静かに据え置く（保存時 409 で守られる）
+      if (!isMuted()) {
+        useEditStore.setState({ externalUpdate: { diagramId: currentId, revision: ev.revision } });
+      }
     } else {
+      // 閲覧ルート（未保存なし）: 静かに再読込する
       void silentReloadCurrent(currentId, ev.revision);
     }
   } else if (others.length > 0) {
@@ -792,12 +658,10 @@ function applyOtherChanges(files: string[], revision: string): void {
 
 /** 現在ページを静かに再読込し、Undo スタックを破棄する（§5.3 / §6.2） */
 async function silentReloadCurrent(diagramId: string, revision: string): Promise<void> {
-  const hadStacks = stacksNotEmpty(diagramId);
   committed.delete(diagramId);
   clearStacks(diagramId);
   await forceReloadDiagram(diagramId, revision);
   await refreshHashes();
-  toast(t9n(hadStacks ? "toast.undoCleared" : "toast.externalApplied"));
 }
 
 /**
@@ -825,11 +689,6 @@ async function discardAndReload(diagramId: string, revision?: string): Promise<v
     failMessage: null,
   }));
   toast(t9n("toast.undoCleared"));
-}
-
-function stacksNotEmpty(diagramId: string): boolean {
-  const page = pageOf(useEditStore.getState(), diagramId);
-  return page.pending.length > 0 || page.undo.length > 0 || page.redo.length > 0;
 }
 
 function clearStacks(diagramId: string): void {
@@ -862,15 +721,6 @@ function t9n(key: MsgKey, vars?: Record<string, string | number>): string {
 // -------------------------------------------------------- タブ閉じ・離脱（§2.1）
 
 export function installUnloadHandlers(): void {
-  window.addEventListener("pagehide", () => {
-    if (lockId !== null) {
-      // sendBeacon は POST しか送れないため専用エンドポイントを使う
-      navigator.sendBeacon(
-        `/__erd/lock/release?t=${encodeURIComponent(apiToken())}`,
-        JSON.stringify({ lockId }),
-      );
-    }
-  });
   window.addEventListener("beforeunload", (e) => {
     const st = useEditStore.getState();
     // 静的モードでは警告しない（保存手段がないため。§8.1）
@@ -882,22 +732,9 @@ export function installUnloadHandlers(): void {
 
 // ---------------------------------------- 他画面（テーブル編集・一括編集）との共有
 
-/**
- * 編集フォーム（O-03 / P-03）の書き込みが使う編集ロックID。
- * ロックはプロジェクト全体で1つ（H-11）であり、フォームも同じセッションを共有する。
- */
-export function currentLockId(): string | null {
-  return lockId;
-}
-
 /** フォームの保存が発行したリビジョンを記録し、SSE のエコーバックを無視させる（INV-3） */
 export function rememberOwnRevision(revision: string): void {
   rememberRevision(revision);
-}
-
-/** フォームの保存が 423 LOCK_LOST を受けたときの共通処理（閲覧へ強制降格） */
-export function notifyLockLost(): void {
-  onLockLost();
 }
 
 /** エクスポート後などに未保存の有無を判定するヘルパ */

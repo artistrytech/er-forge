@@ -30,6 +30,7 @@ import { formatName, resolveTableName } from "../model/logicalName";
 import { useAppStore } from "../model/store";
 import type { IndexTable, Relation } from "../model/types";
 import { Dialog } from "../ui/Dialog";
+import { hrefs } from "../ui/router";
 import { useCanvasStore } from "./canvasStore";
 import { RelationEdge, type RelationEdgeType } from "./RelationEdge";
 import { TableNode, type TableNodeType } from "./TableNode";
@@ -100,6 +101,23 @@ function ErdCanvas({ diagramId, focusTableId }: ErdPageProps) {
     setCurrentDiagramId(diagramId);
     return () => setCurrentDiagramId(null);
   }, [diagramId, setCurrentDiagramId]);
+
+  // 編集ルート滞在中は別ルートへ遷移できない（未保存があれば破棄 / キャンセルを確認。
+  // §2.1 / §4.4）。戻る / 進む・リンク遷移のいずれもハッシュ変更として捕捉する。
+  // 確認が通れば App の leaveEditing が未保存を破棄して閲覧へ戻す
+  useEffect(() => {
+    if (!editing) return;
+    const ownHash = hrefs.erdEdit(diagramId);
+    const onHashChange = () => {
+      if (location.hash === ownHash) return;
+      const pending = useEditStore.getState().pages[diagramId]?.pending.length ?? 0;
+      if (pending > 0 && !window.confirm(t("tableEdit.leaveConfirm"))) {
+        location.hash = ownHash;
+      }
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, [editing, diagramId, t]);
 
   const indexTables = useMemo(() => {
     const map = new Map<string, IndexTable>();
@@ -685,7 +703,7 @@ function KeyboardShortcuts({
           st.undo(diagramId);
         }
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
-        // 手動保存の保存手段であり、自動保存でも即時 flush できる（N-10）
+        // 保存はすべて明示（自動保存は無い。N-10）
         e.preventDefault();
         if (st.session === "editing" && useAppStore.getState().serverMode === true) {
           st.save();

@@ -53,6 +53,17 @@ export function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [setSearchOpen]);
 
+  // 編集セッションはルートに追従する（H-10 / §4.4）。編集ルート（#/erd/<id>/edit）に
+  // いる間だけ ER図が編集中になる。離脱の未保存ガードは ErdPage が持つ（そこで confirm が
+  // 通ってからここへ来る）ため、erdEdit を離れたら安全に閲覧へ戻せる
+  useEffect(() => {
+    if (route.kind === "erdEdit") {
+      useEditStore.getState().enterEditing();
+    } else {
+      useEditStore.getState().leaveEditing();
+    }
+  }, [route.kind]);
+
   // 空プロジェクトからの逆生成（§3.6「既存のスキーマから生成する」）。
   // データはまだ無いが、それを作るための画面なので開けなければならない
   const bootstrapping =
@@ -69,9 +80,11 @@ export function App() {
   }
 
   const firstDiagram = manifest?.diagrams?.[0]?.id;
-  const currentDiagramId = route.kind === "erd" ? route.diagramId : undefined;
+  const currentDiagramId =
+    route.kind === "erd" || route.kind === "erdEdit" ? route.diagramId : undefined;
   // ページが0件の #/erd でも編集セッションを開始できなければ、ページを作れない
-  const onErdRoute = route.kind === "erd" || route.kind === "erdHome";
+  const onErdRoute =
+    route.kind === "erd" || route.kind === "erdHome" || route.kind === "erdEdit";
   const failedIds = Object.keys(tableErrors);
 
   let content: React.ReactNode;
@@ -103,6 +116,15 @@ export function App() {
         </div>
       );
       break;
+    case "erdEdit":
+      // 編集ルート。ER図は静的モードでも編集できる（保存不可の警告つき。§9.7）
+      content = (
+        <div className="erd-layout">
+          <Sidebar currentDiagramId={route.diagramId} />
+          <ErdPage diagramId={route.diagramId} />
+        </div>
+      );
+      break;
     case "tables":
       content = <TableList />;
       break;
@@ -120,21 +142,18 @@ export function App() {
       }
       break;
     case "columns":
+      // 閲覧ルート。静的モードでも閲覧のみ可能（P-03。静・編）
+      content = <ColumnsPage editing={false} />;
+      break;
+    case "columnsEdit":
+      // 編集ルート。静的モードでは閲覧（#/columns）へリダイレクト（§4.4）
       if (serverMode === true) {
-        content = <ColumnsPage />;
+        content = <ColumnsPage editing={true} />;
       } else if (serverMode === null) {
         content = <div className="boot-loading">{t("canvas.loading")}</div>;
       } else {
-        content = (
-          <div className="empty-state">
-            <p>{t("columnsPage.serverOnly")}</p>
-            <p>
-              <Link className="button-link" href={hrefs.tables()}>
-                {t("notFound.toTables")}
-              </Link>
-            </p>
-          </div>
-        );
+        replaceRoute(hrefs.columns());
+        content = null;
       }
       break;
     case "introspect":

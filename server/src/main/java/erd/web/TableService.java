@@ -74,7 +74,7 @@ public final class TableService {
     // ------------------------------------------------------------------ PUT
 
     /**
-     * @param body { lockId, baseHash, force, table: {...テーブル1件の完全な定義...} }
+     * @param body { baseHash, force, table: {...テーブル1件の完全な定義...} }
      */
     public Outcome put(Path dataDir, String tableId, JsonNode body) {
         Path file = tableFile(dataDir, tableId);

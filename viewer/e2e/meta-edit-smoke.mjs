@@ -96,7 +96,7 @@ async function main() {
       null,
       { timeout: 15000 },
     );
-    check("edit form is enabled after acquiring the lock", true);
+    check("edit form is enabled on the edit route (no lock)", true);
 
     await typeInto(page.locator(".form-grid input").first(), "セッション");
 
@@ -142,8 +142,9 @@ async function main() {
     check("a dashed edge appears on the diagram", true);
 
     // ---- カラム論理名の一括編集（P-03） ----
-    await page.goto(`${url}#/columns`);
-    // 全テーブルのロード完了 + ロック済みで保存が有効化されるまで編集
+    // 閲覧は #/columns、編集は #/columns/edit（ロックは無い。P-03 §2.4）
+    await page.goto(`${url}#/columns/edit`);
+    // 全テーブルのロード完了で保存が有効化されるまで編集
     const rowInput = page
       .locator("tr", { has: page.locator("td", { hasText: "session_token" }) })
       .locator("input");

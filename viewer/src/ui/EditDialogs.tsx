@@ -1,10 +1,10 @@
 /**
- * 編集セッション関連のダイアログ・バナー・トースト（H-09〜H-13 / M-01 / M-02）。
- * - 静的モードの編集開始警告（§8.1）
- * - 編集ロック競合（423。強制取得あり。§2.3）/ ロック喪失
+ * 編集関連のダイアログ・バナー・トースト（H-09 / H-12 / M-01 / M-02）。
  * - 保存競合（409 STALE。§4.3）— 自動でどちらかを選ばない（INV-1）
- * - 現在ページの外部変更バナー（H-09）
- * - 編集終了時の未保存確認
+ * - 現在ページの外部変更バナー（H-09。編集ルート滞在中のみ。§6.2）
+ *
+ * 編集ロックは廃止したため、ロック競合 / ロック喪失 / 静的モード開始警告 / 終了確認の
+ * ダイアログは無い（静的モードの警告はヘッダに常時表示、終了確認は離脱ガードで行う）。
  */
 import { useI18n } from "../i18n/useI18n";
 import { useEditStore } from "../model/editStore";
@@ -15,123 +15,55 @@ export function EditDialogs() {
   const { t } = useI18n();
   const dialog = useEditStore((s) => s.dialog);
   const closeDialog = useEditStore((s) => s.closeDialog);
-  const confirmStart = useEditStore((s) => s.confirmStartEditing);
-  const stopEditing = useEditStore((s) => s.stopEditing);
   const resolveConflict = useEditStore((s) => s.resolveConflict);
-  const openExport = useEditStore((s) => s.openExport);
-  const currentDiagramId = useAppStore((s) => s.currentDiagramId);
 
   if (!dialog) return null;
 
-  switch (dialog.type) {
-    case "staticWarn":
-      return (
-        <Dialog title={t("edit.staticWarn.title")} onClose={closeDialog}>
-          <p>{t("edit.staticWarn.body")}</p>
-          <div className="dialog-actions">
-            <button type="button" data-testid="static-edit-ok" onClick={() => confirmStart(false)}>
-              {t("edit.staticWarn.ok")}
-            </button>
-            <button type="button" onClick={closeDialog}>
-              {t("dialog.cancel")}
-            </button>
-          </div>
-        </Dialog>
-      );
-    case "lockBusy":
-      return (
-        <Dialog title={t("edit.lockBusy.title")} onClose={closeDialog}>
-          <p>{t("edit.lockBusy.body")}</p>
-          {dialog.lastHeartbeat !== undefined && (
-            <p className="dialog-note">
-              {t("edit.lockBusy.lastHeartbeat", { time: dialog.lastHeartbeat })}
-            </p>
-          )}
-          <div className="dialog-actions">
-            <button type="button" data-testid="lock-force" onClick={() => confirmStart(true)}>
-              {t("edit.lockBusy.force")}
-            </button>
-            <button type="button" onClick={closeDialog}>
-              {t("dialog.cancel")}
-            </button>
-          </div>
-        </Dialog>
-      );
-    case "lockLost":
-      return (
-        <Dialog title={t("edit.lockLost.title")} onClose={closeDialog}>
-          <p>{t("edit.lockLost.body")}</p>
-          <div className="dialog-actions">
-            {currentDiagramId !== null && (
-              <button
-                type="button"
-                onClick={() => {
-                  closeDialog();
-                  openExport(currentDiagramId);
-                }}
-              >
-                {t("edit.exportButton")}
-              </button>
-            )}
-            <button type="button" onClick={closeDialog}>
-              {t("export.close")}
-            </button>
-          </div>
-        </Dialog>
-      );
-    case "stopConfirm":
-      return (
-        <Dialog title={t("edit.stopConfirm.title")} onClose={() => stopEditing("cancel")}>
-          <p>{t("edit.stopConfirm.body")}</p>
-          <div className="dialog-actions">
-            <button type="button" onClick={() => stopEditing("save")}>
-              {t("edit.stopConfirm.save")}
-            </button>
-            <button type="button" data-testid="stop-discard" onClick={() => stopEditing("discard")}>
-              {t("edit.stopConfirm.discard")}
-            </button>
-            <button type="button" onClick={() => stopEditing("cancel")}>
-              {t("dialog.cancel")}
-            </button>
-          </div>
-        </Dialog>
-      );
-    case "conflict":
-      return (
-        <Dialog title={t("edit.conflict.title")} onClose={closeDialog}>
-          <p>{t("edit.conflict.body", { file: `data/diagrams/${dialog.diagramId}.js` })}</p>
-          <div className="dialog-actions">
-            <button type="button" data-testid="conflict-reload" onClick={() => resolveConflict("reload")}>
-              {t("edit.conflict.reload")}
-            </button>
-            <button
-              type="button"
-              data-testid="conflict-overwrite"
-              onClick={() => resolveConflict("overwrite")}
-            >
-              {t("edit.conflict.overwrite")}
-            </button>
-          </div>
-        </Dialog>
-      );
-  }
+  // 保存時の競合（409 STALE）。再読込 / 上書きのどちらかを人が選ぶ（INV-1）
+  return (
+    <Dialog title={t("edit.conflict.title")} onClose={closeDialog}>
+      <p>{t("edit.conflict.body", { file: `data/diagrams/${dialog.diagramId}.js` })}</p>
+      <div className="dialog-actions">
+        <button type="button" data-testid="conflict-reload" onClick={() => resolveConflict("reload")}>
+          {t("edit.conflict.reload")}
+        </button>
+        <button
+          type="button"
+          data-testid="conflict-overwrite"
+          onClick={() => resolveConflict("overwrite")}
+        >
+          {t("edit.conflict.overwrite")}
+        </button>
+      </div>
+    </Dialog>
+  );
 }
 
-/** 現在ページが外部で更新されたときの選択バナー（H-09。未保存ありのため自動反映しない） */
+/**
+ * 現在ページが外部で更新されたときのバナー（H-09 / §6.2）。編集ルート滞在中のみ出る。
+ * 他の通知より重要度が高いためトーストではなくバナーとする。二重には開かない（単一の状態）。
+ * [再読込] = 破棄して再読込 / [無視] = 編集を続ける（保存時 409 STALE で守られる）。
+ * 「このタブ内では通知しない」で以後このタブでは出さない（sessionStorage）。
+ */
 export function ExternalUpdateBanner() {
   const { t } = useI18n();
   const externalUpdate = useEditStore((s) => s.externalUpdate);
   const resolveExternal = useEditStore((s) => s.resolveExternal);
+  const muteForTab = useEditStore((s) => s.muteExternalForTab);
   if (!externalUpdate) return null;
   return (
     <div className="external-banner" data-testid="external-banner">
       <span>{t("edit.external.body")}</span>
-      <button type="button" onClick={() => resolveExternal("overwrite")}>
-        {t("edit.external.overwrite")}
-      </button>
       <button type="button" data-testid="external-reload" onClick={() => resolveExternal("reload")}>
         {t("edit.external.reload")}
       </button>
+      <button type="button" data-testid="external-ignore" onClick={() => resolveExternal("ignore")}>
+        {t("edit.external.ignore")}
+      </button>
+      <label className="external-mute">
+        <input type="checkbox" data-testid="external-mute" onChange={() => muteForTab()} />
+        {t("edit.external.muteTab")}
+      </label>
     </div>
   );
 }

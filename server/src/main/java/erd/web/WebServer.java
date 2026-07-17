@@ -33,7 +33,6 @@ public final class WebServer {
     private final String token;
     private final ObjectMapper mapper = new ObjectMapper();
     private final ProjectStore store = new ProjectStore();
-    private final LockManager locks = new LockManager();
     private final Revisions revisions = new Revisions();
     private final DiagramService diagrams = new DiagramService();
     private final AutoLayout layout = new AutoLayout();
@@ -82,12 +81,6 @@ public final class WebServer {
                 ctx.json(Map.of("ok", true, "schemaVersion", SchemaVersions.CURRENT)));
         javalin.get("/__erd/project", this::project);
         javalin.post("/__erd/bootstrap", this::bootstrap);
-
-        javalin.post("/__erd/lock", this::lockAcquire);
-        javalin.put("/__erd/lock", this::lockHeartbeat);
-        javalin.delete("/__erd/lock", this::lockRelease);
-        // sendBeacon は POST しか送れないため、タブ閉じ用の別名を用意する（§2.1）
-        javalin.post("/__erd/lock/release", this::lockRelease);
 
         // ページ管理（I-01〜I-03 / I-06）とレイアウト
         javalin.get("/__erd/diagrams/{id}", this::getDiagram);
@@ -148,48 +141,6 @@ public final class WebServer {
         ctx.json(res);
     }
 
-    // ------------------------------------------------------------------ lock
-
-    private void lockAcquire(Context ctx) throws Exception {
-        if (!authorized(ctx)) {
-            ctx.status(403).json(Map.of("error", "forbidden"));
-            return;
-        }
-        boolean force = !ctx.body().isEmpty() && mapper.readTree(ctx.body()).path("force").asBoolean(false);
-        LockManager.Acquire result = locks.acquire(force);
-        if (!result.acquired()) {
-            ctx.status(423).json(Map.of(
-                    "code", "LOCKED",
-                    "acquiredAt", String.valueOf(result.acquiredAt()),
-                    "lastHeartbeat", String.valueOf(result.lastHeartbeat())));
-            return;
-        }
-        ctx.json(Map.of("lockId", result.lockId(), "acquiredAt", String.valueOf(result.acquiredAt())));
-    }
-
-    private void lockHeartbeat(Context ctx) throws Exception {
-        if (!authorized(ctx)) {
-            ctx.status(403).json(Map.of("error", "forbidden"));
-            return;
-        }
-        String lockId = ctx.body().isEmpty() ? null : mapper.readTree(ctx.body()).path("lockId").asText(null);
-        if (!locks.heartbeat(lockId)) {
-            ctx.status(409).json(Map.of("code", "LOCK_LOST"));
-            return;
-        }
-        ctx.json(Map.of("ok", true));
-    }
-
-    private void lockRelease(Context ctx) throws Exception {
-        if (!authorized(ctx)) {
-            ctx.status(403).json(Map.of("error", "forbidden"));
-            return;
-        }
-        String lockId = ctx.body().isEmpty() ? null : mapper.readTree(ctx.body()).path("lockId").asText(null);
-        locks.release(lockId);
-        ctx.json(Map.of("ok", true));
-    }
-
     // -------------------------------------------------------------- diagrams
 
     /** ページの baseHash（編集開始前の取得用）。データ本体は返さない（§4.3）。 */
@@ -207,8 +158,7 @@ public final class WebServer {
     }
 
     /**
-     * レイアウトの差分保存（§4.4）およびページ名・表示順の変更（I-03）。
-     * lockId と baseHash が必須。
+     * レイアウトの差分保存（§4.4）およびページ名・表示順の変更（I-03）。baseHash が必須。
      */
     private void patchDiagram(Context ctx) throws Exception {
         writeDiagram(ctx, (dataDir, body) -> diagrams.patch(dataDir, ctx.pathParam("id"), body));
@@ -224,7 +174,7 @@ public final class WebServer {
         writeDiagram(ctx, (dataDir, body) -> diagrams.delete(dataDir, ctx.pathParam("id"), body));
     }
 
-    /** ページ書き込み系の共通処理（ロック検証 → 実行 → リビジョン払い出し）。 */
+    /** ページ書き込み系の共通処理（baseHash 検証は各 Service 内 → リビジョン払い出し）。 */
     private void writeDiagram(Context ctx,
                               java.util.function.BiFunction<Path, JsonNode, DiagramService.Outcome> op)
             throws Exception {
@@ -233,10 +183,6 @@ public final class WebServer {
             return;
         }
         JsonNode body = ctx.body().isEmpty() ? mapper.createObjectNode() : mapper.readTree(ctx.body());
-        if (!locks.isValid(body.path("lockId").asText(null))) {
-            ctx.status(423).json(Map.of("code", "LOCK_LOST"));
-            return;
-        }
         DiagramService.Outcome outcome = op.apply(root.resolve("data"), body);
         if (outcome instanceof DiagramService.NotFound) {
             ctx.status(404).json(Map.of("error", "not found"));
@@ -265,7 +211,7 @@ public final class WebServer {
     // -------------------------------------------------------- 自動レイアウト（H-07 / H-08）
 
     /**
-     * ELK による座標計算。<b>書き込みをしないためロックは不要</b>（§9 の API 仕様）。
+     * ELK による座標計算。<b>書き込みをしない</b>（§9 の API 仕様）。
      * 既存ノードとの衝突回避・オフセットはビューア側の責務（H-08 は既存を1つも動かさない）。
      */
     private void layoutAuto(Context ctx) throws Exception {
@@ -315,17 +261,13 @@ public final class WebServer {
         ctx.json(Map.of("baseHash", hash));
     }
 
-    /** テーブル1件の全文置換保存（O-08 / J-05 / §4.2）。lockId と baseHash が必須。 */
+    /** テーブル1件の全文置換保存（O-08 / J-05 / §4.2）。baseHash が必須。 */
     private void putTable(Context ctx) throws Exception {
         if (!authorized(ctx)) {
             ctx.status(403).json(Map.of("error", "forbidden"));
             return;
         }
         JsonNode body = mapper.readTree(ctx.body());
-        if (!locks.isValid(body.path("lockId").asText(null))) {
-            ctx.status(423).json(Map.of("code", "LOCK_LOST"));
-            return;
-        }
         TableService.Outcome outcome = tables.put(root.resolve("data"), ctx.pathParam("id"), body);
         if (outcome instanceof TableService.NotFound) {
             ctx.status(404).json(Map.of("error", "not found"));
@@ -361,10 +303,6 @@ public final class WebServer {
             return;
         }
         JsonNode body = mapper.readTree(ctx.body());
-        if (!locks.isValid(body.path("lockId").asText(null))) {
-            ctx.status(423).json(Map.of("code", "LOCK_LOST"));
-            return;
-        }
         DictionaryService.Outcome outcome = dictionary.put(root.resolve("data"), body);
         if (outcome instanceof DictionaryService.Stale stale) {
             ctx.status(409).json(Map.of("code", "STALE", "currentHash", stale.currentHash()));
@@ -399,10 +337,6 @@ public final class WebServer {
             return;
         }
         JsonNode body = mapper.readTree(ctx.body());
-        if (!locks.isValid(body.path("lockId").asText(null))) {
-            ctx.status(423).json(Map.of("code", "LOCK_LOST"));
-            return;
-        }
         ConfigService.Outcome outcome = config.put(root.resolve("data"), body);
         if (outcome instanceof ConfigService.Stale stale) {
             ctx.status(409).json(Map.of("code", "STALE", "currentHash", stale.currentHash()));
@@ -509,10 +443,6 @@ public final class WebServer {
             return;
         }
         JsonNode body = mapper.readTree(ctx.body());
-        if (!locks.isValid(body.path("lockId").asText(null))) {
-            ctx.status(423).json(Map.of("code", "LOCK_LOST"));
-            return;
-        }
         IntrospectService.Outcome outcome;
         if (watcher != null) watcher.suppress(true);
         try {

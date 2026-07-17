@@ -1,24 +1,26 @@
 /**
- * カラム論理名の一括編集画面 `#/columns`（P-03）。
+ * カラム論理名の一括編集画面（P-03）。
  *
- * 全テーブルのカラム物理名を distinct にした行集合に対して、横断辞書
- * （dictionary.js）を表形式で編集し、全体を1回の PUT で置換する（§2.4）。
+ * 閲覧ルート `#/columns` と編集ルート `#/columns/edit` を分ける（§2.4）。
+ * 閲覧ルートでは辞書を読み取り表示し、[編集開始] で編集ルートへ遷移して初めて編集できる。
+ * 静的モードでは閲覧のみ（[編集開始] を出さない）。編集ロックは無い（H-11 廃止）。
+ * 全体を1回の PUT で置換し、保存後は閲覧モード（#/columns）へ戻る。
  * 全テーブルのロード完了までは編集は可能だが保存は待たせる（§2.5）。
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../i18n/useI18n";
 import { apiGet, apiPut } from "../model/api";
 import { aggregateColumns, parseTsvPairs } from "../model/columnDictionary";
-import { currentLockId, notifyLockLost, rememberOwnRevision } from "../model/editStore";
+import { rememberOwnRevision } from "../model/editStore";
 import { reloadDictionary } from "../model/loader";
 import { totalTableCount, useAppStore } from "../model/store";
 import { Dialog } from "../ui/Dialog";
-import { EditSessionGate, useFormSessionReady } from "../ui/EditSessionGate";
+import { Link } from "../ui/Link";
 import { hrefs } from "../ui/router";
 
 type Filter = "all" | "unset" | "overridden" | "orphan";
 
-export function ColumnsPage() {
+export function ColumnsPage({ editing }: { editing: boolean }) {
   const { t } = useI18n();
   const tables = useAppStore((s) => s.tables);
   const dictionary = useAppStore((s) => s.dictionary);
@@ -26,7 +28,9 @@ export function ColumnsPage() {
   const failed = useAppStore((s) => s.failedTableCount);
   const total = useAppStore((s) => totalTableCount(s));
   const addToast = useAppStore((s) => s.addToast);
-  const sessionReady = useFormSessionReady();
+  const serverMode = useAppStore((s) => s.serverMode === true);
+  // 編集ルートにいる時点で編集モード（App は静的モードだと閲覧へリダイレクトする）
+  const canEdit = editing && serverMode;
 
   const allLoaded = loaded + failed >= total;
 
@@ -53,6 +57,8 @@ export function ColumnsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dictionary]);
   useEffect(() => {
+    // baseHash は保存にのみ使う。閲覧モード / 静的モードでは取りに行かない
+    if (!canEdit) return;
     apiGet("/__erd/dictionary").then(
       (res) => {
         if (res.status === 200) {
@@ -61,7 +67,7 @@ export function ColumnsPage() {
       },
       () => undefined,
     );
-  }, []);
+  }, [canEdit]);
 
   const rows = useMemo(
     () => aggregateColumns(Object.values(tables), dictionary?.columns ?? {}),
@@ -86,16 +92,18 @@ export function ColumnsPage() {
   const dirtyRef = useRef(dirty);
   dirtyRef.current = dirty;
 
-  // O-09 と同じ未保存警告
+  // O-09 と同じ未保存警告（編集ルートでのみ）
   useEffect(() => {
+    if (!canEdit) return;
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
       if (dirtyRef.current) e.preventDefault();
     };
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
-  }, []);
+  }, [canEdit]);
   useEffect(() => {
-    const ownHash = hrefs.columns();
+    if (!canEdit) return;
+    const ownHash = hrefs.columnsEdit();
     const onHashChange = () => {
       if (!dirtyRef.current || location.hash === ownHash) return;
       if (!window.confirm(t("tableEdit.leaveConfirm"))) {
@@ -106,7 +114,7 @@ export function ColumnsPage() {
     };
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
-  }, [t]);
+  }, [canEdit, t]);
 
   const setValue = (name: string, value: string) => {
     setDraft((d) => ({ ...d, [name]: value }));
@@ -142,12 +150,7 @@ export function ColumnsPage() {
     }
     setSaving(true);
     try {
-      const res = await apiPut("/__erd/dictionary", {
-        lockId: currentLockId(),
-        baseHash,
-        force,
-        columns,
-      });
+      const res = await apiPut("/__erd/dictionary", { baseHash, force, columns });
       if (res.status === 200) {
         const body = JSON.parse(res.body) as { revision: string; newHash: string };
         rememberOwnRevision(body.revision);
@@ -156,10 +159,10 @@ export function ColumnsPage() {
         dirtyRef.current = false;
         await reloadDictionary(body.revision);
         addToast(t("tableEdit.saved"));
+        // 保存後は閲覧モードへ戻る（テーブル編集と同様。§2.4）
+        location.hash = hrefs.columns();
       } else if (res.status === 409) {
         setConflict(true);
-      } else if (res.status === 423) {
-        notifyLockLost();
       } else {
         addToast(`${t("save.failed")} (HTTP ${res.status})`);
       }
@@ -190,11 +193,15 @@ export function ColumnsPage() {
       <div className="catalog-header">
         <h2>{t("columnsPage.title")}</h2>
         <span className="muted">{t("columnsPage.count", { n: rows.length })}</span>
+        {!editing && serverMode && (
+          <Link className="header-button header-button-primary" href={hrefs.columnsEdit()}>
+            {t("session.startEdit")}
+          </Link>
+        )}
       </div>
       <p className="muted form-hint">{t("columnsPage.hint")}</p>
 
-      <EditSessionGate />
-      {!allLoaded && (
+      {canEdit && !allLoaded && (
         <div className="notice-banner">
           {t("columnsPage.loading", { loaded: loaded + failed, total })} — {t("columnsPage.saveWaiting")}
         </div>
@@ -214,21 +221,26 @@ export function ColumnsPage() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-        <button type="button" className="header-button" onClick={() => setPasteOpen(true)}>
-          {t("columnsPage.paste")}
-        </button>
-        <span className="spacer" />
-        <button type="button" className="header-button" disabled={!dirty || saving} onClick={discard}>
-          {t("tableEdit.discard")}
-        </button>
-        <button
-          type="button"
-          className="header-button header-button-primary"
-          disabled={!dirty || saving || !allLoaded || !sessionReady || baseHash === null}
-          onClick={() => void save(false)}
-        >
-          {saving ? t("save.saving") : t("save.button")}
-        </button>
+        {canEdit && (
+          <>
+            <button type="button" className="header-button" onClick={() => setPasteOpen(true)}>
+              {t("columnsPage.paste")}
+            </button>
+            <span className="spacer" />
+            <button type="button" className="header-button" disabled={!dirty || saving} onClick={discard}>
+              {t("tableEdit.discard")}
+            </button>
+            <button
+              type="button"
+              className="header-button header-button-primary"
+              data-testid="save-button"
+              disabled={!dirty || saving || !allLoaded || baseHash === null}
+              onClick={() => void save(false)}
+            >
+              {saving ? t("save.saving") : t("save.button")}
+            </button>
+          </>
+        )}
       </div>
 
       <div className="table-scroll">
@@ -248,13 +260,18 @@ export function ColumnsPage() {
                 <tr key={r.name} className={dirtyKeys.has(r.name) ? "row-dirty" : ""}>
                   <td className="mono">{r.name}</td>
                   <td>
-                    <input
-                      type="text"
-                      value={value}
-                      placeholder={`（${t("table.notSet")}）`}
-                      disabled={!sessionReady}
-                      onChange={(e) => setValue(r.name, e.target.value)}
-                    />
+                    {canEdit ? (
+                      <input
+                        type="text"
+                        value={value}
+                        placeholder={`（${t("table.notSet")}）`}
+                        onChange={(e) => setValue(r.name, e.target.value)}
+                      />
+                    ) : (
+                      <span className={value === "" ? "muted" : ""}>
+                        {value === "" ? `（${t("table.notSet")}）` : value}
+                      </span>
+                    )}
                   </td>
                   <td className="right" title={r.occurrenceTables.join(", ")}>
                     {r.occurrences}

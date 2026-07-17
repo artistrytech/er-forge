@@ -10,11 +10,10 @@ import { useEffect, useMemo, useState } from "react";
 import type { MsgKey } from "../i18n/messages";
 import { useI18n } from "../i18n/useI18n";
 import { apiGet, apiPost, apiPut } from "../model/api";
-import { currentLockId, notifyLockLost, rememberOwnRevision } from "../model/editStore";
+import { rememberOwnRevision } from "../model/editStore";
 import { loadConfig, reloadAfterApply } from "../model/loader";
 import { useAppStore } from "../model/store";
 import { Dialog } from "../ui/Dialog";
-import { EditSessionGate, useFormSessionReady } from "../ui/EditSessionGate";
 import { Link } from "../ui/Link";
 import { hrefs } from "../ui/router";
 import { DiffTree } from "./DiffTree";
@@ -42,7 +41,9 @@ export function IntrospectPage() {
   const { t } = useI18n();
   const addToast = useAppStore((s) => s.addToast);
   const config = useAppStore((s) => s.config);
-  const sessionReady = useFormSessionReady();
+  // 逆生成は編集ルート相当（サーバー専用。App が serverMode のときのみ描画する）。
+  // ロックは無いため、サーバーモードであれば操作可能（§2.3）
+  const sessionReady = useAppStore((s) => s.serverMode === true);
 
   const [step, setStep] = useState<Step>("connect");
   const [drivers, setDrivers] = useState<DriverInfo[]>([]);
@@ -203,7 +204,6 @@ export function IntrospectPage() {
     setConfirmGuard(false);
     try {
       const res = await apiPost("/__erd/introspect/apply", {
-        lockId: currentLockId(),
         sessionId: preview.sessionId,
         baseFingerprint: preview.baseFingerprint,
         selection: [...selection],
@@ -229,8 +229,6 @@ export function IntrospectPage() {
       const body = JSON.parse(res.body) as { code?: string; message?: string };
       if (res.status === 410) {
         expired();
-      } else if (res.status === 423) {
-        notifyLockLost();
       } else if (res.status === 400 && body.code === "GUARD") {
         setConfirmGuard(true);
       } else if (res.status === 409) {
@@ -248,7 +246,6 @@ export function IntrospectPage() {
   // ---- K-15: 無視リストの保存（差分プレビューの削除項目からのショートカットを含む） ----
   const saveIgnore = async (patterns: string[]) => {
     const res = await apiPut("/__erd/config", {
-      lockId: currentLockId(),
       baseHash: ignoreHash,
       ignoreTables: patterns,
     });
@@ -260,8 +257,7 @@ export function IntrospectPage() {
       addToast(t("introspect.ignoreSaved"));
       return true;
     }
-    if (res.status === 423) notifyLockLost();
-    else setError(`${t("save.failed")} (HTTP ${res.status})`);
+    setError(`${t("save.failed")} (HTTP ${res.status})`);
     return false;
   };
 
@@ -288,7 +284,6 @@ export function IntrospectPage() {
       </div>
       <p className="muted form-hint">{t("introspect.hint")}</p>
 
-      <EditSessionGate />
       {error !== null && <div className="error-banner">{error}</div>}
 
       {step === "connect" && (

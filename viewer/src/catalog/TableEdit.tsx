@@ -10,7 +10,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../i18n/useI18n";
 import { apiGet, apiPut } from "../model/api";
-import { currentLockId, notifyLockLost, rememberOwnRevision } from "../model/editStore";
+import { rememberOwnRevision } from "../model/editStore";
 import { invalidateTable, loadTable, reloadIndex } from "../model/loader";
 import {
   buildDraft,
@@ -26,7 +26,6 @@ import {
 import { useAppStore } from "../model/store";
 import type { CardEnd, Table } from "../model/types";
 import { Dialog } from "../ui/Dialog";
-import { EditSessionGate, useFormSessionReady } from "../ui/EditSessionGate";
 import { Link } from "../ui/Link";
 import { NotFound } from "../ui/NotFound";
 import { hrefs } from "../ui/router";
@@ -43,7 +42,9 @@ export function TableEdit({ tableId }: { tableId: string }) {
   const dictionary = useAppStore((s) => s.dictionary);
   const tables = useAppStore((s) => s.tables);
   const addToast = useAppStore((s) => s.addToast);
-  const sessionReady = useFormSessionReady();
+  // 編集ルート（#/tables/<id>/edit）にいる時点で編集モード。ロックは無い（H-11 廃止）。
+  // 静的モードでは App が詳細画面へリダイレクトするため、ここは常にサーバーモード
+  const sessionReady = useAppStore((s) => s.serverMode === true);
 
   const [committed, setCommitted] = useState<{ table: Table; baseHash: string } | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -141,7 +142,6 @@ export function TableEdit({ tableId }: { tableId: string }) {
       setSaving(true);
       try {
         const res = await apiPut(`/__erd/tables/${encodeURIComponent(tableId)}`, {
-          lockId: currentLockId(),
           baseHash: committed.baseHash,
           force,
           table: tableBody,
@@ -170,8 +170,6 @@ export function TableEdit({ tableId }: { tableId: string }) {
           const body = JSON.parse(res.body) as { errors: ServerIssue[]; warnings: ServerIssue[] };
           setServerIssues(body.errors);
           addToast(t("tableEdit.validationFailed"));
-        } else if (res.status === 423) {
-          notifyLockLost();
         } else {
           addToast(`${t("save.failed")} (HTTP ${res.status})`);
         }
@@ -218,7 +216,6 @@ export function TableEdit({ tableId }: { tableId: string }) {
         </Link>
       </div>
 
-      <EditSessionGate />
       {allErrors.length > 0 && (
         <div className="error-banner">
           {t("tableEdit.validationFailed")}

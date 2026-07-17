@@ -48,6 +48,9 @@ function manifestText(dir) {
 }
 
 async function waitSaved(page) {
+  // 自動保存は無い（H-03）。明示的に保存してから「保存済み」を待つ。
+  // 未保存が無ければ Ctrl+S は no-op（既に保存済みのまま）
+  await page.keyboard.press("Control+s");
   await page.waitForFunction(
     () => {
       const el = document.querySelector('[data-testid="save-status"]');
@@ -155,8 +158,11 @@ async function main() {
     check("H-08 / T-16: existing node coordinates are unchanged",
         Object.keys(beforePlace).every(
             (k) => afterPlace[k][0] === beforePlace[k][0] && afterPlace[k][1] === beforePlace[k][1]));
-    check("K-12: tray is empty again once every table is placed",
-        (await page.locator('[data-testid="unplaced-tray"]').count()) === 0);
+    // トレイの消滅は保存後の index.js 再読込（非同期）に依存する。反映を待ってから確認する
+    const trayGone = await page
+        .waitForSelector('[data-testid="unplaced-tray"]', { state: "detached", timeout: 10000 })
+        .then(() => true, () => false);
+    check("K-12: tray is empty again once every table is placed", trayGone);
 
     // ---- 3. H-07: 全体レイアウトはプレビュー → 適用 → Undo 1回で完全に戻る（T-17） ----
     const beforeLayout = nodesInFile(dir, "users");
@@ -215,6 +221,10 @@ async function main() {
         Object.keys(nodesInFile(dir, "billing")).length === 0);
     check("I-01: every table is now unplaced-free but the tray stays empty",
         (await page.locator('[data-testid="unplaced-tray"]').count()) === 0);
+
+    // 新規ページ作成後は閲覧ルートに着地する。配置するには編集ルートへ入る
+    await page.click('[data-testid="session-toggle"]');
+    await page.waitForSelector(".session-editing", { timeout: 5000 });
 
     // ---- 4b. I-04 / §5.9: 別ページに配置済みのテーブルを、この空ページへ配置する ----
     // users ページにあるテーブルを billing にも足す（移動ではなく複数ページ配置）
@@ -288,8 +298,8 @@ async function main() {
     const staticPage = await browser.newPage({ viewport: { width: 1500, height: 950 } });
     await staticPage.goto("file:///" + join(dir, "index.html").replaceAll("\\", "/") + "#/erd/users");
     await staticPage.waitForSelector(".erd-node", { timeout: 15000 });
+    // 静的モードでも [編集開始] で編集ルートへ入れる（ロック無し・保存不可）
     await staticPage.click('[data-testid="session-toggle"]');
-    await staticPage.click('[data-testid="static-edit-ok"]');
     await staticPage.waitForSelector(".session-editing");
     check("static mode: auto layout is disabled",
         await staticPage.locator('[data-testid="auto-layout"]').isDisabled());

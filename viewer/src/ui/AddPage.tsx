@@ -5,7 +5,7 @@
  * 逆生成の直後は diagrams が 0 件であり、そこから最初のページを作れることが
  * 「逆生成 → 配置 → コミット」（設計書 §3.4）の入口になる。
  */
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useI18n } from "../i18n/useI18n";
 import { useEditStore } from "../model/editStore";
 import { useAppStore } from "../model/store";
@@ -32,39 +32,19 @@ export function AddPageButton({ className }: { className?: string }) {
 }
 
 /**
- * ページが1枚も無いときの入口。ページの作成には編集セッション（＝ロック）が要るため、
- * **閲覧中ならロックを取ってからダイアログを開く**。
- * 「まず編集を開始してください」と突き放すと、ここで行き止まりになる。
+ * ページが1枚も無いときの入口。編集ロックは無く、ページ作成はサーバーモードなら
+ * いつでもできる（§2.3）。そのままダイアログを開く。
  */
 export function CreateFirstPageButton() {
   const { t } = useI18n();
-  const editing = useEditStore((s) => s.session === "editing");
-  const requestStartEditing = useEditStore((s) => s.requestStartEditing);
   const [open, setOpen] = useState(false);
-  const [waitingForLock, setWaitingForLock] = useState(false);
-
-  // ロックが取れて編集中になったら、そのままダイアログを開く
-  useEffect(() => {
-    if (waitingForLock && editing) {
-      setWaitingForLock(false);
-      setOpen(true);
-    }
-  }, [waitingForLock, editing]);
-
   return (
     <>
       <button
         type="button"
         className="header-button-primary"
         data-testid="create-first-page"
-        onClick={() => {
-          if (editing) {
-            setOpen(true);
-          } else {
-            setWaitingForLock(true);
-            requestStartEditing();
-          }
-        }}
+        onClick={() => setOpen(true)}
       >
         {t("page.createFirst")}
       </button>

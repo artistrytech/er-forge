@@ -40,7 +40,7 @@ public final class DictionaryService {
     }
 
     /**
-     * @param body { lockId, baseHash, force, columns: { 物理名: 論理名 } }
+     * @param body { baseHash, force, columns: { 物理名: 論理名 } }
      */
     public Outcome put(Path dataDir, JsonNode body) {
         Path file = dataDir.resolve("dictionary.js");
