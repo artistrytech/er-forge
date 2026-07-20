@@ -62,6 +62,7 @@ export function TableInfo({ tableId, onNavigate }: TableInfoProps) {
   }
 
   const pk = new Set(table.primaryKey ?? []);
+  const fkCols = new Set((table.foreignKeys ?? []).flatMap((fk) => fk.columns));
 
   return (
     <div className="table-info">
@@ -105,7 +106,10 @@ export function TableInfo({ tableId, onNavigate }: TableInfoProps) {
               const meta = table.meta?.columns?.[c.name];
               return (
                 <tr key={c.name}>
-                  <td className="center">{pk.has(c.name) ? "🔑" : ""}</td>
+                  <td className="center">
+                    {pk.has(c.name) && <span className="key-badge key-pk">PK</span>}
+                    {fkCols.has(c.name) && <span className="key-badge key-fk">FK</span>}
+                  </td>
                   <td className="mono">{c.name}</td>
                   <td>
                     {logical.source === "physical" ? (

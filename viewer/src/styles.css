@@ -1,13 +1,27 @@
 /* ER図管理ツール ビューア（Phase1）のスタイル */
 
 :root {
-  --bg: #f6f7f9;
+  /* モックアップ（ER図改善案.dc.html）のトーンに合わせたパレット */
+  --bg: #f4f5f7; /* 画面本文の背景 */
   --panel: #ffffff;
-  --border: #d9dee5;
-  --text: #1f2937;
+  --border: #e2e4e8; /* カード枠 */
+  --input-border: #d7dae0;
+  --input-bg: #fafbfc;
+  --divider: #eef0f2; /* 明るい行区切り */
+  --text: #20242c;
+  --text-strong: #111318;
   --text-muted: #6b7280;
-  --accent: #2563eb;
-  --accent-soft: #dbeafe;
+  --text-faint: #8a8f98;
+  --accent: #1554d6;
+  --accent-soft: #eef4ff;
+  /* 濃色サーフェス（テーブルヘッダ・アクティブなナビ・主ボタン） */
+  --ink: #111318;
+  --ink-text: #ffffff;
+  --ink-muted: #9aa1ad;
+  --pk: #a35d0a;
+  --pk-soft: #fef2e0;
+  --ok: #137a3b;
+  --ok-soft: #e7f6ec;
   --warn: #b45309;
   --warn-bg: #fef3c7;
   --error: #b91c1c;
@@ -16,6 +30,7 @@
   --edge-logical: #7c3aed;
   --edge-highlight: #2563eb;
   --canvas-bg: #fafbfc;
+  --shadow-card: 0 1px 3px rgb(0 0 0 / 6%);
   --mono: ui-monospace, SFMono-Regular, "Cascadia Mono", Consolas, monospace;
 }
 
@@ -77,8 +92,9 @@ body {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 8px 16px;
+  gap: 20px;
+  min-height: 56px;
+  padding: 6px 20px;
   background: var(--panel);
   border-bottom: 1px solid var(--border);
   flex-wrap: wrap;
@@ -86,6 +102,8 @@ body {
 
 .app-title {
   font-weight: 700;
+  font-size: 15px;
+  color: var(--text-strong);
 }
 
 .app-nav {
@@ -96,19 +114,30 @@ body {
 
 .app-nav-link,
 .app-nav-button {
-  padding: 4px 10px;
+  padding: 8px 12px;
   border-radius: 6px;
-  color: var(--text);
+  color: #4b5563;
   text-decoration: none;
   border: none;
   background: none;
-  font-size: 14px;
+  font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
 }
 
 .app-nav-link:hover,
 .app-nav-button:hover {
   background: var(--accent-soft);
+}
+
+/* 現在の画面のナビは濃色でハイライト（モック） */
+.app-nav-link.active {
+  background: var(--ink);
+  color: var(--ink-text);
+}
+
+.app-nav-link.active:hover {
+  background: var(--ink);
 }
 
 .app-nav-button kbd {
@@ -128,18 +157,20 @@ body {
 }
 
 .header-select {
-  padding: 3px 6px;
-  border: 1px solid var(--border);
+  padding: 6px 10px;
+  border: 1px solid var(--input-border);
   border-radius: 6px;
   background: var(--panel);
-  font-size: 13px;
+  color: #4b5563;
+  font-size: 12.5px;
+  font-weight: 500;
 }
 
 .mode-badge,
 .session-badge {
   font-size: 12px;
-  padding: 2px 8px;
-  border-radius: 10px;
+  padding: 5px 10px;
+  border-radius: 6px;
   white-space: nowrap;
 }
 
@@ -149,8 +180,8 @@ body {
 }
 
 .mode-server {
-  background: #dcfce7;
-  color: #15803d;
+  background: var(--ok-soft);
+  color: var(--ok);
 }
 
 .session-badge {
@@ -231,19 +262,20 @@ body {
 }
 
 .header-button {
-  padding: 4px 10px;
-  border: 1px solid var(--border);
+  padding: 7px 12px;
+  border: 1px solid var(--input-border);
   border-radius: 6px;
   background: var(--panel);
-  color: inherit;
+  color: #374151;
+  font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
 }
 
 .header-button-primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--ink-text);
 }
 
 .erd-edit-toolbar {
@@ -739,10 +771,15 @@ body {
 /* ---- テーブル詳細 ---- */
 
 .table-info h3 {
-  margin: 18px 0 8px;
-  font-size: 13px;
-  border-bottom: 1px solid var(--border);
-  padding-bottom: 4px;
+  margin: 26px 0 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+
+.table-info h3:first-child {
+  margin-top: 6px;
 }
 
 .table-comment {
@@ -757,10 +794,30 @@ body {
   display: inline-block;
   background: var(--accent-soft);
   color: var(--accent);
-  border-radius: 10px;
+  border-radius: 99px;
   font-size: 11px;
-  padding: 1px 8px;
-  margin-right: 4px;
+  font-weight: 600;
+  padding: 4px 10px;
+  margin-right: 6px;
+}
+
+/* カラム表の PK / FK 標識（モック 2a） */
+.key-badge {
+  display: inline-block;
+  font: 700 10.5px/1 var(--mono);
+  padding: 3px 6px;
+  border-radius: 5px;
+  margin: 0 2px;
+}
+
+.key-pk {
+  background: var(--pk-soft);
+  color: var(--pk);
+}
+
+.key-fk {
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
 .badge {
@@ -792,6 +849,10 @@ body {
 
 .table-scroll {
   overflow-x: auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-card);
 }
 
 .data-table {
@@ -802,15 +863,25 @@ body {
 
 .data-table th,
 .data-table td {
-  border: 1px solid var(--border);
-  padding: 4px 8px;
+  padding: 11px 16px;
   text-align: left;
   vertical-align: top;
+  border-bottom: 1px solid var(--divider);
 }
 
+.data-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* 濃色ヘッダ（モック 2a / 3a のカラム表） */
 .data-table th {
-  background: var(--bg);
+  background: var(--ink);
+  color: var(--ink-muted);
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.03em;
   white-space: nowrap;
+  border-bottom: none;
 }
 
 .data-table th.sortable {
@@ -819,7 +890,8 @@ body {
 }
 
 .data-table th.sortable:hover {
-  background: var(--accent-soft);
+  background: #20242c;
+  color: #fff;
 }
 
 .data-table .center {
@@ -925,7 +997,7 @@ body {
 /* ---- カタログ ---- */
 
 .catalog-page {
-  padding: 16px 24px;
+  padding: 28px 32px;
   max-width: 1100px;
   width: 100%;
   margin: 0 auto;
@@ -934,22 +1006,26 @@ body {
 .catalog-header {
   display: flex;
   align-items: center;
-  gap: 16px;
-  margin-bottom: 12px;
+  gap: 14px;
+  margin-bottom: 22px;
   flex-wrap: wrap;
 }
 
 .catalog-header h2 {
   margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-strong);
 }
 
 .catalog-filter {
   flex: 1;
   min-width: 200px;
   max-width: 420px;
-  padding: 6px 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  padding: 8px 12px;
+  border: 1px solid var(--input-border);
+  border-radius: 8px;
+  background: var(--panel);
 }
 
 .page-chip {
@@ -1061,10 +1137,10 @@ a {
 .columns-table input {
   width: 100%;
   box-sizing: border-box;
-  padding: 4px 8px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
+  padding: 7px 10px;
+  border: 1px solid var(--input-border);
+  border-radius: 7px;
+  background: var(--input-bg);
   color: inherit;
   font-size: 13px;
 }
@@ -1114,10 +1190,10 @@ a {
 .column-picker select,
 .columns-toolbar select,
 .edit-form .data-table select {
-  padding: 4px 6px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
+  padding: 7px 10px;
+  border: 1px solid var(--input-border);
+  border-radius: 7px;
+  background: var(--panel);
   color: inherit;
   font-size: 12.5px;
 }
@@ -1221,28 +1297,38 @@ button.button-link.danger {
 .paste-area {
   width: 100%;
   box-sizing: border-box;
-  background: var(--bg);
+  background: var(--input-bg);
   color: inherit;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 8px;
+  border: 1px solid var(--input-border);
+  border-radius: 8px;
+  padding: 10px 12px;
   font-size: 12px;
+  line-height: 1.7;
   resize: vertical;
 }
 
 /* ---- 逆生成（K-01〜K-15） ---- */
 
 .introspect-page .form-section {
-  margin-top: 20px;
-  padding: 12px 14px;
+  margin-top: 16px;
+  padding: 20px 22px;
+  background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 12px;
+  box-shadow: var(--shadow-card);
 }
 
+/* 左に濃色のバーを添えたセクション見出し（モック 3b） */
 .introspect-page .form-section h3 {
-  margin: 0 0 10px;
-  font-size: 13px;
-  font-weight: 600;
+  display: flex;
+  align-items: center;
+  margin: 0 0 14px;
+  padding-left: 12px;
+  border-left: 3px solid var(--ink);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-strong);
+  line-height: 1;
 }
 
 .form-row {
@@ -1264,10 +1350,10 @@ button.button-link.danger {
 .form-row select {
   flex: 1;
   min-width: 160px;
-  padding: 4px 8px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
+  padding: 9px 12px;
+  border: 1px solid var(--input-border);
+  border-radius: 7px;
+  background: var(--input-bg);
   color: inherit;
   font-size: 13px;
 }
@@ -1310,9 +1396,11 @@ button.button-link.danger {
   align-items: center;
   gap: 12px;
   margin: 12px 0;
-  padding: 8px 12px;
+  padding: 14px 18px;
+  background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 12px;
+  box-shadow: var(--shadow-card);
   font-size: 13px;
 }
 

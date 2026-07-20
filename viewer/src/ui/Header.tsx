@@ -9,7 +9,7 @@ import type { NameDisplay } from "../model/logicalName";
 import { totalTableCount, useAppStore } from "../model/store";
 import type { Lang } from "../i18n/messages";
 import { Link } from "./Link";
-import { hrefs } from "./router";
+import { hrefs, useRoute } from "./router";
 
 export function Header({
   currentDiagramId,
@@ -34,6 +34,16 @@ export function Header({
   const erdHref = target !== undefined ? hrefs.erd(target) : hrefs.erdHome();
   const progress = total > 0 ? (loaded + failed) / total : 1;
 
+  // 現在の画面のナビを濃色でハイライトする（モック）
+  const kind = useRoute().kind;
+  const nav = (
+    on: boolean,
+    className = "app-nav-link",
+  ): string => className + (on ? " active" : "");
+  const onErd = kind === "erd" || kind === "erdHome" || kind === "erdEdit";
+  const onTables = kind === "tables" || kind === "table" || kind === "tableEdit";
+  const onColumns = kind === "columns" || kind === "columnsEdit";
+
   return (
     <header className="app-header">
       {ready && progress < 1 && (
@@ -47,17 +57,17 @@ export function Header({
       )}
       <div className="app-title">{t("app.title")}</div>
       <nav className="app-nav">
-        <Link className="app-nav-link" href={erdHref}>
+        <Link className={nav(onErd)} href={erdHref}>
           {t("nav.erd")}
         </Link>
-        <Link className="app-nav-link" href={hrefs.tables()}>
+        <Link className={nav(onTables)} href={hrefs.tables()}>
           {t("nav.tables")}
         </Link>
-        <Link className="app-nav-link" href={hrefs.columns()}>
+        <Link className={nav(onColumns)} href={hrefs.columns()}>
           {t("nav.columns")}
         </Link>
         {serverMode === true && (
-          <Link className="app-nav-link" href={hrefs.introspect()}>
+          <Link className={nav(kind === "introspect")} href={hrefs.introspect()}>
             {t("nav.introspect")}
           </Link>
         )}
