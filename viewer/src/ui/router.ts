@@ -4,6 +4,9 @@
  */
 import { useSyncExternalStore } from "react";
 
+/** カラム論理名画面の一致条件（回答A）。検索モーダルからの遷移は exact を埋め込む */
+export type ColumnMatch = "partial" | "prefix" | "suffix" | "exact";
+
 export type Route =
   | { kind: "home" }
   /** ページ未指定の ER図。ページがあれば先頭へ転送し、無ければ作成の導線を出す（I-01） */
@@ -14,7 +17,8 @@ export type Route =
   | { kind: "tables" }
   | { kind: "table"; tableId: string }
   | { kind: "tableEdit"; tableId: string }
-  | { kind: "columns" }
+  /** 閲覧。検索モーダルからの遷移時は focusColumn（物理名）＋ focusMatch で絞り込む */
+  | { kind: "columns"; focusColumn?: string; focusMatch?: ColumnMatch }
   /** カラム論理名の一括編集（閲覧ルートから [編集開始] で遷移。P-03） */
   | { kind: "columnsEdit" }
   | { kind: "introspect" }
@@ -31,7 +35,10 @@ export const hrefs = {
   tables: (): string => "#/tables",
   table: (tableId: string): string => `#/tables/${encodeURIComponent(tableId)}`,
   tableEdit: (tableId: string): string => `#/tables/${encodeURIComponent(tableId)}/edit`,
-  columns: (): string => "#/columns",
+  columns: (focusColumn?: string, focusMatch: ColumnMatch = "exact"): string =>
+    focusColumn !== undefined
+      ? `#/columns/focus/${encodeURIComponent(focusColumn)}/${focusMatch}`
+      : "#/columns",
   columnsEdit: (): string => "#/columns/edit",
   introspect: (): string => "#/introspect",
 };
@@ -69,6 +76,14 @@ export function parseHash(hash: string): Route {
   if (head === "columns") {
     if (segments.length === 1) return { kind: "columns" };
     if (segments.length === 2 && a === "edit") return { kind: "columnsEdit" };
+    // #/columns/focus/<物理名>/<一致条件>（検索モーダルからの絞り込み遷移。回答A）
+    if (segments.length === 4 && a === "focus" && b !== undefined) {
+      const match = segments[3];
+      const focusMatch = (["partial", "prefix", "suffix", "exact"] as const).find(
+        (m) => m === match,
+      );
+      return { kind: "columns", focusColumn: b, focusMatch: focusMatch ?? "exact" };
+    }
   }
   if (head === "introspect" && segments.length === 1) return { kind: "introspect" };
   return { kind: "notFound", path: raw };

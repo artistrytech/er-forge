@@ -15,6 +15,7 @@ export function TableDetail({ tableId, notice }: { tableId: string; notice?: str
   const index = useAppStore((s) => s.index);
   const nameDisplay = useAppStore((s) => s.nameDisplay);
   const serverMode = useAppStore((s) => s.serverMode);
+  const addToast = useAppStore((s) => s.addToast);
 
   const it = index?.tables?.find((x) => x.id === tableId);
   if (index !== null && !it) {
@@ -25,7 +26,7 @@ export function TableDetail({ tableId, notice }: { tableId: string; notice?: str
     : tableId;
 
   return (
-    <div className="catalog-page">
+    <div className="catalog-page table-detail-page">
       {notice !== undefined && <div className="notice-banner">{notice}</div>}
       <div className="catalog-header">
         <h2>{title}</h2>
@@ -35,11 +36,20 @@ export function TableDetail({ tableId, notice }: { tableId: string; notice?: str
             {t("catalog.edit")}
           </Link>
         )}
-        <Link className="button-link" href={hrefs.tables()}>
-          {t("catalog.backToList")}
-        </Link>
       </div>
       <TableInfo tableId={tableId} />
+      {serverMode === true && (
+        // 回答C: 新規作成ボタンだけ先行実装（クリック時の挙動 = J-01 は先送り）
+        <button
+          type="button"
+          className="fab-new-table"
+          data-testid="new-table"
+          title={t("tables.newTable")}
+          onClick={() => addToast(t("tables.newTableTodo"))}
+        >
+          ＋ {t("tables.newTable")}
+        </button>
+      )}
     </div>
   );
 }

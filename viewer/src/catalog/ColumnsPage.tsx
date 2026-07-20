@@ -13,14 +13,26 @@ import { apiGet, apiPut } from "../model/api";
 import { aggregateColumns, parseTsvPairs } from "../model/columnDictionary";
 import { rememberOwnRevision } from "../model/editStore";
 import { reloadDictionary } from "../model/loader";
+import { matchText, type MatchMode } from "../model/search";
 import { totalTableCount, useAppStore } from "../model/store";
 import { Dialog } from "../ui/Dialog";
 import { Link } from "../ui/Link";
-import { hrefs } from "../ui/router";
+import { hrefs, type ColumnMatch } from "../ui/router";
 
 type Filter = "all" | "unset" | "overridden" | "orphan";
 
-export function ColumnsPage({ editing }: { editing: boolean }) {
+const MATCH_MODES: MatchMode[] = ["partial", "prefix", "suffix", "exact"];
+
+export function ColumnsPage({
+  editing,
+  focusColumn,
+  focusMatch,
+}: {
+  editing: boolean;
+  /** 検索モーダルからの遷移時に絞り込む物理カラム名（回答A） */
+  focusColumn?: string;
+  focusMatch?: ColumnMatch;
+}) {
   const { t } = useI18n();
   const tables = useAppStore((s) => s.tables);
   const dictionary = useAppStore((s) => s.dictionary);
@@ -38,7 +50,8 @@ export function ColumnsPage({ editing }: { editing: boolean }) {
   const [baseHash, setBaseHash] = useState<string | null>(null);
   const [dirtyKeys, setDirtyKeys] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState<Filter>("all");
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(focusColumn ?? "");
+  const [matchMode, setMatchMode] = useState<MatchMode>(focusMatch ?? "partial");
   const [saving, setSaving] = useState(false);
   const [conflict, setConflict] = useState(false);
   const [pasteOpen, setPasteOpen] = useState(false);
@@ -69,24 +82,33 @@ export function ColumnsPage({ editing }: { editing: boolean }) {
     );
   }, [canEdit]);
 
+  // 検索モーダルからの遷移（focusColumn / focusMatch）で絞り込みを張り替える（回答A）。
+  // マウント継続中に別のカラムへ遷移した場合にも追随する
+  useEffect(() => {
+    if (focusColumn !== undefined) {
+      setSearch(focusColumn);
+      setMatchMode(focusMatch ?? "exact");
+    }
+  }, [focusColumn, focusMatch]);
+
   const rows = useMemo(
     () => aggregateColumns(Object.values(tables), dictionary?.columns ?? {}),
     [tables, dictionary],
   );
 
   const visible = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = search.trim();
     return rows.filter((r) => {
       const value = draft[r.name] ?? "";
       if (filter === "unset" && value !== "") return false;
       if (filter === "overridden" && r.overrides.length === 0) return false;
       if (filter === "orphan" && r.occurrences > 0) return false;
-      if (q !== "" && !r.name.toLowerCase().includes(q) && !value.toLowerCase().includes(q)) {
+      if (q !== "" && !matchText(r.name, q, matchMode) && !matchText(value, q, matchMode)) {
         return false;
       }
       return true;
     });
-  }, [rows, draft, filter, search]);
+  }, [rows, draft, filter, search, matchMode]);
 
   const dirty = dirtyKeys.size > 0;
   const dirtyRef = useRef(dirty);
@@ -207,6 +229,26 @@ export function ColumnsPage({ editing }: { editing: boolean }) {
         </div>
       )}
 
+      {focusColumn !== undefined && (
+        <div className="notice-banner">
+          {t("columnsPage.focusNotice", {
+            name: focusColumn,
+            match: t(`columnsPage.match.${focusMatch ?? "exact"}` as const),
+          })}
+          <button
+            type="button"
+            className="link-button"
+            onClick={() => {
+              setSearch("");
+              setMatchMode("partial");
+              location.hash = hrefs.columns();
+            }}
+          >
+            {t("columnsPage.clearFocus")}
+          </button>
+        </div>
+      )}
+
       <div className="columns-toolbar">
         <select value={filter} onChange={(e) => setFilter(e.target.value as Filter)}>
           <option value="all">{t("columnsPage.filter.all")}</option>
@@ -221,6 +263,17 @@ export function ColumnsPage({ editing }: { editing: boolean }) {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
+        <select
+          value={matchMode}
+          onChange={(e) => setMatchMode(e.target.value as MatchMode)}
+          title={t("panel.lane.search")}
+        >
+          {MATCH_MODES.map((m) => (
+            <option key={m} value={m}>
+              {t(`columnsPage.match.${m}` as const)}
+            </option>
+          ))}
+        </select>
         {canEdit && (
           <>
             <button type="button" className="header-button" onClick={() => setPasteOpen(true)}>

@@ -103,13 +103,20 @@ async function main() {
   await page.waitForSelector(".erd-node");
   check("navigates back to diagram with focus", page.url().includes("#/erd/"));
 
-  // 6) テーブル一覧（O-01）
+  // 6) テーブル画面（O-01。一覧と詳細を統合。左パネル「全て」レーンで一覧＋絞り込み）
   await page.click('a[href="#/tables"]');
-  await page.waitForSelector(".catalog-table tbody tr");
-  check("catalog lists 6 tables", (await page.locator(".catalog-table tbody tr").count()) === 6);
-  await page.fill(".catalog-filter", "注文");
-  check("catalog filter works (注文 → 2)", (await page.locator(".catalog-table tbody tr").count()) === 2);
-  await page.fill(".catalog-filter", "");
+  // 素の #/tables は先頭テーブルへ振り替わる（回答E: 未選択状態は作らない）
+  await page.waitForFunction(() => location.hash.startsWith("#/tables/"));
+  const V = ".panel-slot:not(.hidden) "; // 両パネル常時マウントのため表示中に限定
+  await page.click(V + '[data-testid="lane-all"]');
+  await page.waitForSelector(V + ".lp-list .lp-item");
+  check("all-tables lane lists 6 tables", (await page.locator(V + ".lp-list .lp-item").count()) === 6);
+  await page.locator(V + ".lp-filter").pressSequentially("注文");
+  check(
+    "all-tables filter works (注文 → 2)",
+    (await page.locator(V + ".lp-list .lp-item").count()) === 2,
+  );
+  await page.locator(V + ".lp-filter").fill("");
 
   // 7) 検索（F-01 / F-05）: Ctrl+K で開き、カラム論理名でヒット
   await page.keyboard.press("Control+k");

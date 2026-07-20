@@ -46,9 +46,29 @@ body {
 .app-main {
   flex: 1;
   min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: row;
+}
+
+/* ルート内容（キャンバス / テーブル詳細 / カラム論理名 など）。左パネルの右側で縦スクロール */
+.app-content {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
   overflow: auto;
   display: flex;
   flex-direction: column;
+}
+
+/* 左パネルは常時マウントし表示のみ切り替える（回答2）。hidden はスペースも占めない */
+.panel-slot {
+  display: flex;
+  min-height: 0;
+}
+
+.panel-slot.hidden {
+  display: none;
 }
 
 /* ---- ヘッダ ---- */
@@ -1617,4 +1637,280 @@ button.button-link.danger {
   color: inherit;
   font-size: 12px;
   cursor: pointer;
+}
+
+/* ================= 左パネル（2レーン: アイコンレール + 一覧） ================= */
+
+.left-panel {
+  display: flex;
+  height: 100%;
+  flex-shrink: 0;
+}
+
+.lp-rail {
+  width: 64px;
+  flex-shrink: 0;
+  background: #181c24;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 8px;
+}
+
+.lp-rail-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 9px 0;
+  border: none;
+  background: none;
+  color: #8a90a0;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.lp-rail-item:hover {
+  color: #c9cdd6;
+  background: #22262f;
+}
+
+.lp-rail-item.active {
+  color: #fff;
+  background: #2a2f3b;
+}
+
+.lp-rail-label {
+  font-size: 10.5px;
+  font-weight: 500;
+}
+
+.lp-body {
+  width: 252px;
+  flex-shrink: 0;
+  overflow-y: auto;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+}
+
+/* pages レーンで既存 Sidebar を流用する。二重の枠線・スクロールを避ける */
+.left-panel .sidebar {
+  width: 100%;
+  border-right: none;
+  overflow: visible;
+}
+
+.lp-lane {
+  padding: 12px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ページ一覧の <ul> はブラウザ既定の左パディング(40px)を持つため詰める（旧 .sidebar ul の代替） */
+.lp-lane ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.lp-lane .sidebar-section {
+  padding: 4px 0;
+}
+
+.lp-lane .sidebar-heading {
+  padding: 0 8px 6px;
+}
+
+.lp-lane-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.lp-filter {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.lp-mode {
+  padding: 6px 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+  background: var(--panel);
+}
+
+.lp-count {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.lp-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.lp-item {
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+}
+
+.lp-item.active,
+.lp-item.active .lp-item-btn,
+.lp-item.active .lp-item-linklike {
+  background: #111318;
+  color: #fff;
+}
+
+.lp-item-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  padding: 8px 10px;
+  border: none;
+  background: none;
+  border-radius: 8px;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+
+.lp-item-btn:hover {
+  background: var(--accent-soft);
+}
+
+.lp-item.active .lp-item-btn:hover {
+  background: #111318;
+}
+
+.lp-item-linklike {
+  border: none;
+  background: none;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+
+.lp-item-name {
+  overflow-wrap: anywhere;
+}
+
+.lp-hitcount {
+  font-size: 11px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: 99px;
+  padding: 1px 7px;
+  white-space: nowrap;
+}
+
+.lp-colhits {
+  list-style: none;
+  margin: 0 0 6px;
+  padding: 0 0 0 14px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.lp-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 4px;
+}
+
+.lp-page-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border: none;
+  background: none;
+  border-radius: 8px;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+
+.lp-page-row:hover {
+  background: var(--accent-soft);
+}
+
+.lp-page-row.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* ---- 検索モーダルのタブ ---- */
+
+.search-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.search-tab {
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.search-tab.active {
+  background: #111318;
+  color: #fff;
+  border-color: #111318;
+}
+
+/* ---- テーブル詳細の新規作成ボタン（回答C: 見た目のみ先行） ---- */
+
+.fab-new-table {
+  position: fixed;
+  right: 28px;
+  bottom: 24px;
+  padding: 12px 18px;
+  border: none;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 18%);
+  cursor: pointer;
+}
+
+.fab-new-table:hover {
+  opacity: 0.92;
+}
+
+.link-button {
+  border: none;
+  background: none;
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0 0 0 8px;
+  font: inherit;
 }

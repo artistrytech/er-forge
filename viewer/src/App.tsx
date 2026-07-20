@@ -6,7 +6,6 @@ import { useEffect } from "react";
 import { ColumnsPage } from "./catalog/ColumnsPage";
 import { TableDetail } from "./catalog/TableDetail";
 import { TableEdit } from "./catalog/TableEdit";
-import { TableList } from "./catalog/TableList";
 import { ErdPage } from "./canvas/ErdPage";
 import { useI18n } from "./i18n/useI18n";
 import { IntrospectPage } from "./introspect/IntrospectPage";
@@ -19,9 +18,9 @@ import { ExportDialog } from "./ui/ExportDialog";
 import { Header } from "./ui/Header";
 import { Link } from "./ui/Link";
 import { NotFound } from "./ui/NotFound";
+import { LeftPanel } from "./ui/LeftPanel";
 import { RelationDialog } from "./ui/RelationDialog";
 import { SearchDialog } from "./ui/SearchDialog";
-import { Sidebar } from "./ui/Sidebar";
 import { TableDetailDialog } from "./ui/TableDetailDialog";
 import { hrefs, replaceRoute, useRoute } from "./ui/router";
 
@@ -32,6 +31,7 @@ export function App() {
   const fatal = useAppStore((s) => s.fatal);
   const ready = useAppStore((s) => s.ready);
   const manifest = useAppStore((s) => s.manifest);
+  const index = useAppStore((s) => s.index);
   const dialog = useAppStore((s) => s.dialog);
   const searchOpen = useAppStore((s) => s.searchOpen);
   const setSearchOpen = useAppStore((s) => s.setSearchOpen);
@@ -87,6 +87,24 @@ export function App() {
     route.kind === "erd" || route.kind === "erdHome" || route.kind === "erdEdit";
   const failedIds = Object.keys(tableErrors);
 
+  // テーブル画面は常に1件選択（回答E）。素の #/tables は先頭テーブルへ振り替える
+  const firstTableId = [...(index?.tables ?? [])].sort((a, b) =>
+    a.name.localeCompare(b.name, "ja"),
+  )[0]?.id;
+
+  // 左パネルの表示対象（回答2: ER用・テーブル用の2インスタンスを常時マウントし表示を出し分ける）
+  const panelScope: "erd" | "tables" | null = onErdRoute
+    ? "erd"
+    : route.kind === "tables" || route.kind === "table" || route.kind === "tableEdit"
+      ? "tables"
+      : null;
+  const activeTableId =
+    route.kind === "erd"
+      ? route.tableId
+      : route.kind === "table" || route.kind === "tableEdit"
+        ? route.tableId
+        : undefined;
+
   let content: React.ReactNode;
   switch (route.kind) {
     case "home":
@@ -100,33 +118,29 @@ export function App() {
         replaceRoute(hrefs.erd(firstDiagram));
         content = null;
       } else {
-        content = (
-          <div className="erd-layout">
-            <Sidebar />
-            <ErdEmpty />
-          </div>
-        );
+        content = <ErdEmpty />;
       }
       break;
     case "erd":
-      content = (
-        <div className="erd-layout">
-          <Sidebar currentDiagramId={route.diagramId} />
-          <ErdPage diagramId={route.diagramId} focusTableId={route.tableId} />
-        </div>
-      );
+      content = <ErdPage diagramId={route.diagramId} focusTableId={route.tableId} />;
       break;
     case "erdEdit":
       // 編集ルート。ER図は静的モードでも編集できる（保存不可の警告つき。§9.7）
-      content = (
-        <div className="erd-layout">
-          <Sidebar currentDiagramId={route.diagramId} />
-          <ErdPage diagramId={route.diagramId} />
-        </div>
-      );
+      content = <ErdPage diagramId={route.diagramId} />;
       break;
     case "tables":
-      content = <TableList />;
+      // 一覧と詳細を統合（案B）。未選択状態は作らず先頭テーブルを開く（回答E）
+      if (firstTableId !== undefined) {
+        replaceRoute(hrefs.table(firstTableId));
+        content = null;
+      } else {
+        content = (
+          <div className="empty-state">
+            <p>{t("tables.empty")}</p>
+            <p className="muted">{t("tables.emptyHint")}</p>
+          </div>
+        );
+      }
       break;
     case "table":
       content = <TableDetail tableId={route.tableId} />;
@@ -142,8 +156,15 @@ export function App() {
       }
       break;
     case "columns":
-      // 閲覧ルート。静的モードでも閲覧のみ可能（P-03。静・編）
-      content = <ColumnsPage editing={false} />;
+      // 閲覧ルート。静的モードでも閲覧のみ可能（P-03。静・編）。
+      // 検索モーダルからの遷移時は focusColumn / focusMatch で絞り込む（回答A）
+      content = (
+        <ColumnsPage
+          editing={false}
+          focusColumn={route.focusColumn}
+          focusMatch={route.focusMatch}
+        />
+      );
       break;
     case "columnsEdit":
       // 編集ルート。静的モードでは閲覧（#/columns）へリダイレクト（§4.4）
@@ -189,7 +210,17 @@ export function App() {
         </div>
       )}
       <ExternalUpdateBanner />
-      <main className="app-main">{content}</main>
+      <main className="app-main">
+        {/* ER用・テーブル用パネルは常時マウントし、表示のみ切り替える（回答2）。
+            アンマウントしないため、画面を往復してもレーン選択・フィルタ・検索が保持される */}
+        <div className={"panel-slot" + (panelScope === "erd" ? "" : " hidden")}>
+          <LeftPanel scope="erd" currentDiagramId={currentDiagramId} activeTableId={activeTableId} />
+        </div>
+        <div className={"panel-slot" + (panelScope === "tables" ? "" : " hidden")}>
+          <LeftPanel scope="tables" activeTableId={activeTableId} />
+        </div>
+        <div className="app-content">{content}</div>
+      </main>
       {dialog?.type === "table" && <TableDetailDialog tableId={dialog.id} />}
       {dialog?.type === "relation" && <RelationDialog relationId={dialog.id} />}
       {searchOpen && <SearchDialog />}

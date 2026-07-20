@@ -22,7 +22,6 @@ export function Header({
   const serverMode = useAppStore((s) => s.serverMode);
   const nameDisplay = useAppStore((s) => s.nameDisplay);
   const setNameDisplay = useAppStore((s) => s.setNameDisplay);
-  const setSearchOpen = useAppStore((s) => s.setSearchOpen);
   const manifest = useAppStore((s) => s.manifest);
   const loaded = useAppStore((s) => s.loadedTableCount);
   const failed = useAppStore((s) => s.failedTableCount);
@@ -62,9 +61,6 @@ export function Header({
             {t("nav.introspect")}
           </Link>
         )}
-        <button type="button" className="app-nav-button" onClick={() => setSearchOpen(true)}>
-          🔍 {t("nav.search")} <kbd>{t("nav.searchHint")}</kbd>
-        </button>
       </nav>
       <div className="app-header-right">
         <select

@@ -6,6 +6,26 @@
 import { resolveColumnName, resolveIndexTableName } from "./logicalName";
 import type { Dictionary, IndexData, Table } from "./types";
 
+/** 一致条件。router.ts の ColumnMatch と構造的に同一（層をまたぐ import を避けるため個別定義） */
+export type MatchMode = "partial" | "prefix" | "suffix" | "exact";
+
+/** haystack が needle に一致条件で当たるか（両者とも小文字化済みを渡す前提はない） */
+export function matchText(haystack: string, needle: string, mode: MatchMode = "partial"): boolean {
+  const h = haystack.toLowerCase();
+  const n = needle.toLowerCase();
+  if (n === "") return true;
+  switch (mode) {
+    case "prefix":
+      return h.startsWith(n);
+    case "suffix":
+      return h.endsWith(n);
+    case "exact":
+      return h === n;
+    default:
+      return h.includes(n);
+  }
+}
+
 export interface ColumnHit {
   column: string;
   logicalName: string;
@@ -26,36 +46,39 @@ export function searchAll(
   tables: Record<string, Table>,
   dict: Dictionary | null,
   limit = 50,
+  mode: MatchMode = "partial",
 ): TableHit[] {
-  const q = query.trim().toLowerCase();
+  const q = query.trim();
   if (q === "") return [];
+  const hit = (value: string | undefined): boolean =>
+    value !== undefined && matchText(value, q, mode);
   const hits: TableHit[] = [];
 
   for (const t of index.tables ?? []) {
     const resolved = resolveIndexTableName(t);
     let tableMatched =
-      t.name.toLowerCase().includes(q) ||
-      t.id.toLowerCase().includes(q) ||
-      resolved.name.toLowerCase().includes(q) ||
-      (t.tags ?? []).some((tag) => tag.toLowerCase().includes(q));
+      hit(t.name) ||
+      hit(t.id) ||
+      hit(resolved.name) ||
+      (t.tags ?? []).some((tag) => matchText(tag, q, mode));
 
     const columnHits: ColumnHit[] = [];
     const full = tables[t.id];
     if (full) {
-      if (!tableMatched && full.comment !== undefined && full.comment.toLowerCase().includes(q)) {
+      if (!tableMatched && hit(full.comment)) {
         tableMatched = true;
       }
       for (const c of full.columns) {
         const logical = resolveColumnName(full, c.name, dict);
         const notes = full.meta?.columns?.[c.name]?.notes;
         let matched: string | null = null;
-        if (c.name.toLowerCase().includes(q)) matched = c.name;
-        else if (logical.source !== "physical" && logical.name.toLowerCase().includes(q)) {
+        if (hit(c.name)) matched = c.name;
+        else if (logical.source !== "physical" && hit(logical.name)) {
           matched = logical.name;
-        } else if (c.comment !== undefined && c.comment.toLowerCase().includes(q)) {
-          matched = c.comment;
-        } else if (notes !== undefined && notes.toLowerCase().includes(q)) {
-          matched = notes;
+        } else if (hit(c.comment)) {
+          matched = c.comment ?? null;
+        } else if (hit(notes)) {
+          matched = notes ?? null;
         }
         if (matched !== null) {
           columnHits.push({ column: c.name, logicalName: logical.name, matched });

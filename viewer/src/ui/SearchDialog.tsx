@@ -1,6 +1,9 @@
 /**
- * 全体検索（F-01〜F-05）。Cmd/Ctrl+K で開く。
- * ヒットはテーブル別にグルーピングし、ER図 / テーブル詳細への実リンクを出す。
+ * 全体検索モーダル（F-01〜F-05）。Cmd/Ctrl+K で開く（ヘッダの検索ボタンは廃止）。
+ *
+ * 回答A: モーダルでは検索条件を細かく指定しない（常に全条件・部分一致で検索）。
+ * 遷移先はタブで選ぶ（テーブル詳細 / ER図 / カラム論理名）。カラム論理名タブは、
+ * ヒットしたカラム物理名で完全一致フィルタした一括編集画面へ遷移する。
  * 全テーブル未ロード時は index の範囲で検索し、その旨を表示する（F-04）。
  */
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -11,6 +14,8 @@ import { totalTableCount, useAppStore } from "../model/store";
 import { Dialog } from "./Dialog";
 import { Link } from "./Link";
 import { hrefs } from "./router";
+
+type Tab = "detail" | "erd" | "columns";
 
 export function SearchDialog() {
   const { t } = useI18n();
@@ -24,6 +29,7 @@ export function SearchDialog() {
   const total = useAppStore((s) => totalTableCount(s));
 
   const [query, setQuery] = useState("");
+  const [tab, setTab] = useState<Tab>("detail");
   const inputRef = useRef<HTMLInputElement>(null);
   const close = () => setSearchOpen(false);
 
@@ -37,6 +43,7 @@ export function SearchDialog() {
   );
 
   const partial = loadedCount + failedCount < total;
+  const tabs: Tab[] = ["detail", "erd", "columns"];
 
   return (
     <Dialog title={t("nav.search")} onClose={close} wide>
@@ -48,8 +55,24 @@ export function SearchDialog() {
         value={query}
         onChange={(e) => setQuery(e.target.value)}
       />
+      <div className="search-tabs" role="tablist">
+        {tabs.map((tb) => (
+          <button
+            key={tb}
+            type="button"
+            role="tab"
+            aria-selected={tab === tb}
+            className={"search-tab" + (tab === tb ? " active" : "")}
+            onClick={() => setTab(tb)}
+          >
+            {t(`search.tab.${tb}` as const)}
+          </button>
+        ))}
+      </div>
       {partial && query.trim() !== "" && (
-        <p className="muted small">{t("search.partial", { loaded: loadedCount + failedCount, total })}</p>
+        <p className="muted small">
+          {t("search.partial", { loaded: loadedCount + failedCount, total })}
+        </p>
       )}
       {query.trim() === "" ? (
         <p className="muted">{t("search.hint")}</p>
@@ -62,26 +85,47 @@ export function SearchDialog() {
             if (!it) return null;
             const label = formatName(resolveIndexTableName(it), it.name, nameDisplay);
             const firstDiagram = it.diagrams?.[0];
+
+            // カラム論理名タブ: ヒットしたカラム物理名で完全一致フィルタ（回答A）
+            if (tab === "columns") {
+              if (hit.columnHits.length === 0) return null;
+              return (
+                <li key={hit.tableId} className="search-result">
+                  <div className="search-result-head">
+                    <span className="muted">{label}</span>
+                  </div>
+                  <ul className="search-columns">
+                    {hit.columnHits.map((c) => (
+                      <li key={c.column}>
+                        <Link href={hrefs.columns(c.column, "exact")} onClick={close}>
+                          <span className="mono">{c.column}</span>
+                        </Link>
+                        {c.logicalName !== c.column && <span> — {c.logicalName}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                </li>
+              );
+            }
+
+            // テーブル詳細 / ER図タブ: テーブル単位で遷移
+            const href =
+              tab === "erd" && firstDiagram !== undefined
+                ? hrefs.erd(firstDiagram, hit.tableId)
+                : hrefs.table(hit.tableId);
+            const disabled = tab === "erd" && firstDiagram === undefined;
             return (
               <li key={hit.tableId} className="search-result">
                 <div className="search-result-head">
-                  <Link href={hrefs.table(hit.tableId)} onClick={close}>
-                    {label}
-                  </Link>
-                  <span className="search-result-actions">
-                    {firstDiagram !== undefined && (
-                      <Link
-                        className="page-chip"
-                        href={hrefs.erd(firstDiagram, hit.tableId)}
-                        onClick={close}
-                      >
-                        {t("search.openErd")}
-                      </Link>
-                    )}
-                    <Link className="page-chip" href={hrefs.table(hit.tableId)} onClick={close}>
-                      {t("search.openDetail")}
+                  {disabled ? (
+                    <span className="muted" title={t("table.unplacedNote")}>
+                      {label}
+                    </span>
+                  ) : (
+                    <Link href={href} onClick={close}>
+                      {label}
                     </Link>
-                  </span>
+                  )}
                 </div>
                 {hit.columnHits.length > 0 && (
                   <ul className="search-columns">

@@ -138,7 +138,10 @@ async function main() {
         Object.keys(before).filter((k) => k !== "public.user_sessions")
             .every((k) => afterRemove[k]?.[0] === before[k][0] && afterRemove[k][1] === before[k][1]));
 
-    // 「未配置」は index.tables[].diagrams が空という導出結果（K-12 §7.1）
+    // 「未配置」は index.tables[].diagrams が空という導出結果（K-12 §7.1）。
+    // 左パネル「ページ」レーンの未配置疑似ページを選ぶとトレイが現れる（回答3）
+    const V = '.panel-slot:not(.hidden) '; // 表示中パネルに限定（両パネル常時マウント）
+    await page.click(V + '[data-testid="unplaced-page"]');
     await page.waitForSelector('[data-testid="unplaced-tray"]', { timeout: 10000 });
     const inTray = await page.locator('[data-testid="unplaced-tray"]').textContent();
     check("K-12: removed table appears in the unplaced tray", inTray.includes("user_sessions"));
@@ -198,6 +201,7 @@ async function main() {
     check("N-04: Delete key removes the selected node",
         nodesInFile(dir, "users")["public.user_sessions"] === undefined);
 
+    await page.click(V + '[data-testid="unplaced-page"]');
     await page.waitForSelector('[data-testid="unplaced-tray"]');
     await page.locator('[data-testid="unplaced-tray"] .tray-item').first()
         .dragTo(page.locator(".react-flow__pane"), { targetPosition: { x: 200, y: 500 } });
@@ -229,6 +233,10 @@ async function main() {
     // ---- 4b. I-04 / §5.9: 別ページに配置済みのテーブルを、この空ページへ配置する ----
     // users ページにあるテーブルを billing にも足す（移動ではなく複数ページ配置）
     const usersBefore = nodesInFile(dir, "users");
+
+    // 配置済みテーブルの現在ページへの追加は「全て」レーンから行う（add-to-page はこのレーン）
+    await page.click(V + '[data-testid="lane-all"]');
+    await page.waitForSelector(V + ".sidebar-table-row", { timeout: 5000 });
 
     // (a) ＋ ボタン（ドラッグ以外の導線）
     await page.getByTestId("add-to-page-public.roles").click();
@@ -262,6 +270,8 @@ async function main() {
     check("I-04: no double placement", Object.keys(nodesInFile(dir, "billing")).length === billingCount);
 
     // ---- 5. I-03: 改名 → manifest とページファイルの両方に反映される ----
+    // ページ管理は「ページ」レーンで行う（4b で「全て」に切り替えているため戻す）
+    await page.click(V + '[data-testid="lane-pages"]');
     await page.click('[data-testid="page-rename-billing"]');
     await page.locator('[data-testid="page-rename-input"]').fill("");
     await page.locator('[data-testid="page-rename-input"]').pressSequentially("課金ドメイン");
