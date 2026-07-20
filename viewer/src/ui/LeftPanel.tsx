@@ -580,8 +580,10 @@ function UnplacedTray({
                 onChange={() => toggle(it.id)}
               />
             )}
-            <span
-              // トレイ → キャンバスへのドラッグ（I-04）。ドロップ位置に 8px スナップで配置する
+            <button
+              type="button"
+              // トレイ → キャンバスへのドラッグ（I-04）。ドロップ位置に 8px スナップで配置する。
+              // 行全体を1つのボタンにして、ラベル以外を押しても選択が反応するようにする
               draggable={canPlace}
               onDragStart={(e) => {
                 const ids = selected.has(it.id) ? [...selected] : [it.id];
@@ -589,14 +591,13 @@ function UnplacedTray({
                 e.dataTransfer.effectAllowed = "copy";
               }}
               className={"tray-item lp-item-btn" + (canPlace ? " tray-item-draggable" : "")}
+              onClick={() => onSelect(it.id)}
             >
-              <button type="button" className="lp-item-linklike" onClick={() => onSelect(it.id)}>
-                <span className="lp-item-name">
-                  {formatName(resolveIndexTableName(it), it.name, nameDisplay)}
-                </span>
-              </button>
+              <span className="lp-item-name">
+                {formatName(resolveIndexTableName(it), it.name, nameDisplay)}
+              </span>
               {recent.includes(it.id) && <span className="tray-new">{t("tray.new")}</span>}
-            </span>
+            </button>
           </li>
         ))}
       </ul>
@@ -781,7 +782,9 @@ function TableRow({
   const label = formatName(resolveIndexTableName(it), it.name, nameDisplay);
   return (
     <li className={"lp-item sidebar-table-row" + (active ? " active" : "")}>
-      <span
+      {/* 行全体を1つのボタンにする（ラベル以外を押しても反応するように）。DnD の起点も兼ねる */}
+      <button
+        type="button"
         className={"lp-item-btn sidebar-table-item" + (draggable ? " tray-item-draggable" : "")}
         draggable={draggable}
         onDragStart={
@@ -792,11 +795,10 @@ function TableRow({
               }
             : undefined
         }
+        onClick={() => onSelect(it.id)}
       >
-        <button type="button" className="lp-item-linklike" onClick={() => onSelect(it.id)}>
-          <span className="lp-item-name">{label}</span>
-        </button>
-      </span>
+        <span className="lp-item-name">{label}</span>
+      </button>
       {canPlace &&
         (onPage ? (
           <span className="sidebar-onpage" title={t("table.onThisPage")} aria-hidden="true">

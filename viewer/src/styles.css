@@ -1893,16 +1893,6 @@ button.button-link.danger {
   background: #111318;
 }
 
-.lp-item-linklike {
-  border: none;
-  background: none;
-  padding: 0;
-  text-align: left;
-  cursor: pointer;
-  color: inherit;
-  font: inherit;
-}
-
 .lp-item-name {
   overflow-wrap: anywhere;
 }
