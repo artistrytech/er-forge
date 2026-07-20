@@ -56,9 +56,7 @@ export function LeftPanel({ scope, currentDiagramId, activeTableId }: LeftPanelP
         {lane === "all" && (
           <AllLane scope={scope} currentDiagramId={currentDiagramId} activeTableId={activeTableId} />
         )}
-        {lane === "search" && (
-          <SearchLane scope={scope} currentDiagramId={currentDiagramId} activeTableId={activeTableId} />
-        )}
+        {lane === "search" && <SearchLane scope={scope} activeTableId={activeTableId} />}
       </div>
     </div>
   );
@@ -94,7 +92,10 @@ function IconRail({ lane, onChange }: { lane: Lane; onChange: (l: Lane) => void 
   );
 }
 
-/** テーブル選択時の遷移を scope 別に返す（回答3 / 6） */
+/**
+ * 「ページ」レーンからのテーブル選択（従来通り）。ER図では現在のページでフォーカス、
+ * 別ページにあればそのページでフォーカス、未配置は詳細ダイアログ（回答3 / 6）。
+ */
 function useTableSelect(scope: PanelScope, currentDiagramId?: string): (tableId: string) => void {
   const index = useAppStore((s) => s.index);
   const openDialog = useAppStore((s) => s.openDialog);
@@ -116,6 +117,92 @@ function useTableSelect(scope: PanelScope, currentDiagramId?: string): (tableId:
       }
     },
     [scope, currentDiagramId, index, openDialog],
+  );
+}
+
+/**
+ * 「全て」「検索」レーンからのテーブル選択。ER図では配置ページ数で分岐する:
+ * - 未配置(0ページ): 詳細ダイアログ（従来通り）
+ * - 1ページ: そのページを開いてノードを選択状態にする
+ * - 複数ページ: ページ選択ダイアログののち、そのページを開いてノードを選択する
+ * テーブル画面では従来どおり右ペインに詳細を表示する。
+ */
+function useListTableSelect(scope: PanelScope): {
+  select: (tableId: string) => void;
+  pickerNode: React.ReactNode;
+} {
+  const index = useAppStore((s) => s.index);
+  const openDialog = useAppStore((s) => s.openDialog);
+  const [picker, setPicker] = useState<{ tableId: string; pages: string[] } | null>(null);
+
+  const select = useCallback(
+    (tableId: string) => {
+      if (scope === "tables") {
+        location.hash = hrefs.table(tableId);
+        return;
+      }
+      const it = index?.tables?.find((x) => x.id === tableId);
+      const pages = it?.diagrams ?? [];
+      if (pages.length === 0) {
+        openDialog({ type: "table", id: tableId }); // 未配置は詳細ダイアログ
+      } else if (pages.length === 1) {
+        location.hash = hrefs.erd(pages[0]!, tableId); // 1ページはそのページでフォーカス
+      } else {
+        setPicker({ tableId, pages }); // 複数ページはダイアログで選ばせる
+      }
+    },
+    [scope, index, openDialog],
+  );
+
+  const pickerNode =
+    picker !== null ? (
+      <PagePickerDialog
+        tableId={picker.tableId}
+        pages={picker.pages}
+        onPick={(page) => {
+          location.hash = hrefs.erd(page, picker.tableId);
+          setPicker(null);
+        }}
+        onClose={() => setPicker(null)}
+      />
+    ) : null;
+
+  return { select, pickerNode };
+}
+
+/** 複数ページに配置されたテーブルの、開くページを選ばせるダイアログ */
+function PagePickerDialog({
+  tableId,
+  pages,
+  onPick,
+  onClose,
+}: {
+  tableId: string;
+  pages: string[];
+  onPick: (page: string) => void;
+  onClose: () => void;
+}) {
+  const { t } = useI18n();
+  const index = useAppStore((s) => s.index);
+  const manifest = useAppStore((s) => s.manifest);
+  const nameDisplay = useAppStore((s) => s.nameDisplay);
+  const it = index?.tables?.find((x) => x.id === tableId);
+  const label = it ? formatName(resolveIndexTableName(it), it.name, nameDisplay) : tableId;
+  const pageTitle = (id: string): string =>
+    manifest?.diagrams?.find((d) => d.id === id)?.title ?? id;
+  return (
+    <Dialog title={t("panel.pickPageTitle")} onClose={onClose}>
+      <p className="muted">{t("panel.pickPageHint", { table: label })}</p>
+      <ul className="page-pick-list">
+        {pages.map((p) => (
+          <li key={p}>
+            <button type="button" className="page-pick-item" onClick={() => onPick(p)}>
+              {pageTitle(p)}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </Dialog>
   );
 }
 
@@ -534,7 +621,7 @@ function AllLane({
   const serverMode = useAppStore((s) => s.serverMode === true);
   const editing = useEditStore((s) => s.session === "editing");
   const placeTables = useCanvasStore((s) => s.placeTables);
-  const onSelect = useTableSelect(scope, currentDiagramId);
+  const { select: onSelect, pickerNode } = useListTableSelect(scope);
   const [filter, setFilter] = useState("");
 
   const canPlace =
@@ -580,6 +667,7 @@ function AllLane({
           />
         ))}
       </ul>
+      {pickerNode}
     </div>
   );
 }
@@ -590,11 +678,9 @@ const MODES: MatchMode[] = ["partial", "prefix", "suffix", "exact"];
 
 function SearchLane({
   scope,
-  currentDiagramId,
   activeTableId,
 }: {
   scope: PanelScope;
-  currentDiagramId?: string;
   activeTableId?: string;
 }) {
   const { t } = useI18n();
@@ -602,7 +688,7 @@ function SearchLane({
   const tables = useAppStore((s) => s.tables);
   const dictionary = useAppStore((s) => s.dictionary);
   const nameDisplay = useAppStore((s) => s.nameDisplay);
-  const onSelect = useTableSelect(scope, currentDiagramId);
+  const { select: onSelect, pickerNode } = useListTableSelect(scope);
   const [query, setQuery] = useState("");
   const [mode, setMode] = useState<MatchMode>("partial");
 
@@ -665,6 +751,7 @@ function SearchLane({
           })}
         </ul>
       )}
+      {pickerNode}
     </div>
   );
 }

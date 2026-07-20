@@ -1810,10 +1810,17 @@ button.button-link.danger {
   padding: 0 8px 6px;
 }
 
+/* 「全て」「検索」の入力欄はスクロールしても常に見えるよう上端に固定する */
 .lp-lane-head {
   display: flex;
   align-items: center;
   gap: 8px;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--panel);
+  margin: -12px -8px 0;
+  padding: 12px 8px 8px;
 }
 
 .lp-filter {
@@ -1921,6 +1928,34 @@ button.button-link.danger {
   font-size: 12px;
   color: var(--text-muted);
   padding: 4px;
+}
+
+/* 複数ページ配置テーブルのページ選択ダイアログ */
+.page-pick-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.page-pick-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border: 1px solid var(--input-border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.page-pick-item:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
 }
 
 .lp-page-row {
