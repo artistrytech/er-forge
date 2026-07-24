@@ -14,6 +14,7 @@
     "e2e:edit": "node e2e/edit-smoke.mjs",
     "e2e:meta": "node e2e/meta-edit-smoke.mjs",
     "e2e:introspect": "node e2e/introspect-smoke.mjs",
+    "e2e:gate": "node e2e/driver-gate-smoke.mjs",
     "e2e:pages": "node e2e/page-layout-smoke.mjs"
   },
   "devDependencies": {

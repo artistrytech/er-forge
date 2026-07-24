@@ -340,6 +340,13 @@ body {
   max-width: 360px;
 }
 
+.toast-error {
+  background: var(--error-bg);
+  border-color: var(--error);
+  border-left: 4px solid var(--error);
+  color: var(--error);
+}
+
 .export-hint {
   margin: 0 0 8px;
   font-size: 13px;
@@ -1427,6 +1434,44 @@ button.button-link.danger {
   padding-left: 18px;
   font-size: 12px;
   line-height: 1.7;
+}
+
+.driver-catalog {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 10px 0;
+  font-size: 13px;
+}
+
+.driver-catalog th,
+.driver-catalog td {
+  text-align: left;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.driver-catalog th {
+  font-weight: 600;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.driver-needed {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.driver-custom {
+  margin: 8px 0;
+}
+
+.driver-custom summary {
+  cursor: pointer;
+  font-size: 12px;
 }
 
 .introspect-stats {

@@ -23,6 +23,10 @@ final class FileWrites {
     private static final ProjectStore STORE = new ProjectStore();
 
     static void writeAtomic(Path target, String content) throws IOException {
+        // data/ がまだ無いプロジェクト（ブートストラップ直後に逆生成画面でドライバ設定や
+        // 無視リストを保存するケース）でも書けるよう、親ディレクトリを用意する
+        Path parent = target.getParent();
+        if (parent != null) Files.createDirectories(parent);
         Path tmp = target.resolveSibling(target.getFileName() + ".tmp");
         Files.write(tmp, content.getBytes(StandardCharsets.UTF_8));
         try {

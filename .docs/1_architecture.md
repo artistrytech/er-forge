@@ -121,15 +121,23 @@
 `npm run build`（フロント）と `./gradlew shadowJar`（バック）の成果物を手動で ZIP 化し、**GitHub Releases に手動アップロード**する。
 
 ```
-erd-<version>.zip
+erd.zip
 ├── erd-server.jar          fat JAR（Javalin + Jetty + Jackson + ELK + core）
-├── drivers/
-│   ├── postgresql-<ver>.jar
-│   └── mysql-connector-j-<ver>.jar
+├── drivers/                空（README のみ）。JDBC ドライバは各自が取得する
+│   └── README.txt
 ├── index.html              単一HTML（スキーマ情報は含まない）
 ├── erd.sh / erd.bat        起動スクリプト
 └── README.md
 ```
+
+**ZIP 名にバージョンは入れない**（`erd.zip` 固定）。展開先の `erd/` を差し替える運用のため、
+ダウンロードしたファイル名が毎回同じであるほうが手順を書きやすい。リリースのバージョンは
+GitHub Releases のタグで示す。
+
+**JDBC ドライバは配布物に同梱しない。** 代わりに逆生成画面から Maven 経由でダウンロードする
+（§7.2）。同梱しないのは意図的で、(1) 再配布に伴うライセンス問題（MySQL は GPLv2 + FOSS 例外、
+Oracle は proprietary な OFUTC）を避け、(2) 配布 ZIP を小さく保つため。既定バージョンは
+`DriverCatalog`、チーム共有の設定は `data/config.js` の `drivers` に置く。
 
 ### 3.2 起動方法
 
@@ -718,6 +726,39 @@ for (Driver d : ServiceLoader.load(Driver.class, cl)) {
 
 - ロード済みドライバの一覧（クラス名・バージョン）は `GET /__erd/drivers` で返し、GUI に表示する
 - クラスパス指定（起動方式B）で読み込まれたドライバも同様に列挙する
+
+#### 7.2.1 ドライバの取得（Maven ダウンロード）
+
+**ドライバは配布物に同梱せず、逆生成画面から Maven 経由でダウンロードする。** これにより
+再配布に伴うライセンス問題（MySQL は GPLv2 + FOSS 例外、Oracle は proprietary な OFUTC）を避け、
+配布 ZIP を小さく保つ。狙いは「**設定（何を・どのバージョンで）はチーム共有、jar の実体と接続情報は各自**」。
+
+| 何を | どこに置くか | 共有 |
+|---|---|---|
+| 使うドライバの座標・バージョン・Maven リポジトリ | `data/config.js` の `drivers`（Git 管理） | ✅ チーム共有 |
+| jar の実体 | `drivers/*.jar`（`.gitignore`） | ❌ 各自ダウンロード |
+| 接続情報・パスワード | `.erd/`（Git 管理外） | ❌ 個人 |
+
+- 既定で提示するドライバと既定バージョンは `DriverCatalog`（build.gradle.kts の testImplementation と揃える）
+- `config.js` の `drivers`:
+
+  ```js
+  ERD.config({
+    drivers: {
+      mavenRepository: "https://repo1.maven.org/maven2",  // 省略時は既定（Maven Central）
+      artifacts: [
+        "org.postgresql:postgresql:42.7.4",               // group:artifact:version
+      ],
+    },
+  });
+  ```
+
+- `GET /__erd/drivers` は「ロード済み・カタログ・config の設定・未取得（`missing`）」を返す。
+  逆生成画面の入口で `missing` が空でなければダウンロードの確認を出す（他メンバーの初回導線）。
+- `POST /__erd/drivers/download` が Maven からダウンロード → `.sha1` 照合 → `drivers/` へ保存 →
+  `DriverShim` 経由で登録（**サーバー再起動なし**）。座標は `group:artifact:version` を厳格な
+  文字集合に限定し、パストラバーサルを禁止。リポジトリ URL は http(s) のみ許可。
+- カタログに無い DB は、`config.js` に座標を足すか、jar を直接 `drivers/` に置く（従来どおり）。
 
 ### 7.3 標準メタデータで取得する情報
 

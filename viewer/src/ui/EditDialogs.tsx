@@ -75,7 +75,11 @@ export function Toasts() {
   return (
     <div className="toast-area" aria-live="polite">
       {toasts.map((toast) => (
-        <div key={toast.id} className="toast">
+        <div
+          key={toast.id}
+          className={"toast" + (toast.variant === "error" ? " toast-error" : "")}
+          role={toast.variant === "error" ? "alert" : undefined}
+        >
           {toast.text}
         </div>
       ))}

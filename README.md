@@ -90,8 +90,9 @@ cd server && ./gradlew test
 
 ## リリース
 
-Windows ではリポジトリ直下の **`build-dist.bat`** をダブルクリック（または実行）するだけでよい
-（npm install → viewer ビルド → shadowJar → ZIP 組み立てまで自動。`--no-pause` で自動化にも使える）。
+Windows ではリポジトリ直下の **`build-dist.bat`**、macOS / Linux では **`./build-dist.sh`** を
+実行するだけでよい（npm install → viewer ビルド → shadowJar → ZIP 組み立てまで自動。
+`--no-pause` で自動化にも使える）。
 
 手動で行う場合:
 
@@ -99,10 +100,16 @@ Windows ではリポジトリ直下の **`build-dist.bat`** をダブルクリ�
 cd server && ./gradlew packageDist
 ```
 
-`server/build/dist/erd-<version>.zip` が生成される
+`server/build/dist/erd.zip` が生成される
 （ビューアのビルド → shadowJar → `distribution/` との合成まで自動で行う）。
-これを GitHub Releases に手動アップロードする。バージョンは `server/build.gradle.kts` の
-`version` で管理する。
+これを GitHub Releases に手動アップロードする。ZIP 名にバージョンは含めない
+（リリースのバージョンは GitHub Releases のタグで示す）。バージョンは
+`server/build.gradle.kts` の `version` で管理する。
+
+JDBC ドライバは配布物に同梱しない。利用者は逆生成画面から主要 DB のドライバを
+Maven からダウンロードできる（設定は `data/config.js` の `drivers`、既定バージョンは
+`DriverCatalog`）。ライセンス（MySQL は GPL、Oracle は proprietary）と ZIP サイズを
+避けるための方針。
 
 ## 同梱サンプルデータの再生成
 

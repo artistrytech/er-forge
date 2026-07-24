@@ -5,6 +5,7 @@ import erd.core.index.IndexModel;
 import erd.core.model.Column;
 import erd.core.model.DiagramPage;
 import erd.core.model.Dictionary;
+import erd.core.model.DriverConfig;
 import erd.core.model.EdgeLayout;
 import erd.core.model.ForeignKey;
 import erd.core.model.IndexDef;
@@ -328,6 +329,22 @@ public final class DataFilePrinter {
                 out.line(JsText.quote(pattern) + ",");
             }
             out.close("],");
+        }
+        DriverConfig d = c.drivers();
+        if (d != null && !d.isEmpty()) {
+            out.open("drivers: {");
+            if (d.mavenRepository() != null && !d.mavenRepository().isBlank()) {
+                out.line("mavenRepository: " + JsText.quote(d.mavenRepository()) + ",");
+            }
+            if (!d.artifacts().isEmpty()) {
+                out.open("artifacts: [");
+                // 人が書いた順を維持する（ソートしない）
+                for (String a : d.artifacts()) {
+                    out.line(JsText.quote(a) + ",");
+                }
+                out.close("],");
+            }
+            out.close("},");
         }
         emitUnknown(out, c.unknown());
         out.close("});");

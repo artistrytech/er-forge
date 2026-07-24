@@ -2,9 +2,13 @@ package erd.web;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import erd.core.io.ProjectStore;
 import erd.core.migrate.SchemaVersions;
+import erd.core.model.DriverConfig;
+import erd.introspect.DriverCatalog;
+import erd.introspect.DriverDownloader;
 import erd.introspect.Drivers;
 import erd.layout.AutoLayout;
 import io.javalin.Javalin;
@@ -98,6 +102,7 @@ public final class WebServer {
 
         // 逆生成（K-01〜K-14）
         javalin.get("/__erd/drivers", this::getDrivers);
+        javalin.post("/__erd/drivers/download", this::postDriverDownload);
         javalin.get("/__erd/connection", this::getConnection);
         javalin.put("/__erd/connection", this::putConnection);
         javalin.post("/__erd/connection/test", this::testConnection);
@@ -351,13 +356,82 @@ public final class WebServer {
 
     // --------------------------------------------------------- 逆生成（K-01〜K-14）
 
-    /** K-01: ロード済み JDBC ドライバの一覧（drivers/ 自動スキャン + クラスパス）。 */
+    /**
+     * K-01 / §7.2: ロード済みドライバ・既定カタログ・config.js のドライバ設定・未取得の一覧。
+     *
+     * <p>逆生成画面の入口で使う。{@code missing} が空でなければ画面側がダウンロードの確認を出す。
+     */
     private void getDrivers(Context ctx) {
         if (!authorized(ctx)) {
             ctx.status(403).json(Map.of("error", "forbidden"));
             return;
         }
-        ctx.json(Map.of("drivers", Drivers.loaded()));
+        DriverConfig cfg = config.read(root.resolve("data")).drivers();
+        String repo = cfg.mavenRepository() != null && !cfg.mavenRepository().isBlank()
+                ? cfg.mavenRepository() : DriverCatalog.DEFAULT_MAVEN_REPOSITORY;
+
+        ObjectNode res = mapper.createObjectNode();
+        res.set("drivers", mapper.valueToTree(Drivers.loaded()));
+        res.set("catalog", mapper.valueToTree(DriverCatalog.entries()));
+
+        ObjectNode configured = res.putObject("configured");
+        configured.put("mavenRepository", repo);
+        ArrayNode arts = configured.putArray("artifacts");
+        ArrayNode missing = res.putArray("missing");
+        for (String coordinate : cfg.artifacts()) {
+            arts.add(coordinate);
+            var c = DriverDownloader.parse(coordinate);
+            if (c != null && !Files.isRegularFile(driversDir().resolve(c.jarFileName()))) {
+                missing.add(coordinate);
+            }
+        }
+        ctx.json(res);
+    }
+
+    /**
+     * §7.2: config.js のドライバ座標を Maven からダウンロードして {@code drivers/} に置き、登録する。
+     *
+     * <p>本文 {@code { mavenRepository?, artifacts: [coord...] }}。artifacts は「今ダウンロードする対象」
+     * （通常は {@code missing}）。ダウンロード自体は破壊的でないが外部通信を伴うため、確認は画面側で取る。
+     */
+    private void postDriverDownload(Context ctx) throws Exception {
+        if (!authorized(ctx)) {
+            ctx.status(403).json(Map.of("error", "forbidden"));
+            return;
+        }
+        JsonNode body = mapper.readTree(ctx.body());
+        JsonNode arts = body.path("artifacts");
+        if (!arts.isArray() || arts.isEmpty()) {
+            ctx.status(400).json(Map.of("error", "artifacts must be a non-empty array"));
+            return;
+        }
+        String repo = body.hasNonNull("mavenRepository") ? body.get("mavenRepository").asText() : null;
+        if (repo == null || repo.isBlank()) {
+            DriverConfig cfg = config.read(root.resolve("data")).drivers();
+            repo = cfg.mavenRepository();
+        }
+        DriverDownloader downloader = new DriverDownloader();
+        ArrayNode results = mapper.createArrayNode();
+        for (JsonNode n : arts) {
+            DriverDownloader.Result r = downloader.download(repo, n.asText(""), driversDir());
+            if (r.ok()) {
+                Drivers.registerJar(driversDir().resolve(r.fileName()));
+            }
+            ObjectNode ro = results.addObject();
+            ro.put("coordinate", r.coordinate());
+            ro.put("ok", r.ok());
+            ro.put("fileName", r.fileName());
+            ro.put("message", r.message());
+        }
+        ObjectNode res = mapper.createObjectNode();
+        res.set("results", results);
+        res.set("drivers", mapper.valueToTree(Drivers.loaded()));
+        ctx.json(res);
+    }
+
+    /** {@code drivers/}（Git 管理外。JDBC ドライバの jar 置き場。§7.2）。 */
+    private Path driversDir() {
+        return root.resolve("drivers");
     }
 
     /** K-05: 保存された接続設定（パスワードは明示的に保存した場合のみ含む）。 */

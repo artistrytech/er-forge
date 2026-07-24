@@ -17,15 +17,40 @@ import { Dialog } from "../ui/Dialog";
 import { Link } from "../ui/Link";
 import { hrefs } from "../ui/router";
 import { DiffTree } from "./DiffTree";
+import { DriverGate, type GateSelection } from "./DriverGate";
+import { DriverSetup, type DriverSelection } from "./DriverSetup";
 import { affectedFileCount, defaultSelection, quickSelect, toggle } from "./selection";
 import type {
   ApplyResponse,
   ConnectionTest,
   Decision,
-  DriverInfo,
+  DriverCatalogEntry,
+  DriverDownloadResult,
+  DriversResponse,
   Preview,
   RenameDecision,
 } from "./types";
+
+/** JDBC URL のサブプロトコル → カタログ ID。接続失敗時に「必要なドライバ」を当てるのに使う。 */
+const SUBPROTOCOL_TO_CATALOG: Record<string, string> = {
+  postgresql: "postgresql",
+  postgres: "postgresql",
+  mysql: "mysql",
+  mariadb: "mysql",
+  sqlserver: "sqlserver",
+  jtds: "sqlserver",
+  oracle: "oracle",
+  sqlite: "sqlite",
+  h2: "h2",
+};
+
+/** jdbc:postgresql://... → カタログの PostgreSQL エントリ。判定できなければ null。 */
+function detectDriver(url: string, catalog: DriverCatalogEntry[]): DriverCatalogEntry | null {
+  const m = /^jdbc:([a-z0-9]+):/i.exec(url.trim());
+  if (!m) return null;
+  const id = SUBPROTOCOL_TO_CATALOG[m[1]!.toLowerCase()];
+  return id ? catalog.find((e) => e.id === id) ?? null : null;
+}
 
 /** K-03: 既知ドライバの URL テンプレート（MySQL は useInformationSchema を既定で含む。§7.4） */
 const TEMPLATES: { label: string; url: string }[] = [
@@ -46,7 +71,22 @@ export function IntrospectPage() {
   const sessionReady = useAppStore((s) => s.serverMode === true);
 
   const [step, setStep] = useState<Step>("connect");
-  const [drivers, setDrivers] = useState<DriverInfo[]>([]);
+  const [driversResp, setDriversResp] = useState<DriversResponse | null>(null);
+  const [downloading, setDownloading] = useState(false);
+  // 接続失敗が「ドライバ未取得」由来のとき、その場で取得できるように対象を保持する
+  const [neededDriver, setNeededDriver] = useState<DriverCatalogEntry | null>(null);
+
+  // ドライバが整っていなければ逆生成画面をモーダルで塞ぐ（§7.2）。
+  //  - missing あり（config 宣言済みで未取得）→ ダウンロードの確認のみ
+  //  - ドライバも設定も無い          → 使う DB を選ばせる初期設定
+  const gate: "none" | "setup" | "confirm" = useMemo(() => {
+    if (driversResp === null) return "none";
+    if (driversResp.missing.length > 0) return "confirm";
+    if (driversResp.drivers.length === 0 && driversResp.configured.artifacts.length === 0) {
+      return "setup";
+    }
+    return "none";
+  }, [driversResp]);
   const [url, setUrl] = useState("");
   const [user, setUser] = useState("");
   const [password, setPassword] = useState("");
@@ -66,11 +106,168 @@ export function IntrospectPage() {
   const [confirmGuard, setConfirmGuard] = useState(false);
   const [result, setResult] = useState<ApplyResponse | null>(null);
 
-  // 起動時: ドライバ一覧（K-01）・保存済み接続（K-05）・無視リスト（K-15）
-  useEffect(() => {
-    void apiGet("/__erd/drivers").then((res) => {
-      if (res.status === 200) setDrivers((JSON.parse(res.body) as { drivers: DriverInfo[] }).drivers);
+  // エラーはバナー表示に加えてトースト通知も出す（画面のどこを見ていても気づけるように）
+  const fail = (msg: string) => {
+    setError(msg);
+    addToast(msg, "error");
+  };
+
+  // 接続失敗の共通処理。ドライバ未取得が原因なら、その場で取得する導線（neededDriver）を出す
+  const handleConnectError = (body: { code?: string; message?: string }) => {
+    const msg = body.message ?? t("introspect.networkError");
+    if (body.code === "CONNECT_FAILED" && /no suitable driver/i.test(msg)) {
+      const entry = driversResp ? detectDriver(url, driversResp.catalog) : null;
+      if (entry) {
+        setNeededDriver(entry);
+        fail(t("introspect.driverMissingForUrl", { db: entry.label }));
+        return;
+      }
+    }
+    setNeededDriver(null);
+    fail(msg);
+  };
+
+  // §7.2: ロード済み・カタログ・config.js のドライバ設定・未取得の一覧をまとめて取得する
+  const fetchDrivers = async (): Promise<DriversResponse | null> => {
+    const res = await apiGet("/__erd/drivers");
+    if (res.status !== 200) return null;
+    const body = JSON.parse(res.body) as DriversResponse;
+    setDriversResp(body);
+    return body;
+  };
+
+  // ドライバ設定を config.js（Git 管理・共有）へ保存する。無視リストと同じ baseHash を使う
+  const saveDrivers = async (selection: DriverSelection) => {
+    const res = await apiPut("/__erd/config", {
+      baseHash: ignoreHash,
+      drivers: selection,
     });
+    if (res.status === 200) {
+      const body = JSON.parse(res.body) as { revision: string; newHash: string };
+      rememberOwnRevision(body.revision);
+      setIgnoreHash(body.newHash);
+      await loadConfig(body.revision);
+      await fetchDrivers();
+      addToast(t("introspect.driversSaved"));
+    } else if (res.status === 409) {
+      fail(t("introspect.staleFingerprint"));
+    } else {
+      fail((JSON.parse(res.body) as { error?: string }).error ?? `HTTP ${res.status}`);
+    }
+  };
+
+  // 初期設定モーダル: 選んだドライバを config.js に保存（チーム共有）→ ダウンロード＋登録
+  const setupAndDownload = async (sel: GateSelection) => {
+    setDownloading(true);
+    setError(null);
+    try {
+      const putRes = await apiPut("/__erd/config", { baseHash: ignoreHash, drivers: sel });
+      if (putRes.status === 409) {
+        fail(t("introspect.staleFingerprint"));
+        return;
+      }
+      if (putRes.status !== 200) {
+        fail((JSON.parse(putRes.body) as { error?: string }).error ?? `HTTP ${putRes.status}`);
+        return;
+      }
+      const b = JSON.parse(putRes.body) as { revision: string; newHash: string };
+      rememberOwnRevision(b.revision);
+      setIgnoreHash(b.newHash);
+      await loadConfig(b.revision);
+      await downloadDrivers(sel.artifacts, sel.mavenRepository);
+    } catch {
+      fail(t("introspect.networkError"));
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  // モーダルの「逆生成をやめる」: 逆生成画面を出る（他画面へ退避。ブロックはしない）
+  const leaveIntrospect = () => {
+    window.location.hash = hrefs.tables();
+  };
+
+  // 接続失敗画面からの「このドライバを取得」: config.js に追加保存（チーム共有）→ ダウンロード＋登録
+  const getDriverNow = async (entry: DriverCatalogEntry) => {
+    setDownloading(true);
+    setError(null);
+    try {
+      const artifacts = [...(driversResp?.configured.artifacts ?? [])];
+      if (!artifacts.includes(entry.coordinate)) artifacts.push(entry.coordinate);
+      const putRes = await apiPut("/__erd/config", {
+        baseHash: ignoreHash,
+        drivers: { mavenRepository: driversResp?.configured.mavenRepository, artifacts },
+      });
+      if (putRes.status === 200) {
+        const b = JSON.parse(putRes.body) as { revision: string; newHash: string };
+        rememberOwnRevision(b.revision);
+        setIgnoreHash(b.newHash);
+        await loadConfig(b.revision);
+      } else if (putRes.status === 409) {
+        fail(t("introspect.staleFingerprint"));
+        return;
+      }
+      const res = await apiPost("/__erd/drivers/download", {
+        mavenRepository: driversResp?.configured.mavenRepository,
+        artifacts: [entry.coordinate],
+      });
+      if (res.status === 200) {
+        const b = JSON.parse(res.body) as { results: DriverDownloadResult[] };
+        const r = b.results[0];
+        await fetchDrivers();
+        if (r && r.ok) {
+          setNeededDriver(null);
+          setError(null);
+          addToast(t("introspect.driverReady", { db: entry.label }));
+        } else {
+          fail(r?.message ?? t("introspect.driversDownloadFailed", { n: 1 }));
+        }
+      } else {
+        fail((JSON.parse(res.body) as { error?: string }).error ?? `HTTP ${res.status}`);
+      }
+    } catch {
+      fail(t("introspect.networkError"));
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  // Maven からダウンロードして drivers/ に置く（外部通信。確認済みの対象のみ）
+  const downloadDrivers = async (artifacts: string[], repository?: string) => {
+    setDownloading(true);
+    setError(null);
+    try {
+      const res = await apiPost("/__erd/drivers/download", {
+        mavenRepository: repository ?? driversResp?.configured.mavenRepository,
+        artifacts,
+      });
+      if (res.status === 200) {
+        const body = JSON.parse(res.body) as { results: DriverDownloadResult[] };
+        await fetchDrivers();
+        const failures = body.results.filter((r) => !r.ok);
+        if (failures.length === 0) {
+          addToast(t("introspect.driversDownloaded", { n: body.results.length }));
+        } else {
+          // 失敗した座標と理由を通知に含める（ダイアログ内でも error バナーに出る）
+          fail(
+            `${t("introspect.driversDownloadFailed", { n: failures.length })}: ` +
+              failures.map((r) => `${r.coordinate}${r.message ? ` (${r.message})` : ""}`).join(", "),
+          );
+        }
+      } else {
+        fail((JSON.parse(res.body) as { error?: string }).error ?? `HTTP ${res.status}`);
+      }
+    } catch {
+      fail(t("introspect.networkError"));
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  // 起動時: ドライバ設定（K-01 / §7.2）・保存済み接続（K-05）・無視リスト（K-15）。
+  // ドライバの整備状況は fetchDrivers → gate（useMemo）で判定し、必要ならモーダルで塞ぐ
+  useEffect(() => {
+    void fetchDrivers();
     void apiGet("/__erd/connection").then((res) => {
       if (res.status !== 200) return;
       const saved = JSON.parse(res.body) as {
@@ -123,12 +320,13 @@ export function IntrospectPage() {
       if (res.status === 200) {
         const body = JSON.parse(res.body) as ConnectionTest;
         setTest(body);
+        setNeededDriver(null);
         if (namespace === "" && body.namespaces.length > 0) setNamespace(body.namespaces[0]!);
       } else {
-        setError((JSON.parse(res.body) as { message: string }).message);
+        handleConnectError(JSON.parse(res.body) as { code?: string; message?: string });
       }
     } catch {
-      setError(t("introspect.networkError"));
+      fail(t("introspect.networkError"));
     } finally {
       setBusy(false);
     }
@@ -155,14 +353,15 @@ export function IntrospectPage() {
       if (res.status === 200) {
         const body = JSON.parse(res.body) as Preview;
         setPreview(body);
+        setNeededDriver(null);
         setDecisions({});
         setSelection(defaultSelection(body.items));
         setStep("preview");
       } else {
-        setError((JSON.parse(res.body) as { message: string }).message);
+        handleConnectError(JSON.parse(res.body) as { code?: string; message?: string });
       }
     } catch {
-      setError(t("introspect.networkError"));
+      fail(t("introspect.networkError"));
     } finally {
       setBusy(false);
     }
@@ -193,7 +392,7 @@ export function IntrospectPage() {
   const expired = () => {
     setStep("connect");
     setPreview(null);
-    setError(t("introspect.sessionExpired"));
+    fail(t("introspect.sessionExpired"));
   };
 
   // ---- K-11: 適用 ----
@@ -232,12 +431,12 @@ export function IntrospectPage() {
       } else if (res.status === 400 && body.code === "GUARD") {
         setConfirmGuard(true);
       } else if (res.status === 409) {
-        setError(t("introspect.staleFingerprint"));
+        fail(t("introspect.staleFingerprint"));
       } else {
-        setError(body.message ?? `HTTP ${res.status}`);
+        fail(body.message ?? `HTTP ${res.status}`);
       }
     } catch {
-      setError(t("introspect.networkError"));
+      fail(t("introspect.networkError"));
     } finally {
       setBusy(false);
     }
@@ -257,7 +456,7 @@ export function IntrospectPage() {
       addToast(t("introspect.ignoreSaved"));
       return true;
     }
-    setError(`${t("save.failed")} (HTTP ${res.status})`);
+    fail(`${t("save.failed")} (HTTP ${res.status})`);
     return false;
   };
 
@@ -285,6 +484,23 @@ export function IntrospectPage() {
       <p className="muted form-hint">{t("introspect.hint")}</p>
 
       {error !== null && <div className="error-banner">{error}</div>}
+
+      {neededDriver !== null && (
+        <div className="notice-banner driver-needed" data-testid="driver-needed">
+          <span>{t("introspect.driverMissingForUrl", { db: neededDriver.label })}</span>
+          <button
+            type="button"
+            className="header-button header-button-primary"
+            disabled={downloading || !sessionReady}
+            data-testid="get-driver"
+            onClick={() => void getDriverNow(neededDriver)}
+          >
+            {downloading
+              ? t("introspect.driversDownloading")
+              : t("introspect.getDriver", { db: neededDriver.label })}
+          </button>
+        </div>
+      )}
 
       {step === "connect" && (
         <>
@@ -422,18 +638,18 @@ export function IntrospectPage() {
             }
           />
 
-          <section className="form-section">
-            <h3>{t("introspect.drivers")}</h3>
-            <ul className="driver-list">
-              {drivers.map((d) => (
-                <li key={d.className} className="mono">
-                  {d.className} <span className="muted">{d.version}</span>{" "}
-                  <span className="badge">{d.source}</span>
-                </li>
-              ))}
-              {drivers.length === 0 && <li className="muted">{t("introspect.noDrivers")}</li>}
-            </ul>
-          </section>
+          {driversResp !== null && (
+            <DriverSetup
+              loaded={driversResp.drivers}
+              catalog={driversResp.catalog}
+              configured={driversResp.configured}
+              missing={driversResp.missing}
+              disabled={!sessionReady}
+              busy={downloading}
+              onSave={(sel) => void saveDrivers(sel)}
+              onDownload={(arts) => void downloadDrivers(arts)}
+            />
+          )}
 
           <div className="form-actions">
             <button
@@ -551,6 +767,21 @@ export function IntrospectPage() {
             </button>
           </div>
         </>
+      )}
+
+      {gate !== "none" && driversResp !== null && (
+        <DriverGate
+          mode={gate}
+          catalog={driversResp.catalog}
+          configured={driversResp.configured}
+          missing={driversResp.missing}
+          busy={downloading}
+          error={error}
+          disabled={!sessionReady}
+          onConfirmDownload={() => void downloadDrivers(driversResp.missing)}
+          onSetupAndDownload={(sel) => void setupAndDownload(sel)}
+          onLeave={leaveIntrospect}
+        />
       )}
 
       {confirmGuard && preview !== null && (

@@ -31,8 +31,9 @@ dependencies {
 
     // JDBC 標準内省（層1）の検証用。H2 と SQLite はプロセス内で完結するため常時実行できる。
     // SQL Server / Oracle は dev-db の docker compose に接続して検証する（未起動なら skip）。
-    // これらのドライバは配布物には同梱しない（利用者が drivers/ に自分で置く。§7.2）ため
-    // すべて testImplementation にとどめる。
+    // これらのドライバは配布物には同梱しない（利用者が逆生成画面からダウンロードして
+    // drivers/ に置く。§7.2）。サーバー本体は drivers/*.jar を URLClassLoader で読むため、
+    // implementation に入れてはならない。ここで検証したバージョンを DriverCatalog の既定にする。
     testImplementation("com.h2database:h2:2.2.224")
     testImplementation("org.xerial:sqlite-jdbc:3.46.1.3")
     testImplementation("com.microsoft.sqlserver:mssql-jdbc:12.8.1.jre11")
@@ -121,16 +122,24 @@ val npmBuild = tasks.register<Exec>("npmBuild") {
 
 /**
  * 配布 ZIP の組み立て（設計書 §3.1）。
- *   erd-<version>.zip
+ *   erd.zip
  *   ├── erd-server.jar / index.html / erd.sh / erd.bat / README.md
- *   └── drivers/        （JDBC ドライバの置き場。追加はユーザーが行う）
- * 実行: gradlew packageDist → build/dist/erd-<version>.zip を GitHub Releases に手動アップロード
+ *   └── drivers/        （空。README のみ。JDBC ドライバは逆生成画面から
+ *                         各自ダウンロードするか、手動で jar を置く。§7.2）
+ * 実行: gradlew packageDist → build/dist/erd.zip を GitHub Releases に手動アップロード
+ *
+ * ファイル名にバージョンは入れない（展開先の erd/ を差し替える運用のため、
+ * ダウンロードしたファイル名が毎回同じであるほうが手順を書きやすい）。
+ *
+ * ドライバを同梱しないのは意図的: (1) 再配布に伴うライセンス問題（MySQL は GPL、
+ * Oracle は proprietary）を避け、(2) ZIP を小さく保つ。既定バージョンは DriverCatalog、
+ * チーム共有の設定は data/config.js の drivers に置く。
  */
 tasks.register<Zip>("packageDist") {
     group = "build"
     description = "Assemble the release ZIP under build/dist"
     dependsOn(tasks.shadowJar, npmBuild)
-    archiveFileName = "erd-${project.version}.zip"
+    archiveFileName = "erd.zip"
     destinationDirectory = layout.buildDirectory.dir("dist")
     from(tasks.shadowJar.flatMap { it.archiveFile })
     from("../viewer/dist/index.html")

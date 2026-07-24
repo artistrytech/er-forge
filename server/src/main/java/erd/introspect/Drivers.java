@@ -79,6 +79,36 @@ public final class Drivers {
         return List.copyOf(LOADED);
     }
 
+    /**
+     * ダウンロード直後の jar を登録する（サーバー再起動なしで反映。§7.2）。
+     *
+     * <p>{@link #scan} と同じく DriverShim 経由で DriverManager に登録する。既に同じドライバクラスが
+     * ロード済みなら二重登録を避けてスキップする（起動時スキャンとの重複対策）。
+     *
+     * @return 登録後のロード済み一覧
+     */
+    public static synchronized List<Info> registerJar(Path jar) {
+        if (jar == null || !Files.isRegularFile(jar)) return loaded();
+        URL url = toUrl(jar);
+        if (url == null) return loaded();
+        URLClassLoader cl = new URLClassLoader(new URL[]{url}, Drivers.class.getClassLoader());
+        for (Driver d : ServiceLoader.load(Driver.class, cl)) {
+            String className = d.getClass().getName();
+            boolean already = LOADED.stream().anyMatch(i -> i.className().equals(className));
+            if (already) continue;
+            try {
+                DriverManager.registerDriver(new DriverShim(d));
+                LOADED.add(new Info(className,
+                        d.getMajorVersion() + "." + d.getMinorVersion(), "drivers/"));
+            } catch (SQLException e) {
+                System.err.println("Warning: Could not register driver: "
+                        + className + " (" + e.getMessage() + ")");
+            }
+        }
+        LOADED.sort(Comparator.comparing(Info::className));
+        return loaded();
+    }
+
     public static Connection connect(String url, String user, String password,
                                      java.util.Map<String, String> extra) throws SQLException {
         Properties props = new Properties();

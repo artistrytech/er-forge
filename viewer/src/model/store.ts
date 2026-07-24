@@ -48,7 +48,7 @@ export interface AppState {
   notice: string | null;
   /** 表示中の ER図ページ（SSE の外部変更分岐が「現在のページか」を判定するために使う） */
   currentDiagramId: string | null;
-  toasts: { id: number; text: string }[];
+  toasts: { id: number; text: string; variant: "info" | "error" }[];
   /**
    * 直近の逆生成で追加されたテーブル（K-12 §7.2）。未配置トレイで「NEW」として先頭に寄せる。
    * **セッション限定のメモリ状態**であり、リロードで消える（ファイルには残さない。
@@ -63,7 +63,8 @@ export interface AppState {
   setSearchOpen(open: boolean): void;
   setNotice(notice: string | null): void;
   setCurrentDiagramId(id: string | null): void;
-  addToast(text: string): void;
+  /** 一時通知。variant="error" は赤系で少し長く表示する（M-01） */
+  addToast(text: string, variant?: "info" | "error"): void;
   setRecentTables(ids: string[]): void;
 }
 
@@ -100,12 +101,12 @@ export const useAppStore = create<AppState>((set) => ({
   setNotice: (notice) => set({ notice }),
   setCurrentDiagramId: (currentDiagramId) => set({ currentDiagramId }),
   setRecentTables: (recentTables) => set({ recentTables }),
-  addToast: (text) => {
+  addToast: (text, variant = "info") => {
     const id = ++toastSeq;
-    set((s) => ({ toasts: [...s.toasts, { id, text }] }));
+    set((s) => ({ toasts: [...s.toasts, { id, text, variant }] }));
     setTimeout(() => {
       useAppStore.setState((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
-    }, 5000);
+    }, variant === "error" ? 8000 : 5000);
   },
 }));
 

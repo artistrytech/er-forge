@@ -181,7 +181,7 @@ public final class FixtureModels {
         return new ProjectConfig(List.of(
                 "public.flyway_schema_history",
                 "public.tmp_*",
-                "/^staging\\..*_bak$/"), Map.of());
+                "/^staging\\..*_bak$/"), erd.core.model.DriverConfig.EMPTY, Map.of());
     }
 
     public static Dictionary dictionary() {

@@ -4,7 +4,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import erd.core.diff.PatternList;
 import erd.core.io.DataFileParser;
 import erd.core.io.DataFilePrinter;
+import erd.core.model.DriverConfig;
 import erd.core.model.ProjectConfig;
+import erd.introspect.DriverDownloader;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -53,7 +55,12 @@ final class ConfigService {
         }
     }
 
-    /** @param body { baseHash, force, ignoreTables: [...] } */
+    /**
+     * @param body { baseHash, force, ignoreTables?: [...], drivers?: { mavenRepository?, artifacts?: [...] } }
+     *
+     * <p>ignoreTables と drivers はどちらも任意で、本文に含まれるフィールドだけを更新する
+     * （無視リスト画面とドライバ設定画面が別々に保存しても、相手の設定を消さない）。
+     */
     Outcome put(Path dataDir, JsonNode body) {
         Path file = dataDir.resolve("config.js");
         String currentHash = Files.isRegularFile(file) ? Hashes.sha256(file) : null;
@@ -63,23 +70,57 @@ final class ConfigService {
             return new Stale(currentHash);
         }
 
-        JsonNode list = body.path("ignoreTables");
-        if (!list.isArray()) {
+        ProjectConfig existing = read(dataDir);
+
+        // ---- ignoreTables（任意。省略時は既存を維持） ----
+        List<String> patterns;
+        JsonNode list = body.get("ignoreTables");
+        if (list == null || list.isNull()) {
+            patterns = existing.ignoreTables();
+        } else if (list.isArray()) {
+            patterns = new ArrayList<>();
+            for (JsonNode n : list) {
+                String p = n.asText("").trim();
+                if (!p.isEmpty()) patterns.add(p);
+            }
+            // 不正な正規表現はここで弾く（黙って全マッチする無視リストを作らせない。T-11b）
+            PatternList compiled = PatternList.of(patterns);
+            if (!compiled.warnings().isEmpty()) {
+                return new Invalid(String.join(" / ", compiled.warnings()));
+            }
+        } else {
             return new Invalid("ignoreTables must be an array");
         }
-        List<String> patterns = new ArrayList<>();
-        for (JsonNode n : list) {
-            String p = n.asText("").trim();
-            if (!p.isEmpty()) patterns.add(p);
-        }
-        // 不正な正規表現はここで弾く（黙って全マッチする無視リストを作らせない。T-11b）
-        PatternList compiled = PatternList.of(patterns);
-        if (!compiled.warnings().isEmpty()) {
-            return new Invalid(String.join(" / ", compiled.warnings()));
+
+        // ---- drivers（任意。省略時は既存を維持） ----
+        DriverConfig drivers;
+        JsonNode dn = body.get("drivers");
+        if (dn == null || dn.isNull()) {
+            drivers = existing.drivers();
+        } else if (dn.isObject()) {
+            String repo = dn.hasNonNull("mavenRepository") ? dn.get("mavenRepository").asText().trim() : null;
+            if (repo != null && !repo.isEmpty() && DriverDownloader.normalizeRepository(repo) == null) {
+                return new Invalid("mavenRepository must be an http(s) URL");
+            }
+            List<String> artifacts = new ArrayList<>();
+            JsonNode arts = dn.get("artifacts");
+            if (arts != null && arts.isArray()) {
+                for (JsonNode n : arts) {
+                    String a = n.asText("").trim();
+                    if (a.isEmpty()) continue;
+                    if (!DriverDownloader.isValidCoordinate(a)) {
+                        return new Invalid("invalid driver coordinate: " + a
+                                + " (expected group:artifact:version)");
+                    }
+                    artifacts.add(a);
+                }
+            }
+            drivers = new DriverConfig(repo == null || repo.isEmpty() ? null : repo, artifacts);
+        } else {
+            return new Invalid("drivers must be an object");
         }
 
-        ProjectConfig existing = read(dataDir);
-        String content = printer.printConfig(new ProjectConfig(patterns, existing.unknown()));
+        String content = printer.printConfig(new ProjectConfig(patterns, drivers, existing.unknown()));
         String newHash = Hashes.sha256(content.getBytes(StandardCharsets.UTF_8));
         Map<String, String> written = new LinkedHashMap<>();
         try {

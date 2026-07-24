@@ -10,6 +10,7 @@ import erd.core.model.Column;
 import erd.core.model.ColumnMeta;
 import erd.core.model.DiagramPage;
 import erd.core.model.Dictionary;
+import erd.core.model.DriverConfig;
 import erd.core.model.EdgeLayout;
 import erd.core.model.ForeignKey;
 import erd.core.model.IndexDef;
@@ -195,7 +196,13 @@ public final class DataFileParser {
     public Parsed<ProjectConfig> parseConfig(String content) {
         Obj root = new Obj(stripWrapper(content, "config"));
         List<String> ignoreTables = root.textArray("ignoreTables");
-        return new Parsed<>(new ProjectConfig(ignoreTables, root.rest()), List.of());
+        DriverConfig drivers = DriverConfig.EMPTY;
+        JsonNode dn = root.node("drivers");
+        if (dn != null && dn.isObject()) {
+            Obj d = new Obj((ObjectNode) dn);
+            drivers = new DriverConfig(d.text("mavenRepository"), d.textArray("artifacts"));
+        }
+        return new Parsed<>(new ProjectConfig(ignoreTables, drivers, root.rest()), List.of());
     }
 
     public Parsed<Dictionary> parseDictionary(String content) {

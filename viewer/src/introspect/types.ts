@@ -108,6 +108,29 @@ export interface DriverInfo {
   source: string;
 }
 
+/** 既定で提示するドライバ（DriverCatalog.Entry と 1:1）。 */
+export interface DriverCatalogEntry {
+  id: string;
+  label: string;
+  coordinate: string;
+}
+
+/** GET /__erd/drivers のレスポンス（§7.2）。 */
+export interface DriversResponse {
+  drivers: DriverInfo[];
+  catalog: DriverCatalogEntry[];
+  configured: { mavenRepository: string; artifacts: string[] };
+  missing: string[];
+}
+
+/** POST /__erd/drivers/download の 1 件分の結果。 */
+export interface DriverDownloadResult {
+  coordinate: string;
+  ok: boolean;
+  fileName: string | null;
+  message: string | null;
+}
+
 /** 全項目を平坦化する（選択の整合・依存の解決に使う）。 */
 export function flatten(items: DiffItem[]): Map<string, DiffItem> {
   const out = new Map<string, DiffItem>();
