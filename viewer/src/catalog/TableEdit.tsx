@@ -403,11 +403,15 @@ export function TableEdit({ tableId }: { tableId: string }) {
             type="button"
             className="header-button"
             disabled={!dirty}
+            data-testid="discard-edit"
             onClick={() => {
-              const d = buildDraft(table);
-              setDraft(d);
-              setClientErrors([]);
-              setServerIssues([]);
+              // 変更を破棄して編集モードを終了する（詳細画面へ戻る）。
+              // ここで setDraft(buildDraft(...)) してはいけない: 再レンダーで dirty が
+              // 再計算される際、buildDraft が論理制約に新しい uid を振り直すため dirty が
+              // true に戻り、直後の location.hash 変更で離脱確認が誤発火する。
+              // 破棄＝そのまま離脱なので draft は作り直さず、離脱確認だけ抑止する。
+              dirtyRef.current = false;
+              location.hash = hrefs.table(tableId);
             }}
           >
             {t("tableEdit.discard")}
