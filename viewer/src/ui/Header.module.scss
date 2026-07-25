@@ -1,0 +1,158 @@
+/* ヘッダ（A-02 / A-03 / L-04 / P-05）のスタイル。
+   共有プリミティブの .header-button / .header-button-primary は global に残す。 */
+
+.app-header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  min-height: 56px;
+  padding: 6px 20px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.app-title {
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--text-strong);
+}
+
+.app-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.app-nav-link,
+.app-nav-button {
+  padding: 8px 12px;
+  border-radius: 6px;
+  color: #4b5563;
+  text-decoration: none;
+  border: none;
+  background: none;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.app-nav-link:hover,
+.app-nav-button:hover {
+  background: var(--accent-soft);
+}
+
+/* 現在の画面のナビは濃色でハイライト（モック） */
+.app-nav-link.active {
+  background: var(--ink);
+  color: var(--ink-text);
+}
+
+.app-nav-link.active:hover {
+  background: var(--ink);
+}
+
+.app-nav-button kbd {
+  font-size: 11px;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 4px;
+  background: var(--bg);
+}
+
+.app-header-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.header-select {
+  padding: 6px 10px;
+  border: 1px solid var(--input-border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: #4b5563;
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.mode-badge,
+.session-badge {
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.mode-static {
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+
+.mode-server {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.session-badge {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.progress-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: transparent;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+
+/* ---- 編集セッション（H-04 / H-09 / H-13 / M-01） ---- */
+
+.session-editing {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.save-warn {
+  color: var(--warn);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.save-status {
+  font-size: 12px;
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.save-status button {
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel);
+  color: inherit;
+  cursor: pointer;
+}
+
+.save-dirty {
+  color: var(--warn);
+}
+
+.save-failed {
+  color: var(--error);
+  font-weight: 600;
+}

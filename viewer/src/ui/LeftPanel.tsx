@@ -29,6 +29,8 @@ import type { IndexTable } from "../model/types";
 import { AddPageButton } from "./AddPage";
 import { Dialog } from "./Dialog";
 import { hrefs } from "./router";
+import { cx } from "../lib/cx";
+import styles from "./LeftPanel.module.scss";
 
 export type PanelScope = "erd" | "tables";
 type Lane = "pages" | "all" | "search";
@@ -47,9 +49,9 @@ interface LeftPanelProps {
 export function LeftPanel({ scope, currentDiagramId, activeTableId }: LeftPanelProps) {
   const [lane, setLane] = useState<Lane>("pages");
   return (
-    <div className="left-panel">
+    <div className={styles.leftPanel}>
       <IconRail lane={lane} onChange={setLane} />
-      <div className="lp-body">
+      <div className={styles.lpBody}>
         {lane === "pages" && (
           <PagesLane scope={scope} currentDiagramId={currentDiagramId} activeTableId={activeTableId} />
         )}
@@ -72,20 +74,20 @@ function IconRail({ lane, onChange }: { lane: Lane; onChange: (l: Lane) => void 
     { id: "search", label: t("panel.lane.search"), icon: <SearchIcon /> },
   ];
   return (
-    <div className="lp-rail" role="tablist" aria-orientation="vertical">
+    <div className={styles.lpRail} role="tablist" aria-orientation="vertical">
       {items.map((it) => (
         <button
           key={it.id}
           type="button"
           role="tab"
           aria-selected={lane === it.id}
-          className={"lp-rail-item" + (lane === it.id ? " active" : "")}
+          className={cx(styles.lpRailItem, lane === it.id && styles.active)}
           title={it.label}
           data-testid={`lane-${it.id}`}
           onClick={() => onChange(it.id)}
         >
           {it.icon}
-          <span className="lp-rail-label">{it.label}</span>
+          <span className={styles.lpRailLabel}>{it.label}</span>
         </button>
       ))}
     </div>
@@ -193,10 +195,10 @@ function PagePickerDialog({
   return (
     <Dialog title={t("panel.pickPageTitle")} onClose={onClose}>
       <p className="muted">{t("panel.pickPageHint", { table: label })}</p>
-      <ul className="page-pick-list">
+      <ul className={styles.pagePickList}>
         {pages.map((p) => (
           <li key={p}>
-            <button type="button" className="page-pick-item" onClick={() => onPick(p)}>
+            <button type="button" className={styles.pagePickItem} onClick={() => onPick(p)}>
               {pageTitle(p)}
             </button>
           </li>
@@ -279,22 +281,22 @@ function PagesLane({
   };
 
   return (
-    <div className="lp-lane">
-      <div className="sidebar-section">
-        <div className="sidebar-heading">
+    <div className={styles.lpLane}>
+      <div className={styles.sidebarSection}>
+        <div className={styles.sidebarHeading}>
           {t("sidebar.pages")}
           {canManage && <AddPageButton />}
         </div>
         <ul>
           {diagrams.map((d, i) => (
-            <li key={d.id} className="sidebar-page-row lp-page-item">
+            <li key={d.id} className={styles.sidebarPageRow} data-testid="page-row">
               <button
                 type="button"
-                className={"lp-page-row" + (d.id === selectedPage ? " active" : "")}
+                className={cx(styles.lpPageRow, d.id === selectedPage && styles.active)}
                 onClick={() => selectPage(d.id)}
               >
-                <span className="lp-item-name">{d.title ?? d.id}</span>
-                <span className="sidebar-count">
+                <span className={styles.lpItemName}>{d.title ?? d.id}</span>
+                <span className={styles.sidebarCount}>
                   {t("sidebar.tableCount", { n: tableCountByDiagram.get(d.id) ?? 0 })}
                 </span>
               </button>
@@ -309,15 +311,15 @@ function PagesLane({
             </li>
           ))}
           {unplaced.length > 0 && (
-            <li className="lp-page-item">
+            <li>
               <button
                 type="button"
                 data-testid="unplaced-page"
-                className={"lp-page-row" + (selectedPage === UNPLACED ? " active" : "")}
+                className={cx(styles.lpPageRow, selectedPage === UNPLACED && styles.active)}
                 onClick={() => selectPage(UNPLACED)}
               >
-                <span className="lp-item-name muted">{t("sidebar.unplaced")}</span>
-                <span className="sidebar-count">{unplaced.length}</span>
+                <span className={cx(styles.lpItemName, "muted")}>{t("sidebar.unplaced")}</span>
+                <span className={styles.sidebarCount}>{unplaced.length}</span>
               </button>
             </li>
           )}
@@ -334,16 +336,16 @@ function PagesLane({
           onSelect={onSelect}
         />
       ) : (
-        <div className="sidebar-section">
-          <div className="sidebar-heading">
+        <div className={styles.sidebarSection}>
+          <div className={styles.sidebarHeading}>
             {t("panel.pageTables")}
-            <span className="sidebar-count">{pageTables.length}</span>
+            <span className={styles.sidebarCount}>{pageTables.length}</span>
           </div>
-          <ul className="lp-list">
+          <ul className={styles.lpList}>
             {pageTables.map((it) => (
-              <li key={it.id} className={"lp-item" + (it.id === activeTableId ? " active" : "")}>
-                <button type="button" className="lp-item-btn" onClick={() => onSelect(it.id)}>
-                  <span className="lp-item-name">
+              <li key={it.id} className={cx(styles.lpItem, it.id === activeTableId && styles.active)} data-testid="lp-item">
+                <button type="button" className={styles.lpItemBtn} onClick={() => onSelect(it.id)}>
+                  <span className={styles.lpItemName}>
                     {formatName(resolveIndexTableName(it), it.name, nameDisplay)}
                   </span>
                 </button>
@@ -386,7 +388,7 @@ function PageControls({
   };
 
   return (
-    <span className="sidebar-page-controls">
+    <span className={styles.sidebarPageControls}>
       <button
         type="button"
         className="sidebar-icon-button"
@@ -546,13 +548,13 @@ function UnplacedTray({
   };
 
   return (
-    <div className="sidebar-section" data-testid="unplaced-tray">
-      <div className="sidebar-heading">
+    <div className={styles.sidebarSection} data-testid="unplaced-tray">
+      <div className={styles.sidebarHeading}>
         {t("tray.title")}
-        <span className="sidebar-count">{tables.length}</span>
+        <span className={styles.sidebarCount}>{tables.length}</span>
       </div>
       {canPlace && (
-        <div className="tray-actions">
+        <div className={styles.trayActions}>
           <p className="form-hint">{t("tray.hint")}</p>
           <button type="button" data-testid="tray-auto-place" onClick={() => place(ordered.map((it) => it.id))}>
             {t("tray.autoPlace")}
@@ -569,9 +571,9 @@ function UnplacedTray({
           )}
         </div>
       )}
-      <ul className="lp-list">
+      <ul className={styles.lpList}>
         {ordered.map((it) => (
-          <li key={it.id} className={"tray-row lp-item" + (it.id === activeTableId ? " active" : "")}>
+          <li key={it.id} className={cx(styles.trayRow, styles.lpItem, it.id === activeTableId && styles.active)} data-testid="lp-item">
             {canPlace && (
               <input
                 type="checkbox"
@@ -590,13 +592,14 @@ function UnplacedTray({
                 e.dataTransfer.setData(TABLE_DND_TYPE, ids.join(","));
                 e.dataTransfer.effectAllowed = "copy";
               }}
-              className={"tray-item lp-item-btn" + (canPlace ? " tray-item-draggable" : "")}
+              className={cx(styles.trayItem, styles.lpItemBtn, canPlace && styles.trayItemDraggable)}
+              data-testid="tray-item"
               onClick={() => onSelect(it.id)}
             >
-              <span className="lp-item-name">
+              <span className={styles.lpItemName}>
                 {formatName(resolveIndexTableName(it), it.name, nameDisplay)}
               </span>
-              {recent.includes(it.id) && <span className="tray-new">{t("tray.new")}</span>}
+              {recent.includes(it.id) && <span className={styles.trayNew}>{t("tray.new")}</span>}
             </button>
           </li>
         ))}
@@ -643,18 +646,18 @@ function AllLane({
   }, [index, filter]);
 
   return (
-    <div className="lp-lane">
-      <div className="lp-lane-head">
+    <div className={styles.lpLane}>
+      <div className={styles.lpLaneHead}>
         <input
           type="search"
-          className="lp-filter"
+          className={styles.lpFilter} data-testid="lp-filter"
           placeholder={t("panel.allFilter")}
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
         />
-        <span className="lp-count">{t("catalog.count", { n: rows.length })}</span>
+        <span className={styles.lpCount}>{t("catalog.count", { n: rows.length })}</span>
       </div>
-      <ul className="lp-list">
+      <ul className={styles.lpList}>
         {rows.map((it) => (
           <TableRow
             key={it.id}
@@ -699,17 +702,17 @@ function SearchLane({
   );
 
   return (
-    <div className="lp-lane">
-      <div className="lp-lane-head lp-search-head">
+    <div className={styles.lpLane}>
+      <div className={styles.lpLaneHead}>
         <input
           type="search"
-          className="lp-filter"
+          className={styles.lpFilter} data-testid="lp-filter"
           placeholder={t("search.placeholder")}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
         <select
-          className="lp-mode"
+          className={styles.lpMode}
           value={mode}
           onChange={(e) => setMode(e.target.value as MatchMode)}
           title={t("panel.lane.search")}
@@ -722,23 +725,23 @@ function SearchLane({
         </select>
       </div>
       {query.trim() === "" ? (
-        <p className="lp-hint">{t("search.hint")}</p>
+        <p className={styles.lpHint}>{t("search.hint")}</p>
       ) : hits.length === 0 ? (
-        <p className="lp-hint">{t("search.empty")}</p>
+        <p className={styles.lpHint}>{t("search.empty")}</p>
       ) : (
-        <ul className="lp-list">
+        <ul className={styles.lpList}>
           {hits.map((hit) => {
             const it = index?.tables?.find((x) => x.id === hit.tableId);
             if (!it) return null;
             const label = formatName(resolveIndexTableName(it), it.name, nameDisplay);
             return (
-              <li key={hit.tableId} className={"lp-item" + (hit.tableId === activeTableId ? " active" : "")}>
-                <button type="button" className="lp-item-btn" onClick={() => onSelect(hit.tableId)}>
-                  <span className="lp-item-name">{label}</span>
-                  {hit.columnHits.length > 0 && <span className="lp-hitcount">{hit.columnHits.length}</span>}
+              <li key={hit.tableId} className={cx(styles.lpItem, hit.tableId === activeTableId && styles.active)} data-testid="lp-item">
+                <button type="button" className={styles.lpItemBtn} onClick={() => onSelect(hit.tableId)}>
+                  <span className={styles.lpItemName}>{label}</span>
+                  {hit.columnHits.length > 0 && <span className={styles.lpHitcount}>{hit.columnHits.length}</span>}
                 </button>
                 {hit.columnHits.length > 0 && (
-                  <ul className="lp-colhits">
+                  <ul className={styles.lpColhits}>
                     {hit.columnHits.slice(0, 6).map((c) => (
                       <li key={c.column} className="mono">
                         {c.column}
@@ -781,11 +784,11 @@ function TableRow({
   const draggable = canPlace && !onPage;
   const label = formatName(resolveIndexTableName(it), it.name, nameDisplay);
   return (
-    <li className={"lp-item sidebar-table-row" + (active ? " active" : "")}>
+    <li className={cx(styles.lpItem, styles.sidebarTableRow, active && styles.active)} data-testid="lp-item">
       {/* 行全体を1つのボタンにする（ラベル以外を押しても反応するように）。DnD の起点も兼ねる */}
       <button
         type="button"
-        className={"lp-item-btn sidebar-table-item" + (draggable ? " tray-item-draggable" : "")}
+        className={cx(styles.lpItemBtn, styles.sidebarTableItem, draggable && styles.trayItemDraggable)} data-testid="table-item"
         draggable={draggable}
         onDragStart={
           draggable
@@ -797,17 +800,17 @@ function TableRow({
         }
         onClick={() => onSelect(it.id)}
       >
-        <span className="lp-item-name">{label}</span>
+        <span className={styles.lpItemName}>{label}</span>
       </button>
       {canPlace &&
         (onPage ? (
-          <span className="sidebar-onpage" title={t("table.onThisPage")} aria-hidden="true">
+          <span className={styles.sidebarOnpage} title={t("table.onThisPage")} aria-hidden="true">
             ✓
           </span>
         ) : (
           <button
             type="button"
-            className="sidebar-icon-button sidebar-add-to-page"
+            className={cx("sidebar-icon-button", styles.sidebarAddToPage)}
             data-testid={`add-to-page-${it.id}`}
             title={t("table.addToCurrentPage")}
             onClick={() => onPlace?.([it.id])}

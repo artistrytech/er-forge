@@ -8,8 +8,10 @@ import { useEditStore } from "../model/editStore";
 import type { NameDisplay } from "../model/logicalName";
 import { totalTableCount, useAppStore } from "../model/store";
 import type { Lang } from "../i18n/messages";
+import { cx } from "../lib/cx";
 import { Link } from "./Link";
 import { hrefs, useRoute } from "./router";
+import styles from "./Header.module.scss";
 
 export function Header({
   currentDiagramId,
@@ -36,27 +38,24 @@ export function Header({
 
   // 現在の画面のナビを濃色でハイライトする（モック）
   const kind = useRoute().kind;
-  const nav = (
-    on: boolean,
-    className = "app-nav-link",
-  ): string => className + (on ? " active" : "");
+  const nav = (on: boolean): string => cx(styles.appNavLink, on && styles.active);
   const onErd = kind === "erd" || kind === "erdHome" || kind === "erdEdit";
   const onTables = kind === "tables" || kind === "table" || kind === "tableEdit";
   const onColumns = kind === "columns" || kind === "columnsEdit";
 
   return (
-    <header className="app-header">
+    <header className={styles.appHeader}>
       {ready && progress < 1 && (
         <div
-          className="progress-bar"
+          className={styles.progressBar}
           role="progressbar"
           title={t("loading.tables", { loaded: loaded + failed, total })}
         >
-          <div className="progress-bar-fill" style={{ width: `${Math.round(progress * 100)}%` }} />
+          <div className={styles.progressBarFill} style={{ width: `${Math.round(progress * 100)}%` }} />
         </div>
       )}
-      <div className="app-title">{t("app.title")}</div>
-      <nav className="app-nav">
+      <div className={styles.appTitle} data-testid="app-title">{t("app.title")}</div>
+      <nav className={styles.appNav}>
         <Link className={nav(onErd)} href={erdHref}>
           {t("nav.erd")}
         </Link>
@@ -72,9 +71,10 @@ export function Header({
           </Link>
         )}
       </nav>
-      <div className="app-header-right">
+      <div className={styles.appHeaderRight}>
         <select
-          className="header-select"
+          className={styles.headerSelect}
+          data-testid="header-select"
           value={nameDisplay}
           onChange={(e) => setNameDisplay(e.target.value as NameDisplay)}
           title={t("nameDisplay.both")}
@@ -84,7 +84,8 @@ export function Header({
           <option value="physical">{t("nameDisplay.physical")}</option>
         </select>
         <select
-          className="header-select"
+          className={styles.headerSelect}
+          data-testid="header-select"
           value={lang}
           onChange={(e) => setLang(e.target.value as Lang)}
           title={t("lang.label")}
@@ -92,7 +93,11 @@ export function Header({
           <option value="ja">日本語</option>
           <option value="en">English</option>
         </select>
-        <span className={"mode-badge " + (serverMode === true ? "mode-server" : "mode-static")}>
+        <span
+          className={cx(styles.modeBadge, serverMode === true ? styles.modeServer : styles.modeStatic)}
+          data-testid="mode-badge"
+          data-mode={serverMode === true ? "server" : "static"}
+        >
           {t("mode.label")}: {serverMode === true ? t("mode.server") : t("mode.static")}
         </span>
         <SessionControls
@@ -128,11 +133,15 @@ function SessionControls({ onErdPage, diagramId }: { onErdPage: boolean; diagram
 
   return (
     <>
-      <span className={"session-badge" + (editing ? " session-editing" : "")}>
+      <span
+        className={cx(styles.sessionBadge, editing && styles.sessionEditing)}
+        data-testid="session-badge"
+        data-editing={editing ? "true" : undefined}
+      >
         {editing ? `● ${t("session.editing")}` : t("session.viewing")}
       </span>
       {editing && serverMode === false && (
-        <span className="save-warn" title={t("edit.staticWarn.body")}>
+        <span className={styles.saveWarn} data-testid="save-warn" title={t("edit.staticWarn.body")}>
           {t("session.notSaved")}
         </span>
       )}
@@ -187,7 +196,7 @@ function SaveStatus({
   const { t } = useI18n();
   if (status === "failed") {
     return (
-      <span className="save-status save-failed" data-testid="save-status">
+      <span className={cx(styles.saveStatus, styles.saveFailed)} data-testid="save-status">
         {t("save.failed")}
         {failMessage !== null && ` (${failMessage})`}
         <button type="button" onClick={onRetry}>
@@ -198,14 +207,14 @@ function SaveStatus({
   }
   if (status === "saving") {
     return (
-      <span className="save-status" data-testid="save-status">
+      <span className={styles.saveStatus} data-testid="save-status">
         {t("save.saving")}
       </span>
     );
   }
   if (status === "dirty") {
     return (
-      <span className="save-status save-dirty" data-testid="save-status">
+      <span className={cx(styles.saveStatus, styles.saveDirty)} data-testid="save-status">
         {t("save.unsaved", { n: pendingCount })}
         <button type="button" data-testid="save-button" onClick={onSave}>
           {t("save.button")}
@@ -214,7 +223,7 @@ function SaveStatus({
     );
   }
   return (
-    <span className="save-status save-saved" data-testid="save-status">
+    <span className={cx(styles.saveStatus, styles.saveSaved)} data-testid="save-status">
       {t("save.saved")}
     </span>
   );

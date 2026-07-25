@@ -1,0 +1,11 @@
+/* ドライバ設定（DriverSetup）固有のスタイル。共有の .driver-list / .driver-catalog /
+   .form-section / .form-row / .badge* / .paste-area 等は global に残す。 */
+
+.driver-custom {
+  margin: 8px 0;
+}
+
+.driver-custom summary {
+  cursor: pointer;
+  font-size: 12px;
+}

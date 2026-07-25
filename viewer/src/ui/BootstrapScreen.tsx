@@ -7,6 +7,7 @@ import { useI18n } from "../i18n/useI18n";
 import { apiPost } from "../model/api";
 import { Link } from "./Link";
 import { hrefs } from "./router";
+import styles from "./BootstrapScreen.module.scss";
 
 export function BootstrapScreen() {
   const { t } = useI18n();
@@ -37,15 +38,15 @@ export function BootstrapScreen() {
       <div className="fatal-card">
         <h1>{t("app.title")}</h1>
         <p>{t("bootstrap.lead")}</p>
-        <div className="bootstrap-options">
-          <div className="bootstrap-option">
+        <div className={styles.bootstrapOptions}>
+          <div className={styles.bootstrapOption}>
             <h2>{t("bootstrap.introspect")}</h2>
             <p>{t("bootstrap.introspectDesc")}</p>
             <Link className="button-link" href={hrefs.introspect()}>
               {t("bootstrap.introspect")}
             </Link>
           </div>
-          <div className="bootstrap-option">
+          <div className={styles.bootstrapOption}>
             <h2>{t("bootstrap.sample")}</h2>
             <p>{t("bootstrap.sampleDesc")}</p>
             <button
@@ -59,7 +60,7 @@ export function BootstrapScreen() {
           </div>
         </div>
         {error !== null && (
-          <p className="bootstrap-error">{t("bootstrap.failed", { error })}</p>
+          <p className={styles.bootstrapError}>{t("bootstrap.failed", { error })}</p>
         )}
       </div>
     </div>

@@ -1,0 +1,18 @@
+/* リレーション詳細ダイアログ本文のグリッド。共有の .mono / .muted / .error-text は
+   global に残す。 */
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 8px 20px;
+  margin: 0;
+}
+
+.detail-grid dt {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.detail-grid dd {
+  margin: 0;
+}

@@ -1,0 +1,20 @@
+/* テーブル詳細ページ固有のスタイル。ページシェル（.catalog-page / .catalog-header /
+   .notice-banner）や .button-link / .mono / .muted は global の共有プリミティブに残す。 */
+
+.fab-new-table {
+  position: fixed;
+  right: 28px;
+  bottom: 24px;
+  padding: 12px 18px;
+  border: none;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 18%);
+  cursor: pointer;
+}
+
+.fab-new-table:hover {
+  opacity: 0.92;
+}

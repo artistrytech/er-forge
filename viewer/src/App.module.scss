@@ -1,0 +1,49 @@
+/* アプリ最上位レイアウト（App）固有のスタイル。共有プリミティブ
+   （.empty-state / .fatal-screen / .fatal-card / .error-banner / .button-link /
+   .muted）は global に残す。 */
+
+.app-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.app-main {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: row;
+}
+
+/* ルート内容（キャンバス / テーブル詳細 / カラム論理名 など）。左パネルの右側で縦スクロール */
+.app-content {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 左パネルは常時マウントし表示のみ切り替える。hidden はスペースも占めない */
+.panel-slot {
+  display: flex;
+  min-height: 0;
+}
+
+.panel-slot.hidden {
+  display: none;
+}
+
+/* 起動中ローディング。global の .empty-state と同じ体裁（共有ルールから分離して複製） */
+.boot-loading {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  padding: 40px;
+  text-align: center;
+}

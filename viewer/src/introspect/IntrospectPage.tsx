@@ -30,6 +30,14 @@ import type {
   Preview,
   RenameDecision,
 } from "./types";
+import { cx } from "../lib/cx";
+import styles from "./IntrospectPage.module.scss";
+
+// 動的 `rename-${decision}` は camelCaseOnly で kebab キーが消えるため明示マップにする
+const RENAME_CLASS: Record<string, string | undefined> = {
+  undecided: styles.renameUndecided,
+  reject: styles.renameReject,
+};
 
 /** JDBC URL のサブプロトコル → カタログ ID。接続失敗時に「必要なドライバ」を当てるのに使う。 */
 const SUBPROTOCOL_TO_CATALOG: Record<string, string> = {
@@ -477,7 +485,7 @@ export function IntrospectPage() {
   }
 
   return (
-    <div className="catalog-page introspect-page">
+    <div className={cx("catalog-page", styles.introspectPage)} data-testid="introspect-page">
       <div className="catalog-header">
         <h2>{t("introspect.title")}</h2>
       </div>
@@ -486,7 +494,7 @@ export function IntrospectPage() {
       {error !== null && <div className="error-banner">{error}</div>}
 
       {neededDriver !== null && (
-        <div className="notice-banner driver-needed" data-testid="driver-needed">
+        <div className={cx("notice-banner", styles.driverNeeded)} data-testid="driver-needed">
           <span>{t("introspect.driverMissingForUrl", { db: neededDriver.label })}</span>
           <button
             type="button"
@@ -548,7 +556,7 @@ export function IntrospectPage() {
               />
             </div>
             <div className="form-row">
-              <label className="checkbox-label">
+              <label className={styles.checkboxLabel}>
                 <input
                   type="checkbox"
                   checked={savePassword}
@@ -745,7 +753,7 @@ export function IntrospectPage() {
 
           <IgnoredList preview={preview} />
 
-          <div className="form-actions sticky-actions">
+          <div className={cx("form-actions", styles.stickyActions)}>
             <span className="muted">
               {t("introspect.selected", {
                 n: selection.size,
@@ -808,7 +816,7 @@ function Stats({ preview }: { preview: Preview }) {
   const { t } = useI18n();
   const s = preview.stats;
   return (
-    <div className="introspect-stats" data-testid="stats">
+    <div className={styles.introspectStats} data-testid="stats">
       <span className="badge">{preview.source.product} {preview.source.version}</span>
       <span>{t("introspect.change.added")}: {s.added}</span>
       <span>{t("introspect.change.renamed")}: {s.renamed}</span>
@@ -832,7 +840,7 @@ function RenameRow({
 }) {
   const { t } = useI18n();
   return (
-    <div className={`rename-row rename-${decision?.decision ?? "undecided"}`}>
+    <div className={cx(styles.renameRow, RENAME_CLASS[decision?.decision ?? "undecided"])}>
       <span className="mono">
         {candidate.from} → {candidate.to}
       </span>
@@ -937,11 +945,11 @@ function ApplyResult({ result, onRestart }: { result: ApplyResponse; onRestart: 
   const firstDiagram = useAppStore((s) => s.manifest?.diagrams?.[0]?.id);
   const placementHref = firstDiagram !== undefined ? hrefs.erd(firstDiagram) : hrefs.erdHome();
   return (
-    <div className="catalog-page introspect-page">
+    <div className={cx("catalog-page", styles.introspectPage)} data-testid="introspect-page">
       <div className="catalog-header">
         <h2>{t("introspect.doneTitle")}</h2>
       </div>
-      <div className="introspect-stats" data-testid="apply-result">
+      <div className={styles.introspectStats} data-testid="apply-result">
         <span>{t("introspect.change.added")}: {a.added}</span>
         <span>{t("introspect.change.renamed")}: {a.renamed}</span>
         <span>{t("introspect.change.modified")}: {a.modified}</span>

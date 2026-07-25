@@ -1,0 +1,65 @@
+/* 全体検索モーダル（F-01〜F-05）のスタイル。共有の .mono / .muted / .small は
+   global に残し、検索固有クラスのみここへ閉じ込める。 */
+
+.search-input {
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 15px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-bottom: 10px;
+}
+
+.search-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.search-result {
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.search-result-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.search-result-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.search-columns {
+  list-style: none;
+  margin: 6px 0 0;
+  padding-left: 16px;
+  font-size: 13px;
+}
+
+/* ---- 検索モーダルのタブ ---- */
+
+.search-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.search-tab {
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.search-tab.active {
+  background: #111318;
+  color: #fff;
+  border-color: #111318;
+}

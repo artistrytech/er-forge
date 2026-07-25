@@ -127,7 +127,7 @@ async function main() {
     await page.goto(url);
     await page.waitForSelector(".bootstrap-screen", { timeout: 15000 });
     await page.getByRole("link", { name: "既存のスキーマから生成する" }).click();
-    await page.waitForSelector(".introspect-page", { timeout: 15000 });
+    await page.waitForSelector('[data-testid="introspect-page"]', { timeout: 15000 });
     check("bootstrap offers introspection for an empty project", true);
 
     // ---- K-01: drivers/ に置いた H2 が DriverShim 経由で登録されている ----
@@ -158,7 +158,7 @@ async function main() {
     // ---- K-11: 適用 → data/** が生成される ----
     await page.getByTestId("apply").click();
     // 空プロジェクトからの初期化はリロードして通常のロード経路に入る
-    await page.waitForSelector(".react-flow, .catalog-page, .app-main", { timeout: 30000 });
+    await page.waitForSelector('.react-flow, .catalog-page, [data-testid="app-main"]', { timeout: 30000 });
     await new Promise((r) => setTimeout(r, 500));
 
     const usersFile = join(dir, "data", "schema", "public", "users.js");
@@ -224,7 +224,7 @@ async function main() {
 
     // 配置するには編集ルートへ入る（[編集開始]）
     await page.getByTestId("session-toggle").click();
-    await page.waitForSelector(".session-editing", { timeout: 5000 });
+    await page.waitForSelector('[data-testid="session-badge"][data-editing="true"]', { timeout: 5000 });
 
     // 未配置トレイから自動配置（H-08）→ Ctrl+S で保存（自動保存は無い）
     await page.getByTestId("tray-auto-place").click();
@@ -243,13 +243,13 @@ async function main() {
 
     // 編集を終える → 閲覧ルートへ戻る
     await page.getByTestId("session-toggle").click();
-    await page.waitForFunction(() => document.querySelector(".session-editing") === null);
+    await page.waitForFunction(() => document.querySelector('[data-testid="session-badge"][data-editing="true"]') === null);
     const diagramsBefore = readFileSync(diagramFile, "utf-8");
 
     // ---- 2回目: DB にカラムを追加して再実行 ----
     await page.goto(`${url}#/introspect`);
     await page.reload();
-    await page.waitForSelector(".introspect-page", { timeout: 15000 });
+    await page.waitForSelector('[data-testid="introspect-page"]', { timeout: 15000 });
     await page.getByTestId("jdbc-url").click();
     await page.getByTestId("jdbc-url").press("ControlOrMeta+a");
     await page.getByTestId("jdbc-url").pressSequentially(jdbcUrlAltered);

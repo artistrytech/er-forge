@@ -23,6 +23,8 @@ import { RelationDialog } from "./ui/RelationDialog";
 import { SearchDialog } from "./ui/SearchDialog";
 import { TableDetailDialog } from "./ui/TableDetailDialog";
 import { hrefs, replaceRoute, useRoute } from "./ui/router";
+import { cx } from "./lib/cx";
+import styles from "./App.module.scss";
 
 export function App() {
   const { t } = useI18n();
@@ -76,7 +78,7 @@ export function App() {
     return <FatalBanner fatal={fatal} />;
   }
   if (!ready && !bootstrapping) {
-    return <div className="boot-loading">{t("canvas.loading")}</div>;
+    return <div className={styles.bootLoading}>{t("canvas.loading")}</div>;
   }
 
   const firstDiagram = manifest?.diagrams?.[0]?.id;
@@ -150,7 +152,7 @@ export function App() {
       if (serverMode === true) {
         content = <TableEdit tableId={route.tableId} />;
       } else if (serverMode === null) {
-        content = <div className="boot-loading">{t("canvas.loading")}</div>;
+        content = <div className={styles.bootLoading}>{t("canvas.loading")}</div>;
       } else {
         content = <TableDetail tableId={route.tableId} notice={t("banner.editRedirect")} />;
       }
@@ -171,7 +173,7 @@ export function App() {
       if (serverMode === true) {
         content = <ColumnsPage editing={true} />;
       } else if (serverMode === null) {
-        content = <div className="boot-loading">{t("canvas.loading")}</div>;
+        content = <div className={styles.bootLoading}>{t("canvas.loading")}</div>;
       } else {
         replaceRoute(hrefs.columns());
         content = null;
@@ -182,7 +184,7 @@ export function App() {
       if (serverMode === true) {
         content = <IntrospectPage />;
       } else if (serverMode === null) {
-        content = <div className="boot-loading">{t("canvas.loading")}</div>;
+        content = <div className={styles.bootLoading}>{t("canvas.loading")}</div>;
       } else {
         content = (
           <div className="empty-state">
@@ -202,7 +204,7 @@ export function App() {
   }
 
   return (
-    <div className="app-root">
+    <div className={styles.appRoot}>
       <Header currentDiagramId={currentDiagramId} onErdRoute={onErdRoute} />
       {failedIds.length > 0 && loaded + failed >= total && (
         <div className="error-banner">
@@ -210,16 +212,24 @@ export function App() {
         </div>
       )}
       <ExternalUpdateBanner />
-      <main className="app-main">
+      <main className={styles.appMain} data-testid="app-main">
         {/* ER用・テーブル用パネルは常時マウントし、表示のみ切り替える（回答2）。
             アンマウントしないため、画面を往復してもレーン選択・フィルタ・検索が保持される */}
-        <div className={"panel-slot" + (panelScope === "erd" ? "" : " hidden")}>
+        <div
+          className={cx(styles.panelSlot, panelScope !== "erd" && styles.hidden)}
+          data-testid="panel-slot"
+          data-hidden={panelScope !== "erd" ? "true" : undefined}
+        >
           <LeftPanel scope="erd" currentDiagramId={currentDiagramId} activeTableId={activeTableId} />
         </div>
-        <div className={"panel-slot" + (panelScope === "tables" ? "" : " hidden")}>
+        <div
+          className={cx(styles.panelSlot, panelScope !== "tables" && styles.hidden)}
+          data-testid="panel-slot"
+          data-hidden={panelScope !== "tables" ? "true" : undefined}
+        >
           <LeftPanel scope="tables" activeTableId={activeTableId} />
         </div>
-        <div className="app-content">{content}</div>
+        <div className={styles.appContent}>{content}</div>
       </main>
       {dialog?.type === "table" && <TableDetailDialog tableId={dialog.id} />}
       {dialog?.type === "relation" && <RelationDialog relationId={dialog.id} />}
@@ -238,7 +248,7 @@ function FatalBanner({ fatal }: { fatal: Fatal }) {
   if (fatal.kind === "no-data" || fatal.kind === "empty") {
     // サーバーモードならブートストラップ（A-08）。判定中はどちらの画面も出さない
     if (serverMode === null) {
-      return <div className="boot-loading">{t("canvas.loading")}</div>;
+      return <div className={styles.bootLoading}>{t("canvas.loading")}</div>;
     }
     if (serverMode) {
       return <BootstrapScreen />;

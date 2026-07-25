@@ -9,7 +9,9 @@
 import { memo } from "react";
 import { BaseEdge, useInternalNode, type Edge, type EdgeProps } from "@xyflow/react";
 import type { CardEnd, Relation } from "../model/types";
+import { cx } from "../lib/cx";
 import { useCanvasStore } from "./canvasStore";
+import styles from "./RelationEdge.module.scss";
 
 export interface RelationEdgeData extends Record<string, unknown> {
   relation: Relation;
@@ -59,14 +61,14 @@ function CardMarker({ x, y, angle, card }: { x: number; y: number; angle: number
   const many = card.endsWith("N");
   const optional = card.startsWith("0");
   return (
-    <g transform={`translate(${x}, ${y}) rotate(${angle})`} className="erd-card-marker">
+    <g transform={`translate(${x}, ${y}) rotate(${angle})`} className={styles.erdCardMarker} data-testid="card-marker">
       {many ? (
         <path d="M11 0 L1 -6 M11 0 L1 0 M11 0 L1 6" fill="none" />
       ) : (
         <line x1={9} y1={-6} x2={9} y2={6} />
       )}
       {optional ? (
-        <circle cx={18} cy={0} r={4} className="erd-card-circle" />
+        <circle cx={18} cy={0} r={4} className={styles.erdCardCircle} />
       ) : (
         <line x1={16} y1={-6} x2={16} y2={6} />
       )}
@@ -147,15 +149,17 @@ export const RelationEdge = memo(function RelationEdge({
     tAngle = angleDeg(tAnchor, tToward);
   }
 
-  const cls =
-    "erd-edge" +
-    (rel.kind === "logical" ? " erd-edge-logical" : "") +
-    (dimmed ? " erd-dimmed" : "") +
-    (highlighted ? " erd-edge-highlighted" : "");
+  const cls = cx(
+    styles.erdEdge,
+    rel.kind === "logical" && styles.erdEdgeLogical,
+    // 減光はノード（TableNode）と共用のため global クラスのまま
+    dimmed && "erd-dimmed",
+    highlighted && styles.erdEdgeHighlighted,
+  );
 
   return (
-    <g className={cls}>
-      <BaseEdge id={id} path={path} className="erd-edge-path" interactionWidth={14} />
+    <g className={cls} data-testid="erd-edge" data-kind={rel.kind === "logical" ? "logical" : "physical"}>
+      <BaseEdge id={id} path={path} className={styles.erdEdgePath} interactionWidth={14} />
       {/* from = 子（FK を持つ側）→ 子側の多重度、to = 親 → 親側の多重度（設計書 §5.5） */}
       <CardMarker x={sAnchor.x} y={sAnchor.y} angle={sAngle} card={rel.cardinality?.child} />
       <CardMarker x={tAnchor.x} y={tAnchor.y} angle={tAngle} card={rel.cardinality?.parent} />

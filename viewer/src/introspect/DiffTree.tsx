@@ -8,8 +8,10 @@
 import { useState } from "react";
 import { useI18n } from "../i18n/useI18n";
 import type { MsgKey } from "../i18n/messages";
+import { cx } from "../lib/cx";
 import { tableState } from "./selection";
 import type { DiffItem } from "./types";
+import styles from "./DiffTree.module.scss";
 
 const CHANGE_MARK: Record<string, string> = {
   added: "+",
@@ -17,6 +19,14 @@ const CHANGE_MARK: Record<string, string> = {
   modified: "~",
   renamed: "→",
   unchanged: "=",
+};
+
+// 動的 `diff-${change}` は camelCaseOnly で kebab キーが消えるため明示マップにする
+const CHANGE_CLASS: Record<string, string | undefined> = {
+  added: styles.diffAdded,
+  removed: styles.diffRemoved,
+  modified: styles.diffModified,
+  renamed: styles.diffRenamed,
 };
 
 export function DiffTree({
@@ -43,7 +53,7 @@ export function DiffTree({
       {groups.map(
         (g) =>
           g.items.length > 0 && (
-            <section key={g.change} className="diff-group">
+            <section key={g.change} className={styles.diffGroup}>
               <h3>
                 {t(`introspect.change.${g.change}` as MsgKey)} ({g.items.length})
               </h3>
@@ -79,8 +89,8 @@ function TableRow({
   const state = tableState(item, selection);
 
   return (
-    <div className={`diff-table diff-${item.change}`}>
-      <div className="diff-row">
+    <div className={cx(styles.diffTable, CHANGE_CLASS[item.change])}>
+      <div className={styles.diffRow}>
         <input
           type="checkbox"
           checked={state === "checked"}
@@ -93,17 +103,17 @@ function TableRow({
         />
         <button
           type="button"
-          className="diff-toggle"
+          className={styles.diffToggle}
           onClick={() => setOpen(!open)}
           disabled={item.children.length === 0}
         >
           {item.children.length === 0 ? "　" : open ? "▼" : "▸"}
         </button>
-        <span className="diff-mark">{CHANGE_MARK[item.change]}</span>
-        <span className="mono diff-target">
+        <span className={styles.diffMark}>{CHANGE_MARK[item.change]}</span>
+        <span className={cx("mono", styles.diffTarget)}>
           {item.change === "renamed" ? `${item.renamedFrom} → ${item.target}` : item.target}
         </span>
-        <span className="muted diff-summary">{item.after ?? item.before}</span>
+        <span className={cx("muted", styles.diffSummary)}>{item.after ?? item.before}</span>
         {item.change === "removed" && (
           <button
             type="button"
@@ -143,7 +153,7 @@ function ChildRow({
 
   return (
     <>
-      <div className="diff-row diff-child">
+      <div className={cx(styles.diffRow, styles.diffChild)}>
         <input
           type="checkbox"
           checked={checked}
@@ -151,14 +161,14 @@ function ChildRow({
           title={item.selectable ? "" : t("introspect.forced")}
           onChange={() => onToggle(item.id)}
         />
-        <span className="diff-mark">{CHANGE_MARK[item.change]}</span>
-        <span className="diff-kind">{t(`introspect.kind.${item.kind}` as MsgKey)}</span>
-        <span className="mono diff-target">
+        <span className={styles.diffMark}>{CHANGE_MARK[item.change]}</span>
+        <span className={styles.diffKind}>{t(`introspect.kind.${item.kind}` as MsgKey)}</span>
+        <span className={cx("mono", styles.diffTarget)}>
           {item.change === "renamed" && item.kind === "column"
             ? `${item.renamedFrom} → ${item.target}`
             : item.target}
         </span>
-        <span className="diff-values">
+        <span className={styles.diffValues}>
           {item.before !== null && <del className="mono">{item.before}</del>}
           {item.before !== null && item.after !== null && " → "}
           {item.after !== null && <ins className="mono">{item.after}</ins>}

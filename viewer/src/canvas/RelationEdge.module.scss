@@ -1,0 +1,34 @@
+/* リレーションエッジ（E-01〜E-03 / E-09）のスタイル。
+   減光の .erd-dimmed はノード（TableNode）と共用のため global に残す。 */
+
+.erd-edge .erd-edge-path {
+  stroke: var(--edge);
+  stroke-width: 1.5;
+  fill: none;
+}
+
+.erd-edge-logical .erd-edge-path {
+  stroke: var(--edge-logical);
+  stroke-dasharray: 6 4;
+}
+
+.erd-edge-highlighted .erd-edge-path {
+  stroke: var(--edge-highlight);
+  stroke-width: 2.5;
+}
+
+.erd-card-marker line,
+.erd-card-marker path {
+  stroke: var(--edge);
+  stroke-width: 1.5;
+  fill: none;
+}
+
+.erd-edge-logical .erd-card-marker line,
+.erd-edge-logical .erd-card-marker path {
+  stroke: var(--edge-logical);
+}
+
+.erd-card-marker .erd-card-circle {
+  fill: var(--canvas-bg);
+}

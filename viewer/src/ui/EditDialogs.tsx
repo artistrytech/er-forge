@@ -9,7 +9,9 @@
 import { useI18n } from "../i18n/useI18n";
 import { useEditStore } from "../model/editStore";
 import { useAppStore } from "../model/store";
+import { cx } from "../lib/cx";
 import { Dialog } from "./Dialog";
+import styles from "./EditDialogs.module.scss";
 
 export function EditDialogs() {
   const { t } = useI18n();
@@ -52,7 +54,7 @@ export function ExternalUpdateBanner() {
   const muteForTab = useEditStore((s) => s.muteExternalForTab);
   if (!externalUpdate) return null;
   return (
-    <div className="external-banner" data-testid="external-banner">
+    <div className={styles.externalBanner} data-testid="external-banner">
       <span>{t("edit.external.body")}</span>
       <button type="button" data-testid="external-reload" onClick={() => resolveExternal("reload")}>
         {t("edit.external.reload")}
@@ -73,11 +75,11 @@ export function Toasts() {
   const toasts = useAppStore((s) => s.toasts);
   if (toasts.length === 0) return null;
   return (
-    <div className="toast-area" aria-live="polite">
+    <div className={styles.toastArea} aria-live="polite">
       {toasts.map((toast) => (
         <div
           key={toast.id}
-          className={"toast" + (toast.variant === "error" ? " toast-error" : "")}
+          className={cx(styles.toast, toast.variant === "error" && styles.toastError)}
           role={toast.variant === "error" ? "alert" : undefined}
         >
           {toast.text}

@@ -5,7 +5,9 @@
  */
 import { memo } from "react";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
+import { cx } from "../lib/cx";
 import { useCanvasStore } from "./canvasStore";
+import styles from "./TableNode.module.scss";
 
 export interface TableNodeData extends Record<string, unknown> {
   /** 表示名（論理名 / 物理名 / 併記は解決済みで渡す） */
@@ -29,19 +31,26 @@ export const TableNode = memo(function TableNode({ id, data }: NodeProps<TableNo
   const dimmed = useCanvasStore(
     (s) => !data.ghost && s.selection !== null && !s.relatedNodes.has(id),
   );
-  const cls =
-    "erd-node" +
-    (data.missing ? " erd-node-missing" : "") +
-    (data.ghost ? " erd-node-ghost" : "") +
-    (dimmed ? " erd-dimmed" : "") +
-    (selected && !data.ghost ? " erd-node-selected" : "");
+  const cls = cx(
+    styles.erdNode,
+    data.missing && styles.erdNodeMissing,
+    data.ghost && styles.erdNodeGhost,
+    // 減光はエッジ（RelationEdge）と共用のため global クラスのまま
+    dimmed && "erd-dimmed",
+    selected && !data.ghost && styles.erdNodeSelected,
+  );
   return (
-    <div className={cls} title={data.notes}>
-      <Handle type="target" position={Position.Top} className="erd-handle" isConnectable={false} />
-      <div className="erd-node-name">{data.primary}</div>
-      {data.secondary !== undefined && <div className="erd-node-sub">{data.secondary}</div>}
-      {data.missing && <div className="erd-node-warn">⚠</div>}
-      <Handle type="source" position={Position.Bottom} className="erd-handle" isConnectable={false} />
+    <div
+      className={cls}
+      title={data.notes}
+      data-testid="erd-node"
+      data-ghost={data.ghost === true ? "true" : undefined}
+    >
+      <Handle type="target" position={Position.Top} className={styles.erdHandle} isConnectable={false} />
+      <div className={styles.erdNodeName}>{data.primary}</div>
+      {data.secondary !== undefined && <div className={styles.erdNodeSub}>{data.secondary}</div>}
+      {data.missing && <div className={styles.erdNodeWarn}>⚠</div>}
+      <Handle type="source" position={Position.Bottom} className={styles.erdHandle} isConnectable={false} />
     </div>
   );
 });

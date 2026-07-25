@@ -62,25 +62,25 @@ async function main() {
 
   // 1) 起動 → ホーム → 最初のER図ページへリダイレクト
   await page.goto("file:///" + DIST);
-  await page.waitForSelector(".erd-node", { timeout: 10000 });
+  await page.waitForSelector('[data-testid="erd-node"]', { timeout: 10000 });
   check("hash redirects to first diagram", page.url().includes("#/erd/core"));
-  check("core page renders 3 nodes", (await page.locator(".erd-node").count()) === 3);
-  check("edges render", (await page.locator(".erd-edge").count()) === 4);
-  check("logical edge is dashed class", (await page.locator(".erd-edge-logical").count()) === 1);
-  check("cardinality markers render", (await page.locator(".erd-card-marker").count()) >= 8);
-  check("legend visible", await page.locator(".erd-legend").isVisible());
-  check("mode badge shows static", await page.locator(".mode-badge.mode-static").isVisible());
-  check("session badge shows viewing", await page.locator(".session-badge").isVisible());
+  check("core page renders 3 nodes", (await page.locator('[data-testid="erd-node"]').count()) === 3);
+  check("edges render", (await page.locator('[data-testid="erd-edge"]').count()) === 4);
+  check("logical edge is dashed class", (await page.locator('[data-testid="erd-edge"][data-kind="logical"]').count()) === 1);
+  check("cardinality markers render", (await page.locator('[data-testid="card-marker"]').count()) >= 8);
+  check("legend visible", await page.locator('[data-testid="erd-legend"]').isVisible());
+  check("mode badge shows static", await page.locator('[data-testid="mode-badge"][data-mode="static"]').isVisible());
+  check("session badge shows viewing", await page.locator('[data-testid="session-badge"]').isVisible());
   check("minimap renders nodes", (await page.locator(".react-flow__minimap-node").count()) === 3);
 
   // 2) ページ切替（B-01）: サイドバーのリンクで billing へ
   await page.click('a[href="#/erd/billing"]');
   await page.waitForFunction(() => location.hash === "#/erd/billing");
-  await page.waitForSelector(".erd-node");
-  check("billing page renders 3 nodes", (await page.locator(".erd-node").count()) === 3);
+  await page.waitForSelector('[data-testid="erd-node"]');
+  check("billing page renders 3 nodes", (await page.locator('[data-testid="erd-node"]').count()) === 3);
 
   // 3) ノードのダブルクリック → 閲覧専用ダイアログ（D-06 / G-01）
-  await page.dblclick(".erd-node >> nth=0");
+  await page.dblclick('[data-testid="erd-node"] >> nth=0');
   await page.waitForSelector(".dialog");
   check("table dialog opens on dblclick", await page.locator(".dialog").isVisible());
   await page.waitForSelector(".dialog .data-table tbody tr");
@@ -97,39 +97,39 @@ async function main() {
   check("detail shows column table", (await page.locator(".data-table tbody tr").count()) > 0);
 
   // 5) 詳細画面 → ER図ページへのリンク（O-04）
-  const backToErd = page.locator('.page-list a[href^="#/erd/"]');
+  const backToErd = page.locator('[data-testid="page-list"] a[href^="#/erd/"]');
   check("detail links back to diagram pages", (await backToErd.count()) > 0);
   await backToErd.first().click();
-  await page.waitForSelector(".erd-node");
+  await page.waitForSelector('[data-testid="erd-node"]');
   check("navigates back to diagram with focus", page.url().includes("#/erd/"));
 
   // 6) テーブル画面（O-01。一覧と詳細を統合。左パネル「全て」レーンで一覧＋絞り込み）
   await page.click('a[href="#/tables"]');
   // 素の #/tables は先頭テーブルへ振り替わる（回答E: 未選択状態は作らない）
   await page.waitForFunction(() => location.hash.startsWith("#/tables/"));
-  const V = ".panel-slot:not(.hidden) "; // 両パネル常時マウントのため表示中に限定
+  const V = '[data-testid="panel-slot"]:not([data-hidden]) '; // 両パネル常時マウントのため表示中に限定
   await page.click(V + '[data-testid="lane-all"]');
-  await page.waitForSelector(V + ".lp-list .lp-item");
-  check("all-tables lane lists 6 tables", (await page.locator(V + ".lp-list .lp-item").count()) === 6);
-  await page.locator(V + ".lp-filter").pressSequentially("注文");
+  await page.waitForSelector(V + '[data-testid="lp-item"]');
+  check("all-tables lane lists 6 tables", (await page.locator(V + '[data-testid="lp-item"]').count()) === 6);
+  await page.locator(V + '[data-testid="lp-filter"]').pressSequentially("注文");
   check(
     "all-tables filter works (注文 → 2)",
-    (await page.locator(V + ".lp-list .lp-item").count()) === 2,
+    (await page.locator(V + '[data-testid="lp-item"]').count()) === 2,
   );
-  await page.locator(V + ".lp-filter").fill("");
+  await page.locator(V + '[data-testid="lp-filter"]').fill("");
 
   // 7) 検索（F-01 / F-05）: Ctrl+K で開き、カラム論理名でヒット
   await page.keyboard.press("Control+k");
-  await page.waitForSelector(".search-input");
-  await page.fill(".search-input", "メールアドレス");
-  await page.waitForSelector(".search-result");
-  check("search hits by column logical name", (await page.locator(".search-result").count()) >= 1);
+  await page.waitForSelector('[data-testid="search-input"]');
+  await page.fill('[data-testid="search-input"]', "メールアドレス");
+  await page.waitForSelector('[data-testid="search-result"]');
+  check("search hits by column logical name", (await page.locator('[data-testid="search-result"]').count()) >= 1);
   await page.keyboard.press("Escape");
 
   // 8) エッジのダブルクリック → リレーション詳細（E-10）
   // 水平なエッジは bounding box の高さが 0 で「不可視」扱いになるため座標指定でクリック
   await page.goto("file:///" + DIST + "#/erd/core");
-  await page.waitForSelector(".erd-edge-path", { state: "attached" });
+  await page.waitForSelector('[data-testid="erd-edge"] path', { state: "attached" });
   await page.waitForTimeout(500);
   const mid = await page.evaluate(() => {
     const p = document.querySelector(".react-flow__edge-interaction");
@@ -158,10 +158,10 @@ async function main() {
   check("edit route shows read-only notice", await page.locator(".notice-banner").isVisible());
 
   // 11) 言語切替（L-04）
-  await page.selectOption(".header-select >> nth=1", "en");
+  await page.selectOption('[data-testid="header-select"] >> nth=1', "en");
   check(
     "language switch to English",
-    (await page.locator(".app-title").textContent()) === "ER Diagram Tool",
+    (await page.locator('[data-testid="app-title"]').textContent()) === "ER Diagram Tool",
   );
 
   // 12) ブラウザの戻る（X-05）

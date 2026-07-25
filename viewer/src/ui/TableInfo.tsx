@@ -8,15 +8,17 @@ import { loadTable } from "../model/loader";
 import { formatName, resolveColumnName, resolveTableName } from "../model/logicalName";
 import { useAppStore } from "../model/store";
 import { parseEdgeId, type Relation, type Table } from "../model/types";
+import { cx } from "../lib/cx";
 import { hrefs } from "./router";
 import { Link } from "./Link";
+import styles from "./TableInfo.module.scss";
 
 /** 参照先テーブルへのリンク（存在しなければ物理名のみ） */
 export function TableLink({ tableId, onNavigate }: { tableId: string; onNavigate?: () => void }) {
   const index = useAppStore((s) => s.index);
   const nameDisplay = useAppStore((s) => s.nameDisplay);
   const it = index?.tables?.find((x) => x.id === tableId);
-  if (!it) return <span className="table-link-missing">{tableId}</span>;
+  if (!it) return <span className={styles.tableLinkMissing}>{tableId}</span>;
   const label = formatName(resolveTableName(it.name, it.displayName), it.name, nameDisplay);
   return (
     <Link href={hrefs.table(tableId)} onClick={onNavigate}>
@@ -65,14 +67,14 @@ export function TableInfo({ tableId, onNavigate }: TableInfoProps) {
   const fkCols = new Set((table.foreignKeys ?? []).flatMap((fk) => fk.columns));
 
   return (
-    <div className="table-info">
+    <div className={styles.tableInfo}>
       {table.comment !== undefined && table.comment !== "" && (
-        <p className="table-comment">{table.comment}</p>
+        <p className={styles.tableComment}>{table.comment}</p>
       )}
       {(table.meta?.tags?.length ?? 0) > 0 && (
-        <p className="table-tags">
+        <p className={styles.tableTags}>
           {table.meta?.tags?.map((tag) => (
-            <span key={tag} className="tag">
+            <span key={tag} className={styles.tag}>
               {tag}
             </span>
           ))}
@@ -107,8 +109,8 @@ export function TableInfo({ tableId, onNavigate }: TableInfoProps) {
               return (
                 <tr key={c.name}>
                   <td className="center">
-                    {pk.has(c.name) && <span className="key-badge key-pk">PK</span>}
-                    {fkCols.has(c.name) && <span className="key-badge key-fk">FK</span>}
+                    {pk.has(c.name) && <span className={cx(styles.keyBadge, styles.keyPk)}>PK</span>}
+                    {fkCols.has(c.name) && <span className={cx(styles.keyBadge, styles.keyFk)}>FK</span>}
                   </td>
                   <td className="mono">{c.name}</td>
                   <td>
@@ -138,7 +140,7 @@ export function TableInfo({ tableId, onNavigate }: TableInfoProps) {
       </div>
 
       <h3>{t("table.constraints")}</h3>
-      <dl className="constraint-list">
+      <dl className={styles.constraintList}>
         {(table.primaryKey?.length ?? 0) > 0 && (
           <>
             <dt>{t("table.primaryKey")}</dt>
@@ -192,7 +194,7 @@ export function TableInfo({ tableId, onNavigate }: TableInfoProps) {
         (table.meta?.logicalForeignKeys?.length ?? 0) > 0) && (
         <>
           <h3>{t("table.logicalConstraints")}</h3>
-          <dl className="constraint-list logical">
+          <dl className={cx(styles.constraintList, styles.logical)}>
             {(table.meta?.logicalUniques?.length ?? 0) > 0 && (
               <>
                 <dt>{t("table.logicalUniques")}</dt>
@@ -200,7 +202,7 @@ export function TableInfo({ tableId, onNavigate }: TableInfoProps) {
                   {table.meta?.logicalUniques?.map((u, i) => (
                     <div key={u.name ?? i} className="mono">
                       {u.name !== undefined && `${u.name} `}({u.columns.join(", ")})
-                      {u.notes !== undefined && <span className="note-inline">{u.notes}</span>}
+                      {u.notes !== undefined && <span className={styles.noteInline}>{u.notes}</span>}
                     </div>
                   ))}
                 </dd>
@@ -215,7 +217,7 @@ export function TableInfo({ tableId, onNavigate }: TableInfoProps) {
                       {fk.name !== undefined && `${fk.name} `}({fk.columns.join(", ")}) →{" "}
                       <TableLink tableId={fk.ref.table} onNavigate={onNavigate} />(
                       {(fk.ref.columns ?? []).join(", ")})
-                      {fk.notes !== undefined && <span className="note-inline">{fk.notes}</span>}
+                      {fk.notes !== undefined && <span className={styles.noteInline}>{fk.notes}</span>}
                     </div>
                   ))}
                 </dd>
@@ -229,7 +231,7 @@ export function TableInfo({ tableId, onNavigate }: TableInfoProps) {
       {referencedBy.length === 0 ? (
         <p className="muted">{t("table.noReferences")}</p>
       ) : (
-        <ul className="reference-list">
+        <ul className={styles.referenceList}>
           {referencedBy.map((r) => (
             <li key={r.id}>
               <RelationKindBadge relation={r} />
@@ -247,7 +249,7 @@ export function TableInfo({ tableId, onNavigate }: TableInfoProps) {
       {table.dialect !== undefined && Object.keys(table.dialect).length > 0 && (
         <>
           <h3>{t("table.dialect")}</h3>
-          <pre className="dialect-pre">{JSON.stringify(table.dialect, null, 2)}</pre>
+          <pre className={styles.dialectPre}>{JSON.stringify(table.dialect, null, 2)}</pre>
         </>
       )}
     </div>
@@ -278,7 +280,7 @@ function PagesSection({ table, onNavigate }: { table: Table; onNavigate?: () => 
       {diagramIds.length === 0 ? (
         <p className="muted">{t("table.unplacedNote")}</p>
       ) : (
-        <ul className="page-list">
+        <ul className={styles.pageList} data-testid="page-list">
           {diagramIds.map((id) => {
             const ref = manifest?.diagrams?.find((d) => d.id === id);
             return (

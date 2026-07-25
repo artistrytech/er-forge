@@ -17,6 +17,7 @@ import { useEditStore } from "../model/editStore";
 import { useAppStore } from "../model/store";
 import type { Diagram } from "../model/types";
 import { Dialog } from "./Dialog";
+import styles from "./ExportDialog.module.scss";
 
 export function ExportDialog({ diagramId }: { diagramId: string }) {
   const { t } = useI18n();
@@ -54,10 +55,10 @@ export function ExportDialog({ diagramId }: { diagramId: string }) {
 
   return (
     <Dialog title={t("export.title")} onClose={closeExport} wide>
-      <p className="export-hint">{t("export.hint", { file: `data/diagrams/${diagramId}.js` })}</p>
+      <p className={styles.exportHint}>{t("export.hint", { file: `data/diagrams/${diagramId}.js` })}</p>
       <textarea
         ref={areaRef}
-        className="export-code"
+        className={styles.exportCode}
         readOnly
         value={code}
         rows={18}

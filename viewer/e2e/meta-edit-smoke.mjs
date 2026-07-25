@@ -84,7 +84,7 @@ async function main() {
     // ---- ベースライン: users ページの破線エッジ数 ----
     await page.goto(`${url}#/erd/users`);
     await page.waitForSelector(".react-flow__node", { timeout: 15000 });
-    const logicalBefore = await page.locator(".erd-edge-logical").count();
+    const logicalBefore = await page.locator('[data-testid="erd-edge"][data-kind="logical"]').count();
 
     // ---- テーブル編集画面（O-03）: 論理名 + 論理外部制約を保存 ----
     await page.goto(`${url}#/tables/public.user_sessions/edit`);
@@ -135,7 +135,7 @@ async function main() {
     await page.goto(`${url}#/erd/users`);
     await page.waitForSelector(".react-flow__node", { timeout: 15000 });
     await page.waitForFunction(
-      (before) => document.querySelectorAll(".erd-edge-logical").length === before + 1,
+      (before) => document.querySelectorAll('[data-testid="erd-edge"][data-kind="logical"]').length === before + 1,
       logicalBefore,
       { timeout: 15000 },
     );

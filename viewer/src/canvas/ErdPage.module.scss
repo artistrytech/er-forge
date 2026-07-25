@@ -1,0 +1,118 @@
+/* ER図キャンバス（ErdPage）固有のスタイル。共有プリミティブ（.empty-state /
+   .header-button-primary / .dialog-actions）は global に残す。 */
+
+.erd-canvas {
+  flex: 1;
+  min-width: 0;
+  background: var(--canvas-bg);
+}
+
+.erd-edit-toolbar {
+  display: flex;
+  gap: 6px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 6px;
+}
+
+.erd-edit-toolbar button {
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 2px 8px;
+}
+
+.erd-edit-toolbar button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.erd-legend {
+  display: flex;
+  gap: 14px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+.erd-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.erd-legend-solid {
+  stroke: var(--edge);
+  stroke-width: 2;
+}
+
+.erd-legend-dashed {
+  stroke: var(--edge-logical);
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+}
+
+.erd-zoom-panel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.erd-zoom-panel button {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  border-radius: 5px;
+  padding: 2px 8px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.erd-zoom-panel button:hover {
+  background: var(--accent-soft);
+}
+
+.erd-zoom-value {
+  min-width: 40px;
+  text-align: right;
+  font-family: var(--mono);
+}
+
+.erd-empty-note {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 16px;
+  color: var(--text-muted);
+}
+
+/* 自動レイアウト（H-07）のプレビュー: 提案を実線、現在をゴーストで薄く重ねる（§7.2） */
+.erd-layout-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 12%);
+  font-size: 12px;
+}
+
+.erd-layout-preview button {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}

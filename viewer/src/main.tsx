@@ -1,7 +1,7 @@
 import { createRoot } from "react-dom/client";
 import { StrictMode } from "react";
 import "@xyflow/react/dist/style.css";
-import "./styles.css";
+import "./global.scss";
 import { App } from "./App";
 import { connectEvents, installUnloadHandlers } from "./model/editStore";
 import { boot } from "./model/loader";

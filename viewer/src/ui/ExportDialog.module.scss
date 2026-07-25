@@ -1,0 +1,20 @@
+/* エクスポートダイアログ固有のスタイル。共有の .dialog-actions は global に残す。 */
+
+.export-hint {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.export-code {
+  width: 100%;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px;
+  background: var(--bg);
+  color: inherit;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  resize: vertical;
+  box-sizing: border-box;
+}

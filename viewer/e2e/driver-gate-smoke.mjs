@@ -59,7 +59,7 @@ async function main() {
     await page.goto(url);
     await page.waitForSelector(".bootstrap-screen", { timeout: 15000 });
     await page.getByRole("link", { name: "既存のスキーマから生成する" }).click();
-    await page.waitForSelector(".introspect-page", { timeout: 15000 });
+    await page.waitForSelector('[data-testid="introspect-page"]', { timeout: 15000 });
 
     // 1) ドライバも設定も無い → setup ゲートが出る
     await page.waitForSelector('[data-testid="driver-gate"]', { timeout: 15000 });

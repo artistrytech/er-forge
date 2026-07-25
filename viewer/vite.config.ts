@@ -66,6 +66,14 @@ export default defineConfig({
   plugins: [react(), inlineSingleFile()],
   base: "./",
   publicDir: false,
+  // CSS Modules: *.module.scss のローカルクラスは camelCase で参照する
+  // （例: .erd-node-name → styles.erdNodeName）。cssCodeSplit:false のため
+  // module 化しても出力は単一 CSS のままで、inlineSingleFile がインライン化する。
+  css: {
+    modules: {
+      localsConvention: "camelCaseOnly",
+    },
+  },
   server: {
     port: 5173,
     strictPort: true,

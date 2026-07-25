@@ -9,6 +9,7 @@ import { useAppStore } from "../model/store";
 import { parseEdgeId } from "../model/types";
 import { Dialog } from "./Dialog";
 import { RelationKindBadge, TableLink } from "./TableInfo";
+import styles from "./RelationDialog.module.scss";
 
 export function RelationDialog({ relationId }: { relationId: string }) {
   const { t } = useI18n();
@@ -43,7 +44,7 @@ export function RelationDialog({ relationId }: { relationId: string }) {
 
   return (
     <Dialog title={t("relation.title")} onClose={closeDialog}>
-      <dl className="detail-grid">
+      <dl className={styles.detailGrid}>
         <dt>{t("relation.kind")}</dt>
         <dd>
           <RelationKindBadge relation={relation} />

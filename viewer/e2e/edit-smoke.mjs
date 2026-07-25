@@ -119,13 +119,13 @@ async function main() {
 
     // ---- 1. 編集開始（H-10 / H-11） ----
     await page.goto(url);
-    await page.waitForSelector(".erd-node", { timeout: 15000 });
+    await page.waitForSelector('[data-testid="erd-node"]', { timeout: 15000 });
     const posBefore = usersPosInFile(dir);
     check("initial users pos is [360, 56]", posBefore?.[0] === 360 && posBefore?.[1] === 56);
 
     // [編集開始] は編集ルート #/erd/<id>/edit へのリンク（ロックは無い。H-11 廃止）
     await page.click('[data-testid="session-toggle"]');
-    await page.waitForSelector(".session-editing", { timeout: 5000 });
+    await page.waitForSelector('[data-testid="session-badge"][data-editing="true"]', { timeout: 5000 });
     check("editing route entered (no lock)", true);
 
     // ---- 2. ドラッグ → 明示保存（H-01 / H-03 / T-2。自動保存は無い） ----
@@ -150,7 +150,7 @@ async function main() {
 
     // 自分の保存で再読込ループが起きない（INV-3 / T-6）: Undo 履歴が残っている
     await new Promise((r) => setTimeout(r, 800));
-    const redoEnabled = await page.locator(".erd-edit-toolbar button:nth-child(2)").isEnabled();
+    const redoEnabled = await page.locator('[data-testid="erd-edit-toolbar"] button:nth-child(2)').isEnabled();
     check("own save does not clear stacks (T-6)", redoEnabled);
 
     // ---- 4. 編集ルートでの外部変更 → バナー[再読込]で反映（H-09 / §6.2） ----
@@ -169,7 +169,7 @@ async function main() {
       { timeout: 10000 },
     );
     check("external reload moves node", true);
-    const undoDisabled = await page.locator(".erd-edit-toolbar button:nth-child(1)").isDisabled();
+    const undoDisabled = await page.locator('[data-testid="erd-edit-toolbar"] button:nth-child(1)').isDisabled();
     check("undo stack cleared after external reload (T-10)", undoDisabled);
 
     // ---- 5. 未保存 + 外部変更 → バナー[無視] → 保存で 409 STALE → 上書き（部分更新。T-7/§4.3） ----
@@ -209,7 +209,7 @@ async function main() {
 
     // 編集終了（未保存なし）→ 閲覧ルートへ戻る
     await page.click('[data-testid="session-toggle"]');
-    await page.waitForFunction(() => document.querySelector(".session-editing") === null);
+    await page.waitForFunction(() => document.querySelector('[data-testid="session-badge"][data-editing="true"]') === null);
     check("session ends back to viewing", true);
 
     check("no page errors (server mode)", pageErrors.length === 0);
@@ -220,13 +220,13 @@ async function main() {
     await new Promise((r) => setTimeout(r, 500));
     const staticPage = await browser.newPage({ viewport: { width: 1400, height: 900 } });
     await staticPage.goto("file:///" + join(dir, "index.html").replaceAll("\\", "/"));
-    await staticPage.waitForSelector(".erd-node", { timeout: 15000 });
+    await staticPage.waitForSelector('[data-testid="erd-node"]', { timeout: 15000 });
     // 静的モードでも [編集開始] で編集ルートへ入れる（ロック無し。警告はヘッダに常時表示）
     await staticPage.click('[data-testid="session-toggle"]');
-    await staticPage.waitForSelector(".session-editing");
+    await staticPage.waitForSelector('[data-testid="session-badge"][data-editing="true"]');
     check("static mode: editing starts (no lock)", true);
     check("static mode: not-saved warning shown",
-        await staticPage.locator(".save-warn").isVisible());
+        await staticPage.locator('[data-testid="save-warn"]').isVisible());
 
     await dragNode(staticPage, "public.users", 200, 0);
     await staticPage.click("text=配置をエクスポート");

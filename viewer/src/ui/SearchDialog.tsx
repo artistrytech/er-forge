@@ -11,9 +11,11 @@ import { useI18n } from "../i18n/useI18n";
 import { formatName, resolveIndexTableName } from "../model/logicalName";
 import { searchAll } from "../model/search";
 import { totalTableCount, useAppStore } from "../model/store";
+import { cx } from "../lib/cx";
 import { Dialog } from "./Dialog";
 import { Link } from "./Link";
 import { hrefs } from "./router";
+import styles from "./SearchDialog.module.scss";
 
 type Tab = "detail" | "erd" | "columns";
 
@@ -50,19 +52,20 @@ export function SearchDialog() {
       <input
         ref={inputRef}
         type="search"
-        className="search-input"
+        className={styles.searchInput}
+        data-testid="search-input"
         placeholder={t("search.placeholder")}
         value={query}
         onChange={(e) => setQuery(e.target.value)}
       />
-      <div className="search-tabs" role="tablist">
+      <div className={styles.searchTabs} role="tablist">
         {tabs.map((tb) => (
           <button
             key={tb}
             type="button"
             role="tab"
             aria-selected={tab === tb}
-            className={"search-tab" + (tab === tb ? " active" : "")}
+            className={cx(styles.searchTab, tab === tb && styles.active)}
             onClick={() => setTab(tb)}
           >
             {t(`search.tab.${tb}` as const)}
@@ -79,7 +82,7 @@ export function SearchDialog() {
       ) : hits.length === 0 ? (
         <p className="muted">{t("search.empty")}</p>
       ) : (
-        <ul className="search-results">
+        <ul className={styles.searchResults}>
           {hits.map((hit) => {
             const it = index?.tables?.find((x) => x.id === hit.tableId);
             if (!it) return null;
@@ -90,11 +93,11 @@ export function SearchDialog() {
             if (tab === "columns") {
               if (hit.columnHits.length === 0) return null;
               return (
-                <li key={hit.tableId} className="search-result">
-                  <div className="search-result-head">
+                <li key={hit.tableId} className={styles.searchResult} data-testid="search-result">
+                  <div className={styles.searchResultHead}>
                     <span className="muted">{label}</span>
                   </div>
-                  <ul className="search-columns">
+                  <ul className={styles.searchColumns}>
                     {hit.columnHits.map((c) => (
                       <li key={c.column}>
                         <Link href={hrefs.columns(c.column, "exact")} onClick={close}>
@@ -115,8 +118,8 @@ export function SearchDialog() {
                 : hrefs.table(hit.tableId);
             const disabled = tab === "erd" && firstDiagram === undefined;
             return (
-              <li key={hit.tableId} className="search-result">
-                <div className="search-result-head">
+              <li key={hit.tableId} className={styles.searchResult} data-testid="search-result">
+                <div className={styles.searchResultHead}>
                   {disabled ? (
                     <span className="muted" title={t("table.unplacedNote")}>
                       {label}
@@ -128,7 +131,7 @@ export function SearchDialog() {
                   )}
                 </div>
                 {hit.columnHits.length > 0 && (
-                  <ul className="search-columns">
+                  <ul className={styles.searchColumns}>
                     {hit.columnHits.map((c) => (
                       <li key={c.column}>
                         <span className="mono">{c.column}</span>

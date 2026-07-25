@@ -9,6 +9,7 @@ import { Link } from "../ui/Link";
 import { NotFound } from "../ui/NotFound";
 import { hrefs } from "../ui/router";
 import { TableInfo } from "../ui/TableInfo";
+import styles from "./TableDetail.module.scss";
 
 export function TableDetail({ tableId, notice }: { tableId: string; notice?: string }) {
   const { t } = useI18n();
@@ -42,7 +43,7 @@ export function TableDetail({ tableId, notice }: { tableId: string; notice?: str
         // 回答C: 新規作成ボタンだけ先行実装（クリック時の挙動 = J-01 は先送り）
         <button
           type="button"
-          className="fab-new-table"
+          className={styles.fabNewTable}
           data-testid="new-table"
           title={t("tables.newTable")}
           onClick={() => addToast(t("tables.newTableTodo"))}

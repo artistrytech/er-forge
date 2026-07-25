@@ -1,0 +1,63 @@
+/* テーブルノード（D-01）のスタイル。旧 global の .erd-node 系をここへ閉じ込めた。
+   減光の .erd-dimmed はエッジ（RelationEdge）と共用のため global に残す。 */
+
+.erd-node {
+  position: relative;
+  background: var(--panel);
+  border: 1.5px solid var(--edge);
+  border-radius: 8px;
+  padding: 8px 14px;
+  min-width: 80px;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  transition: opacity 0.15s ease;
+}
+
+.erd-node-selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.erd-node-missing {
+  border-color: var(--warn);
+  background: var(--warn-bg);
+}
+
+.erd-node-name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.erd-node-sub {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.erd-node-warn {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  font-size: 14px;
+}
+
+.erd-handle {
+  opacity: 0;
+  pointer-events: none;
+  width: 1px;
+  height: 1px;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* 自動レイアウトのプレビュー中に「現在の配置」を薄く重ねるゴースト（H-07 §7.2） */
+.erd-node-ghost {
+  opacity: 0.28;
+  border-style: dashed;
+  pointer-events: none;
+}

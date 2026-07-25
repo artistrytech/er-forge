@@ -1,0 +1,780 @@
+/* ER図管理ツール ビューア（Phase1）のスタイル */
+
+:root {
+  /* モックアップ（ER図改善案.dc.html）のトーンに合わせたパレット */
+  --bg: #f4f5f7; /* 画面本文の背景 */
+  --panel: #ffffff;
+  --border: #e2e4e8; /* カード枠 */
+  --input-border: #d7dae0;
+  --input-bg: #fafbfc;
+  --divider: #eef0f2; /* 明るい行区切り */
+  --text: #20242c;
+  --text-strong: #111318;
+  --text-muted: #6b7280;
+  --text-faint: #8a8f98;
+  --accent: #1554d6;
+  --accent-soft: #eef4ff;
+  /* 濃色サーフェス（テーブルヘッダ・アクティブなナビ・主ボタン） */
+  --ink: #111318;
+  --ink-text: #ffffff;
+  --ink-muted: #9aa1ad;
+  --pk: #a35d0a;
+  --pk-soft: #fef2e0;
+  --ok: #137a3b;
+  --ok-soft: #e7f6ec;
+  --warn: #b45309;
+  --warn-bg: #fef3c7;
+  --error: #b91c1c;
+  --error-bg: #fee2e2;
+  --edge: #64748b;
+  --edge-logical: #7c3aed;
+  --edge-highlight: #2563eb;
+  --canvas-bg: #fafbfc;
+  --shadow-card: 0 1px 3px rgb(0 0 0 / 6%);
+  --mono: ui-monospace, SFMono-Regular, "Cascadia Mono", Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: "Segoe UI", "Hiragino Sans", "Noto Sans JP", Meiryo, sans-serif;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--bg);
+}
+
+
+
+/* ---- バナー・空状態 ---- */
+
+.fatal-screen {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fatal-card {
+  max-width: 560px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 24px 32px;
+}
+
+
+.header-button {
+  padding: 7px 12px;
+  border: 1px solid var(--input-border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: #374151;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.header-button-primary {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--ink-text);
+}
+
+
+
+.dialog-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+.dialog-actions button {
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: inherit;
+  cursor: pointer;
+}
+
+.dialog-note {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+
+.error-banner {
+  background: var(--error-bg);
+  color: var(--error);
+  padding: 6px 16px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border);
+}
+
+.notice-banner {
+  background: var(--warn-bg);
+  color: var(--warn);
+  padding: 8px 12px;
+  border-radius: 6px;
+  margin-bottom: 12px;
+}
+
+.empty-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  padding: 40px;
+  text-align: center;
+}
+
+.button-link {
+  display: inline-block;
+  padding: 6px 14px;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 6px;
+  text-decoration: none;
+}
+
+.button-link:hover {
+  opacity: 0.9;
+}
+
+/* ---- レイアウト（ER図 + サイドバー） ---- */
+
+.erd-layout {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+
+/* ---- キャンバス ---- */
+
+
+
+.erd-dimmed {
+  opacity: 0.18;
+}
+
+
+
+.react-flow__minimap-node {
+  fill: #cbd5e1;
+}
+
+
+/* ---- ダイアログ ---- */
+
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  padding: 32px;
+}
+
+.dialog {
+  background: var(--panel);
+  border-radius: 10px;
+  width: 560px;
+  max-width: 100%;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+  outline: none;
+}
+
+.dialog-wide {
+  width: 860px;
+}
+
+.dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.dialog-title {
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.dialog-close {
+  border: none;
+  background: none;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--text-muted);
+  padding: 4px 8px;
+}
+
+.dialog-close:hover {
+  color: var(--text);
+}
+
+.dialog-body {
+  padding: 14px 18px;
+  overflow-y: auto;
+}
+
+.dialog-detail-link {
+  margin-top: 0;
+}
+
+/* ER図から開くテーブル詳細ダイアログの本文は、詳細画面と同じ背景色にする
+   （白カードが背景から浮いて見えるように）。.dialog-detail-link を含む本文だけを対象にする */
+.dialog-body:has(.dialog-detail-link) {
+  background: var(--bg);
+}
+
+/* ---- テーブル詳細 ---- */
+
+
+
+.badge {
+  display: inline-block;
+  font-size: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0 6px;
+  margin-left: 6px;
+  color: var(--text-muted);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.badge-logical {
+  border-color: var(--edge-logical);
+  color: var(--edge-logical);
+}
+
+.badge-physical {
+  border-color: var(--edge);
+  color: var(--edge);
+}
+
+.badge-dict {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.table-scroll {
+  overflow-x: auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-card);
+}
+
+.data-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 13px;
+}
+
+.data-table th,
+.data-table td {
+  padding: 11px 16px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--divider);
+}
+
+.data-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* 濃色ヘッダ（モック 2a / 3a のカラム表） */
+.data-table th {
+  background: var(--ink);
+  color: var(--ink-muted);
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  border-bottom: none;
+}
+
+.data-table th.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.data-table th.sortable:hover {
+  background: #20242c;
+  color: #fff;
+}
+
+.data-table .center {
+  text-align: center;
+}
+
+.data-table .right,
+.data-table th.right {
+  text-align: right;
+}
+
+.mono {
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.small {
+  font-size: 12px;
+}
+
+.error-text {
+  color: var(--error);
+}
+
+
+
+
+
+
+
+
+/* ---- カタログ ---- */
+
+.catalog-page {
+  padding: 28px 32px;
+  max-width: 1100px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.catalog-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 22px;
+  flex-wrap: wrap;
+}
+
+.catalog-header h2 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-strong);
+}
+
+.catalog-filter {
+  flex: 1;
+  min-width: 200px;
+  max-width: 420px;
+  padding: 8px 12px;
+  border: 1px solid var(--input-border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.page-chip {
+  display: inline-block;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1px 8px;
+  font-size: 12px;
+  margin-right: 4px;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.page-chip:hover {
+  background: var(--accent-soft);
+}
+
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+/* ---- 編集フォーム（O-03 テーブル編集 / P-03 一括編集） ---- */
+
+.edit-form {
+  border: none;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+
+.edit-form:disabled {
+  opacity: 0.6;
+}
+
+.edit-form h3 {
+  margin: 20px 0 6px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.edit-form h4 {
+  margin: 12px 0 6px;
+  font-size: 13px;
+}
+
+.form-hint {
+  margin: 0 0 8px;
+  font-size: 12px;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: max-content minmax(200px, 480px);
+  gap: 8px 16px;
+  align-items: center;
+}
+
+.form-grid label {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.form-grid input,
+.form-grid textarea,
+.edit-form .data-table input,
+.constraint-row input,
+.columns-table input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 10px;
+  border: 1px solid var(--input-border);
+  border-radius: 7px;
+  background: var(--input-bg);
+  color: inherit;
+  font-size: 13px;
+}
+
+.edit-form .data-table td {
+  vertical-align: middle;
+}
+
+.edit-form .data-table input {
+  min-width: 140px;
+}
+
+.form-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 20px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.constraint-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-bottom: 6px;
+}
+
+.constraint-row.has-error {
+  border-color: var(--error);
+}
+
+.constraint-row .constraint-name {
+  width: 240px;
+}
+
+.constraint-row .constraint-notes {
+  flex: 1;
+  min-width: 160px;
+}
+
+.constraint-row select,
+.column-picker select,
+.columns-toolbar select,
+.edit-form .data-table select {
+  padding: 7px 10px;
+  border: 1px solid var(--input-border);
+  border-radius: 7px;
+  background: var(--panel);
+  color: inherit;
+  font-size: 12.5px;
+}
+
+.constraint-arrow {
+  color: var(--text-muted);
+}
+
+.column-picker {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.column-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: 10px;
+  padding: 1px 4px 1px 8px;
+  font-size: 12px;
+}
+
+.column-chip button {
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+button.button-link {
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+button.button-link.danger {
+  background: none;
+  color: var(--error);
+  padding: 6px 8px;
+}
+
+.field-error {
+  color: var(--error);
+}
+
+.error-list {
+  margin: 4px 0 0;
+  padding-left: 20px;
+}
+
+.badge-warn {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+.form-gate {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.dialog-actions button.danger {
+  border-color: var(--error);
+  color: var(--error);
+}
+
+.dialog-actions button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+/* ---- カラム論理名の一括編集（P-03） ---- */
+
+.columns-page .columns-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.columns-toolbar .spacer {
+  flex: 1;
+}
+
+.columns-table td.right .badge {
+  margin-left: 4px;
+}
+
+.columns-table .row-dirty td:first-child {
+  border-left: 3px solid var(--accent);
+}
+
+.paste-area {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--input-bg);
+  color: inherit;
+  border: 1px solid var(--input-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.7;
+  resize: vertical;
+}
+
+/* ---- 逆生成（K-01〜K-15） ---- */
+
+
+
+.form-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.form-row label {
+  min-width: 96px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.form-row input[type="text"],
+.form-row input[type="password"],
+.form-row select {
+  flex: 1;
+  min-width: 160px;
+  padding: 9px 12px;
+  border: 1px solid var(--input-border);
+  border-radius: 7px;
+  background: var(--input-bg);
+  color: inherit;
+  font-size: 13px;
+}
+
+.form-row .spacer,
+.form-actions .spacer {
+  flex: 1;
+}
+
+
+.link-button {
+  border: none;
+  background: none;
+  padding: 0 4px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.driver-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.driver-catalog {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 10px 0;
+  font-size: 13px;
+}
+
+.driver-catalog th,
+.driver-catalog td {
+  text-align: left;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.driver-catalog th {
+  font-weight: 600;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+
+
+
+/* 差分ツリー */
+
+
+.diff-warn {
+  padding: 2px 0 2px 46px;
+  font-size: 12px;
+  color: #b06a00;
+}
+
+
+.badge-high {
+  background: #e6f4ea;
+  color: #1e7b3c;
+}
+
+.badge-medium {
+  background: #fdf3e0;
+  color: #a06a00;
+}
+
+
+
+.sidebar-icon-button {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.sidebar-icon-button:hover:not(:disabled) {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.sidebar-icon-button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+
+
+
+.form-error {
+  margin: 4px 0 8px;
+  color: var(--danger, #d33);
+  font-size: 12px;
+}
+
+
+
+/* ---- テーブル詳細の新規作成ボタン（回答C: 見た目のみ先行） ---- */
+
+
+.link-button {
+  border: none;
+  background: none;
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0 0 0 8px;
+  font: inherit;
+}

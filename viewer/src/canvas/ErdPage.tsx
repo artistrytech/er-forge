@@ -34,6 +34,7 @@ import { hrefs } from "../ui/router";
 import { useCanvasStore } from "./canvasStore";
 import { RelationEdge, type RelationEdgeType } from "./RelationEdge";
 import { TableNode, type TableNodeType } from "./TableNode";
+import styles from "./ErdPage.module.scss";
 
 const nodeTypes: NodeTypes = { table: TableNode };
 const edgeTypes: EdgeTypes = { relation: RelationEdge };
@@ -474,7 +475,7 @@ function ErdCanvas({ diagramId, focusTableId }: ErdPageProps) {
   const previewing = preview !== null;
 
   return (
-    <div className="erd-canvas" onDrop={onDrop} onDragOver={onDragOver}>
+    <div className={styles.erdCanvas} onDrop={onDrop} onDragOver={onDragOver}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -502,16 +503,16 @@ function ErdCanvas({ diagramId, focusTableId }: ErdPageProps) {
         <Background variant={BackgroundVariant.Dots} gap={16} />
         <Controls showInteractive={false} />
         <MiniMap pannable zoomable />
-        <Panel position="top-left" className="erd-legend">
-          <span className="erd-legend-item">
+        <Panel position="top-left" className={styles.erdLegend} data-testid="erd-legend">
+          <span className={styles.erdLegendItem}>
             <svg width="34" height="10" aria-hidden="true">
-              <line x1="0" y1="5" x2="34" y2="5" className="erd-legend-solid" />
+              <line x1="0" y1="5" x2="34" y2="5" className={styles.erdLegendSolid} />
             </svg>
             {t("canvas.legend.physical")}
           </span>
-          <span className="erd-legend-item">
+          <span className={styles.erdLegendItem}>
             <svg width="34" height="10" aria-hidden="true">
-              <line x1="0" y1="5" x2="34" y2="5" className="erd-legend-dashed" />
+              <line x1="0" y1="5" x2="34" y2="5" className={styles.erdLegendDashed} />
             </svg>
             {t("canvas.legend.logical")}
           </span>
@@ -527,7 +528,7 @@ function ErdCanvas({ diagramId, focusTableId }: ErdPageProps) {
           />
         )}
         {previewing && (
-          <Panel position="top-center" className="erd-layout-preview">
+          <Panel position="top-center" className={styles.erdLayoutPreview} data-testid="erd-layout-preview">
             <span>{t("layout.previewing")}</span>
             <button type="button" className="header-button-primary" onClick={applyLayoutPreview}>
               {t("layout.apply")}
@@ -545,7 +546,7 @@ function ErdCanvas({ diagramId, focusTableId }: ErdPageProps) {
         />
         {Object.keys(diagram.nodes ?? {}).length === 0 && !previewing && (
           <Panel position="bottom-center">
-            <div className="erd-empty-note">{t("canvas.empty")}</div>
+            <div className={styles.erdEmptyNote}>{t("canvas.empty")}</div>
           </Panel>
         )}
       </ReactFlow>
@@ -592,8 +593,8 @@ function ZoomPanel() {
   const { zoom } = useViewport();
   const rf = useReactFlow();
   return (
-    <Panel position="top-right" className="erd-zoom-panel">
-      <span className="erd-zoom-value">{Math.round(zoom * 100)}%</span>
+    <Panel position="top-right" className={styles.erdZoomPanel}>
+      <span className={styles.erdZoomValue}>{Math.round(zoom * 100)}%</span>
       <button type="button" onClick={() => void rf.zoomTo(1, { duration: 200 })}>
         {t("canvas.zoomReset")}
       </button>
@@ -641,7 +642,7 @@ function EditToolbar({
   const undo = useEditStore((s) => s.undo);
   const redo = useEditStore((s) => s.redo);
   return (
-    <Panel position="top-center" className="erd-edit-toolbar">
+    <Panel position="top-center" className={styles.erdEditToolbar} data-testid="erd-edit-toolbar">
       <button
         type="button"
         disabled={(page?.undo.length ?? 0) === 0}

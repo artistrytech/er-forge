@@ -117,9 +117,9 @@ async function main() {
     page.on("pageerror", (e) => pageErrors.push(e.message));
 
     await page.goto(`${url}#/erd/users`);
-    await page.waitForSelector(".erd-node", { timeout: 15000 });
+    await page.waitForSelector('[data-testid="erd-node"]', { timeout: 15000 });
     await page.click('[data-testid="session-toggle"]');
-    await page.waitForSelector(".session-editing", { timeout: 5000 });
+    await page.waitForSelector('[data-testid="session-badge"][data-editing="true"]', { timeout: 5000 });
 
     const before = nodesInFile(dir, "users");
 
@@ -140,7 +140,7 @@ async function main() {
 
     // 「未配置」は index.tables[].diagrams が空という導出結果（K-12 §7.1）。
     // 左パネル「ページ」レーンの未配置疑似ページを選ぶとトレイが現れる（回答3）
-    const V = '.panel-slot:not(.hidden) '; // 表示中パネルに限定（両パネル常時マウント）
+    const V = '[data-testid="panel-slot"]:not([data-hidden]) '; // 表示中パネルに限定（両パネル常時マウント）
     await page.click(V + '[data-testid="unplaced-page"]');
     await page.waitForSelector('[data-testid="unplaced-tray"]', { timeout: 10000 });
     const inTray = await page.locator('[data-testid="unplaced-tray"]').textContent();
@@ -170,12 +170,12 @@ async function main() {
     // ---- 3. H-07: 全体レイアウトはプレビュー → 適用 → Undo 1回で完全に戻る（T-17） ----
     const beforeLayout = nodesInFile(dir, "users");
     await page.click('[data-testid="auto-layout"]');
-    await page.waitForSelector(".erd-node-ghost", { timeout: 15000 });
+    await page.waitForSelector('[data-testid="erd-node"][data-ghost="true"]', { timeout: 15000 });
     check("H-07: preview overlays the current placement as ghosts", true);
     check("H-07: nothing is written while previewing",
         JSON.stringify(nodesInFile(dir, "users")) === JSON.stringify(beforeLayout));
 
-    await page.click(".erd-layout-preview button:nth-of-type(1)"); // 適用
+    await page.click('[data-testid="erd-layout-preview"] button:nth-of-type(1)'); // 適用
     await waitSaved(page);
     const afterLayout = nodesInFile(dir, "users");
     check("H-07: applying the layout moves nodes",
@@ -184,7 +184,7 @@ async function main() {
     check("H-07: every coordinate stays on the 8px grid",
         Object.values(afterLayout).every(([x, y]) => x % 8 === 0 && y % 8 === 0));
     check("H-07: ghosts are gone after applying",
-        (await page.locator(".erd-node-ghost").count()) === 0);
+        (await page.locator('[data-testid="erd-node"][data-ghost="true"]').count()) === 0);
 
     // 50ノード動かしても moveNodes 1個 = Undo 1回で完全に戻る
     await page.keyboard.press("Control+z");
@@ -203,7 +203,7 @@ async function main() {
 
     await page.click(V + '[data-testid="unplaced-page"]');
     await page.waitForSelector('[data-testid="unplaced-tray"]');
-    await page.locator('[data-testid="unplaced-tray"] .tray-item').first()
+    await page.locator('[data-testid="unplaced-tray"] [data-testid="tray-item"]').first()
         .dragTo(page.locator(".react-flow__pane"), { targetPosition: { x: 200, y: 500 } });
     await page.waitForSelector('.react-flow__node[data-id="public.user_sessions"]', { timeout: 10000 });
     await waitSaved(page);
@@ -228,7 +228,7 @@ async function main() {
 
     // 新規ページ作成後は閲覧ルートに着地する。配置するには編集ルートへ入る
     await page.click('[data-testid="session-toggle"]');
-    await page.waitForSelector(".session-editing", { timeout: 5000 });
+    await page.waitForSelector('[data-testid="session-badge"][data-editing="true"]', { timeout: 5000 });
 
     // ---- 4b. I-04 / §5.9: 別ページに配置済みのテーブルを、この空ページへ配置する ----
     // users ページにあるテーブルを billing にも足す（移動ではなく複数ページ配置）
@@ -236,7 +236,7 @@ async function main() {
 
     // 配置済みテーブルの現在ページへの追加は「全て」レーンから行う（add-to-page はこのレーン）
     await page.click(V + '[data-testid="lane-all"]');
-    await page.waitForSelector(V + ".sidebar-table-row", { timeout: 5000 });
+    await page.waitForSelector(V + '[data-testid="lp-item"]', { timeout: 5000 });
 
     // (a) ＋ ボタン（ドラッグ以外の導線）
     await page.getByTestId("add-to-page-public.roles").click();
@@ -247,7 +247,7 @@ async function main() {
 
     // (b) サイドバーからキャンバスへドラッグ
     await page
-        .locator('.sidebar-table-row:has([data-testid="add-to-page-public.user_profiles"]) .sidebar-table-item')
+        .locator('[data-testid="lp-item"]:has([data-testid="add-to-page-public.user_profiles"]) [data-testid="table-item"]')
         .dragTo(page.locator(".react-flow__pane"), { targetPosition: { x: 300, y: 300 } });
     await page.waitForSelector('.react-flow__node[data-id="public.user_profiles"]', { timeout: 20000 });
     await waitSaved(page);
@@ -284,7 +284,7 @@ async function main() {
     // ---- 6. I-03: 並び替え（billing は末尾 → 1つ上へ） ----
     const orderBefore = manifestText(dir).indexOf('id: "billing"');
     await page
-        .locator('.sidebar-page-row:has([data-testid="page-delete-billing"]) button[title="上へ"]')
+        .locator('[data-testid="page-row"]:has([data-testid="page-delete-billing"]) button[title="上へ"]')
         .click();
     check("I-03: reordering moves the page up in manifest.js",
         await waitFile(() => manifestText(dir).indexOf('id: "billing"') < orderBefore));
@@ -307,10 +307,10 @@ async function main() {
     await new Promise((r) => setTimeout(r, 500));
     const staticPage = await browser.newPage({ viewport: { width: 1500, height: 950 } });
     await staticPage.goto("file:///" + join(dir, "index.html").replaceAll("\\", "/") + "#/erd/users");
-    await staticPage.waitForSelector(".erd-node", { timeout: 15000 });
+    await staticPage.waitForSelector('[data-testid="erd-node"]', { timeout: 15000 });
     // 静的モードでも [編集開始] で編集ルートへ入れる（ロック無し・保存不可）
     await staticPage.click('[data-testid="session-toggle"]');
-    await staticPage.waitForSelector(".session-editing");
+    await staticPage.waitForSelector('[data-testid="session-badge"][data-editing="true"]');
     check("static mode: auto layout is disabled",
         await staticPage.locator('[data-testid="auto-layout"]').isDisabled());
     check("static mode: page management is not offered",

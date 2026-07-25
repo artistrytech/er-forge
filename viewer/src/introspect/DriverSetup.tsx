@@ -9,6 +9,7 @@ import { useMemo, useState } from "react";
 import { useI18n } from "../i18n/useI18n";
 import { catalogKey, defaultVersion, parseCoordinate } from "./driverCoords";
 import type { DriverCatalogEntry, DriverInfo } from "./types";
+import styles from "./DriverSetup.module.scss";
 
 export interface DriverSelection {
   mavenRepository: string;
@@ -180,7 +181,7 @@ export function DriverSetup({
         </tbody>
       </table>
 
-      <details className="driver-custom">
+      <details className={styles.driverCustom}>
         <summary className="muted">{t("introspect.driversCustom")}</summary>
         <p className="muted">{t("introspect.driversCustomHint")}</p>
         <textarea

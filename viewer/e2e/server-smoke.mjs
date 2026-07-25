@@ -78,16 +78,16 @@ async function main() {
 
     // 2) サンプル取り込み → リロード → ER図描画
     await page.click('[data-testid="bootstrap-sample"]');
-    await page.waitForSelector(".erd-node", { timeout: 20000 });
-    check("sample import renders ER diagram", (await page.locator(".erd-node").count()) > 0);
+    await page.waitForSelector('[data-testid="erd-node"]', { timeout: 20000 });
+    check("sample import renders ER diagram", (await page.locator('[data-testid="erd-node"]').count()) > 0);
     check("data files written", existsSync(join(dir, "data", "manifest.js")));
-    check("mode badge shows server", await page.locator(".mode-badge.mode-server").isVisible());
+    check("mode badge shows server", await page.locator('[data-testid="mode-badge"][data-mode="server"]').isVisible());
     check("logical (dashed) edges exist on some page",
         existsSync(join(dir, "data", "schema", "public", "point_transactions.js")));
 
     // 3) 再ロードしても通常表示（ブートストラップは出ない）
     await page.reload();
-    await page.waitForSelector(".erd-node", { timeout: 10000 });
+    await page.waitForSelector('[data-testid="erd-node"]', { timeout: 10000 });
     check("reload shows diagram again", (await page.locator(".bootstrap-screen").count()) === 0);
 
     await browser.close();

@@ -1,0 +1,142 @@
+/* テーブル詳細の共通表示（G-01〜G-05 / O-02）のスタイル。
+   共有プリミティブ（.data-table / .table-scroll / .badge* / .mono / .muted /
+   .center / .error-text）は global に残し、TableInfo 固有のみここへ閉じ込める。 */
+
+.table-info h3 {
+  margin: 26px 0 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+
+.table-info h3:first-child {
+  margin-top: 6px;
+}
+
+.table-comment {
+  margin: 0 0 8px;
+}
+
+.table-tags {
+  margin: 0 0 8px;
+}
+
+.tag {
+  display: inline-block;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  margin-right: 6px;
+}
+
+/* カラム表の PK / FK 標識（モック 2a） */
+.key-badge {
+  display: inline-block;
+  font: 700 10.5px/1 var(--mono);
+  padding: 3px 6px;
+  border-radius: 5px;
+  margin: 0 2px;
+}
+
+.key-pk {
+  background: var(--pk-soft);
+  color: var(--pk);
+}
+
+.key-fk {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* 制約は白カード（モック 2a） */
+.constraint-list {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 10px 16px;
+  margin: 0;
+  padding: 16px 20px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-card);
+}
+
+.constraint-list dt {
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--text-strong);
+}
+
+.constraint-list dd {
+  margin: 0;
+}
+
+.constraint-list.logical dt {
+  color: var(--edge-logical);
+}
+
+.note-inline {
+  margin-left: 8px;
+  color: var(--text-muted);
+  font-family: "Segoe UI", "Hiragino Sans", "Noto Sans JP", Meiryo, sans-serif;
+  font-size: 12px;
+}
+
+.page-list {
+  margin: 4px 0;
+  padding-left: 0;
+  list-style: none;
+}
+
+.page-list li {
+  margin-bottom: 4px;
+}
+
+/* 被参照は枠付きチップの折り返し（モック 2a） */
+.reference-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.reference-list li {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--input-border);
+  border-radius: 8px;
+  background: var(--panel);
+  font-size: 12.5px;
+}
+
+/* チップ内の種別バッジは塗りのグレーピル。.badge は global 共有のため :global で狙う */
+.reference-list :global(.badge) {
+  margin: 0;
+  border: none;
+  background: var(--divider);
+  color: var(--text-muted);
+  padding: 2px 6px;
+  border-radius: 5px;
+}
+
+.dialect-pre {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 12px;
+  overflow-x: auto;
+}
+
+.table-link-missing {
+  color: var(--warn);
+  font-family: var(--mono);
+}
