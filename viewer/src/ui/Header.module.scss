@@ -17,6 +17,12 @@
   font-weight: 700;
   font-size: 15px;
   color: var(--text-strong);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.app-title:hover {
+  color: var(--accent);
 }
 
 .app-nav {
@@ -191,6 +197,42 @@
 .settings-row .header-select {
   flex: 1;
   max-width: 150px;
+}
+
+/* アプリ名・データリセットなど縦積みの設定ブロック */
+.settings-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.settings-input-row {
+  display: flex;
+  gap: 6px;
+}
+
+.settings-input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--input-border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text-strong);
+  font-size: 12.5px;
+}
+
+.danger-button {
+  align-self: flex-start;
+  color: var(--error);
+  border-color: var(--error);
+}
+
+.danger-button:hover {
+  background: var(--error);
+  color: #fff;
 }
 
 .progress-bar {

@@ -164,7 +164,8 @@ export async function boot(): Promise<void> {
     });
 
   try {
-    await Promise.all([loadIndex, loadDict]);
+    // config.js もここで読む（アプリ名の表示に使うため静的モードでも必要。欠損は許容）。
+    await Promise.all([loadIndex, loadDict, loadConfig()]);
   } catch {
     set({ fatal: { kind: "bad-data", file: "index.js" } });
     return;

@@ -54,6 +54,8 @@ export interface AppState {
    * これを復元する。リロードをまたいで復元できるよう localStorage に保持する。
    */
   lastTableId: string | null;
+  /** 最後に閲覧した ER図ページ。#/erd（ページ未指定）を開いたときにこれを復元する。 */
+  lastDiagramId: string | null;
   /**
    * 直近の逆生成で追加されたテーブル（K-12 §7.2）。未配置トレイで「NEW」として先頭に寄せる。
    * **セッション限定のメモリ状態**であり、リロードで消える（ファイルには残さない。
@@ -72,17 +74,19 @@ export interface AppState {
   addToast(text: string, variant?: "info" | "error"): void;
   setRecentTables(ids: string[]): void;
   setLastTableId(id: string | null): void;
+  setLastDiagramId(id: string | null): void;
 }
 
-/** 最後に閲覧したテーブルの永続化キー（origin 単位。存在しない ID は読み込み側で無視する） */
+/** 最後に閲覧したテーブル / ページの永続化キー（origin 単位。存在しない ID は読み込み側で無視する） */
 const LAST_TABLE_KEY = "erd-last-table";
+const LAST_DIAGRAM_KEY = "erd-last-diagram";
 /** ユーザ独自設定（言語・表示名）の永続化キー（設定メニューから変更・localStorage 保存） */
 const LANG_KEY = "erd-lang";
 const NAME_DISPLAY_KEY = "erd-name-display";
 
-function readLastTableId(): string | null {
+function readLocal(key: string): string | null {
   try {
-    return localStorage.getItem(LAST_TABLE_KEY);
+    return localStorage.getItem(key);
   } catch {
     return null;
   }
@@ -114,6 +118,15 @@ function persist(key: string, value: string): void {
   }
 }
 
+function persistOrRemove(key: string, value: string | null): void {
+  try {
+    if (value === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, value);
+  } catch {
+    // localStorage 不可でもメモリ内では復元できる（致命的ではない）
+  }
+}
+
 export const useAppStore = create<AppState>((set) => ({
   // ユーザ独自設定があれば優先し、無ければ環境から判定・既定を使う（設定メニュー / L-04）
   lang:
@@ -141,7 +154,8 @@ export const useAppStore = create<AppState>((set) => ({
   currentDiagramId: null,
   toasts: [],
   recentTables: [],
-  lastTableId: readLastTableId(),
+  lastTableId: readLocal(LAST_TABLE_KEY),
+  lastDiagramId: readLocal(LAST_DIAGRAM_KEY),
 
   setLang: (lang) => {
     set({ lang });
@@ -159,12 +173,11 @@ export const useAppStore = create<AppState>((set) => ({
   setRecentTables: (recentTables) => set({ recentTables }),
   setLastTableId: (lastTableId) => {
     set({ lastTableId });
-    try {
-      if (lastTableId === null) localStorage.removeItem(LAST_TABLE_KEY);
-      else localStorage.setItem(LAST_TABLE_KEY, lastTableId);
-    } catch {
-      // localStorage 不可でもメモリ内では復元できる（致命的ではない）
-    }
+    persistOrRemove(LAST_TABLE_KEY, lastTableId);
+  },
+  setLastDiagramId: (lastDiagramId) => {
+    set({ lastDiagramId });
+    persistOrRemove(LAST_DIAGRAM_KEY, lastDiagramId);
   },
   addToast: (text, variant = "info") => {
     const id = ++toastSeq;

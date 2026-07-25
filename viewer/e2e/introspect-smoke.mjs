@@ -259,8 +259,9 @@ async function main() {
       /追加: 0/.test(stats2) && /変更: 1/.test(stats2) && /削除: 0/.test(stats2));
 
     await page.getByTestId("apply").click();
-    await page.waitForSelector('[data-testid="apply-result"]', { timeout: 30000 });
-    check("apply completes", true);
+    // 適用後は ER図 画面へ遷移する（結果サマリはトースト通知）
+    await page.waitForFunction(() => location.hash.startsWith("#/erd"), null, { timeout: 30000 });
+    check("apply completes and navigates to the ER diagram", true);
 
     const usersAfter = readFileSync(usersFile, "utf-8");
     check("the new column is applied", usersAfter.includes('name: "nickname"'));

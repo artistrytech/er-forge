@@ -44,6 +44,9 @@ export function App() {
   const total = useAppStore((s) => totalTableCount(s));
   const lastTableId = useAppStore((s) => s.lastTableId);
   const setLastTableId = useAppStore((s) => s.setLastTableId);
+  const lastDiagramId = useAppStore((s) => s.lastDiagramId);
+  const setLastDiagramId = useAppStore((s) => s.setLastDiagramId);
+  const appName = useAppStore((s) => s.config?.appName);
   const exportDiagramId = useEditStore((s) => s.exportDiagramId);
   // 未保存: ER図編集（正味の変更 netDirty）またはテーブル/カラム編集（pageEditStore の dirty）
   const erdUnsaved = useEditStore((s) => s.session === "editing" && s.netDirty);
@@ -79,11 +82,21 @@ export function App() {
     if (viewedTableId !== null) setLastTableId(viewedTableId);
   }, [viewedTableId, setLastTableId]);
 
-  // 編集中に未保存があれば HTML タイトルに * を付ける（他タブでも一目で分かるように）
+  // 最後に閲覧した ER図ページを覚えておき、#/erd（ページ未指定）を開いたとき復元する
+  const viewedDiagramId =
+    route.kind === "erd" || route.kind === "erdEdit" ? route.diagramId : null;
   useEffect(() => {
-    const base = "ER Diagram";
+    if (viewedDiagramId !== null && viewedDiagramId !== undefined) {
+      setLastDiagramId(viewedDiagramId);
+    }
+  }, [viewedDiagramId, setLastDiagramId]);
+
+  // 編集中に未保存があれば HTML タイトルに * を付ける（他タブでも一目で分かるように）。
+  // 基準名は config.js の appName（未設定なら言語に応じた既定名）
+  useEffect(() => {
+    const base = appName !== undefined && appName.trim() !== "" ? appName : t("app.title");
     document.title = hasUnsaved ? `* ${base}` : base;
-  }, [hasUnsaved]);
+  }, [hasUnsaved, appName, t]);
 
   // 空プロジェクトからの逆生成（§3.6「既存のスキーマから生成する」）。
   // データはまだ無いが、それを作るための画面なので開けなければならない
@@ -101,6 +114,11 @@ export function App() {
   }
 
   const firstDiagram = manifest?.diagrams?.[0]?.id;
+  // 最後に閲覧したページが今も存在すればそれを、無ければ先頭を復元する（#/erd を開いたとき）
+  const restoreDiagramId =
+    lastDiagramId !== null && (manifest?.diagrams ?? []).some((d) => d.id === lastDiagramId)
+      ? lastDiagramId
+      : firstDiagram;
   const currentDiagramId =
     route.kind === "erd" || route.kind === "erdEdit" ? route.diagramId : undefined;
   // ページが0件の #/erd でも編集セッションを開始できなければ、ページを作れない
@@ -134,14 +152,16 @@ export function App() {
   let content: React.ReactNode;
   switch (route.kind) {
     case "home":
-      // 既定画面は常に ER図。ページが1枚も無い場合（逆生成の直後）は #/erd が
-      // 作成の導線を出す（テーブル一覧へ逃がすと、ページを作る画面に到達できない）
-      replaceRoute(firstDiagram !== undefined ? hrefs.erd(firstDiagram) : hrefs.erdHome());
+      // 既定画面は常に ER図。最後に閲覧したページ（無ければ先頭）を復元する。
+      // ページが1枚も無い場合（逆生成の直後）は #/erd が作成の導線を出す
+      // （テーブル一覧へ逃がすと、ページを作る画面に到達できない）
+      replaceRoute(restoreDiagramId !== undefined ? hrefs.erd(restoreDiagramId) : hrefs.erdHome());
       content = null;
       break;
     case "erdHome":
-      if (firstDiagram !== undefined) {
-        replaceRoute(hrefs.erd(firstDiagram));
+      // 最後に閲覧したページ（無ければ先頭）を復元する
+      if (restoreDiagramId !== undefined) {
+        replaceRoute(hrefs.erd(restoreDiagramId));
         content = null;
       } else {
         content = <ErdEmpty />;

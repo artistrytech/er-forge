@@ -16,6 +16,16 @@ const ja = {
     "静的モード: サーバーなしで開いています。変更は保存できません（配置は [配置をエクスポート] から取り出せます）。",
   "settings.title": "設定",
   "nameDisplay.label": "表示名",
+  "settings.appName": "アプリ名",
+  "settings.appNamePlaceholder": "未設定（既定名を使用）",
+  "settings.dataReset": "データリセット",
+  "settings.dataResetAction": "スキーマ情報を削除",
+  "reset.title": "データをリセットしますか？",
+  "reset.body":
+    "スキーマ情報（テーブル定義・カラム辞書・ER図の配置）をすべて削除します。この操作は元に戻せません。アプリ名・JDBC ドライバなどの設定は残ります。",
+  "reset.confirm": "すべて削除する",
+  "reset.done": "スキーマ情報を削除しました",
+  "reset.failed": "リセットに失敗しました",
   "session.viewing": "閲覧中",
   "session.editing": "編集中",
   "session.startEdit": "編集を開始",
@@ -418,6 +428,8 @@ const ja = {
   "introspect.guardBody":
     "接続先とフィルタ設定を確認してください。適用すると data/schema/** が書き換わります（適用前のバックアップは .erd/backup/ に残ります）。",
   "introspect.doneTitle": "適用しました",
+  "introspect.appliedSummary":
+    "逆生成を適用しました（追加 {added} / リネーム {renamed} / 変更 {modified} / 削除 {removed}）",
   "introspect.seeded": "論理名を補完: テーブル {tables} 件 / カラム {columns} 件",
   "introspect.skipped": "{n} 件の差分を適用せずに残しました。次回の逆生成で再び差分として現れます。",
   "introspect.unplaced": "未配置のテーブル",
@@ -476,6 +488,16 @@ const en: Record<MsgKey, string> = {
     "Static mode: opened without a server. Changes cannot be saved (use [Export layout] to retrieve the layout).",
   "settings.title": "Settings",
   "nameDisplay.label": "Name display",
+  "settings.appName": "App name",
+  "settings.appNamePlaceholder": "Not set (uses the default name)",
+  "settings.dataReset": "Reset data",
+  "settings.dataResetAction": "Delete schema data",
+  "reset.title": "Reset all data?",
+  "reset.body":
+    "This deletes all schema information (table definitions, the column dictionary, and diagram layouts). This cannot be undone. Settings such as the app name and JDBC drivers are kept.",
+  "reset.confirm": "Delete everything",
+  "reset.done": "Deleted the schema data",
+  "reset.failed": "Reset failed",
   "session.endConfirmBody": "You have unsaved changes. Discard them and finish editing?",
   "session.viewing": "Viewing",
   "nav.erd": "Diagram",
@@ -822,6 +844,8 @@ const en: Record<MsgKey, string> = {
   "introspect.guardBody":
     "Check the connection target and filters. Applying rewrites data/schema/** (a backup is kept in .erd/backup/).",
   "introspect.doneTitle": "Applied",
+  "introspect.appliedSummary":
+    "Introspection applied (added {added} / renamed {renamed} / modified {modified} / removed {removed})",
   "introspect.seeded": "Logical names seeded: {tables} tables / {columns} columns",
   "introspect.skipped":
     "{n} differences were left unapplied. They will appear again on the next introspection.",

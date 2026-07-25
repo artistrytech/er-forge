@@ -81,6 +81,8 @@ export type Dictionary = z.infer<typeof zDictionary>;
 
 export const zConfig = z.looseObject({
   ignoreTables: z.array(z.string()).optional(),
+  /** アプリ名（ブラウザタイトル・ヘッダ表示。未設定なら言語に応じた既定名を使う） */
+  appName: z.string().optional(),
 });
 export type Config = z.infer<typeof zConfig>;
 

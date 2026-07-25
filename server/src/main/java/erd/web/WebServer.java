@@ -85,6 +85,7 @@ public final class WebServer {
                 ctx.json(Map.of("ok", true, "schemaVersion", SchemaVersions.CURRENT)));
         javalin.get("/__erd/project", this::project);
         javalin.post("/__erd/bootstrap", this::bootstrap);
+        javalin.post("/__erd/reset", this::resetData);
 
         // ページ管理（I-01〜I-03 / I-06）とレイアウト
         javalin.get("/__erd/diagrams/{id}", this::getDiagram);
@@ -604,6 +605,41 @@ public final class WebServer {
         System.out.println("Wrote sample data (" + tables + " tables): "
                 + root.resolve("data"));
         ctx.json(Map.of("ok", true, "tables", tables));
+    }
+
+    /**
+     * データリセット（設定メニュー）。スキーマ情報に関するデータをすべて削除する。
+     * schema/**・diagrams/**・index.js・dictionary.js・manifest.js を消し、config.js は残す
+     * （JDBC ドライバ設定・アプリ名などの human-owned な設定を保持する）。
+     * 削除後はクライアントがリロードし、ブートストラップ画面（空プロジェクト）に着地する。
+     */
+    private void resetData(Context ctx) throws Exception {
+        if (!authorized(ctx)) {
+            ctx.status(403).json(Map.of("error", "forbidden"));
+            return;
+        }
+        Path data = root.resolve("data");
+        deleteRecursively(data.resolve("schema"));
+        deleteRecursively(data.resolve("diagrams"));
+        Files.deleteIfExists(data.resolve("index.js"));
+        Files.deleteIfExists(data.resolve("dictionary.js"));
+        Files.deleteIfExists(data.resolve("manifest.js"));
+        System.out.println("Reset schema data (kept config.js): " + data);
+        ctx.json(Map.of("ok", true));
+    }
+
+    /** ディレクトリを中身ごと削除する（存在しなければ何もしない）。 */
+    private static void deleteRecursively(Path dir) throws java.io.IOException {
+        if (!Files.exists(dir)) return;
+        try (Stream<Path> walk = Files.walk(dir)) {
+            walk.sorted(java.util.Comparator.reverseOrder()).forEach(p -> {
+                try {
+                    Files.deleteIfExists(p);
+                } catch (java.io.IOException e) {
+                    throw new java.io.UncheckedIOException(e);
+                }
+            });
+        }
     }
 
     /** manifest.js が無い、またはテーブル0件のときのみブートストラップ可能（§3.6）。 */

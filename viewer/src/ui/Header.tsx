@@ -6,7 +6,9 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { useI18n } from "../i18n/useI18n";
-import { useEditStore } from "../model/editStore";
+import { apiGet, apiPost, apiPut } from "../model/api";
+import { rememberOwnRevision, useEditStore } from "../model/editStore";
+import { loadConfig } from "../model/loader";
 import { usePageEditStore, type PageEditController } from "../model/pageEditStore";
 import type { NameDisplay } from "../model/logicalName";
 import { totalTableCount, useAppStore } from "../model/store";
@@ -26,11 +28,20 @@ export function Header({ currentDiagramId }: { currentDiagramId?: string }) {
   const ready = useAppStore((s) => s.ready);
   const total = useAppStore((s) => totalTableCount(s));
 
+  const lastDiagramId = useAppStore((s) => s.lastDiagramId);
+  const appName = useAppStore((s) => s.config?.appName);
   const firstDiagram = manifest?.diagrams?.[0]?.id;
-  // ページが1枚も無くても ER図 へは行ける（#/erd がページ作成の導線を出す）
-  const target = currentDiagramId ?? firstDiagram;
+  // ER図 の遷移先: 現在ページ → 最後に閲覧したページ（今も存在する場合）→ 先頭ページ。
+  // どれも無くても #/erd はページ作成の導線を出すので行き止まりにならない
+  const validLast =
+    lastDiagramId !== null && (manifest?.diagrams ?? []).some((d) => d.id === lastDiagramId)
+      ? lastDiagramId
+      : undefined;
+  const target = currentDiagramId ?? validLast ?? firstDiagram;
   const erdHref = target !== undefined ? hrefs.erd(target) : hrefs.erdHome();
   const progress = total > 0 ? (loaded + failed) / total : 1;
+  // アプリ名: config.js の appName（未設定なら言語に応じた既定名）
+  const titleText = appName !== undefined && appName.trim() !== "" ? appName : t("app.title");
 
   // 現在の画面のナビを濃色でハイライトする（モック）
   const route = useRoute();
@@ -51,7 +62,10 @@ export function Header({ currentDiagramId }: { currentDiagramId?: string }) {
           <div className={styles.progressBarFill} style={{ width: `${Math.round(progress * 100)}%` }} />
         </div>
       )}
-      <div className={styles.appTitle} data-testid="app-title">{t("app.title")}</div>
+      {/* タイトルはリンク化し、挙動は「ER図」ナビと同じにする（同じ erdHref へ） */}
+      <Link className={styles.appTitle} data-testid="app-title" href={erdHref}>
+        {titleText}
+      </Link>
       <nav className={styles.appNav}>
         <Link className={nav(onErd)} href={erdHref}>
           {t("nav.erd")}
@@ -84,8 +98,19 @@ function SettingsMenu() {
   const { t, lang, setLang } = useI18n();
   const nameDisplay = useAppStore((s) => s.nameDisplay);
   const setNameDisplay = useAppStore((s) => s.setNameDisplay);
+  const serverMode = useAppStore((s) => s.serverMode) === true;
+  const appName = useAppStore((s) => s.config?.appName) ?? "";
+  const addToast = useAppStore((s) => s.addToast);
   const [open, setOpen] = useState(false);
+  const [nameDraft, setNameDraft] = useState(appName);
+  const [savingName, setSavingName] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+
+  // メニューを開いた時点の保存済みアプリ名で下書きを同期する
+  useEffect(() => {
+    if (open) setNameDraft(appName);
+  }, [open, appName]);
 
   useEffect(() => {
     if (!open) return;
@@ -102,6 +127,51 @@ function SettingsMenu() {
       window.removeEventListener("keydown", onKey);
     };
   }, [open]);
+
+  // アプリ名を config.js に保存する（baseHash を取り直してから PUT）
+  const saveAppName = async (): Promise<void> => {
+    setSavingName(true);
+    try {
+      const cfg = await apiGet("/__erd/config");
+      if (cfg.status !== 200) {
+        addToast(t("save.failed"), "error");
+        return;
+      }
+      const baseHash = (JSON.parse(cfg.body) as { baseHash: string | null }).baseHash ?? "";
+      const name = nameDraft.trim();
+      const res = await apiPut("/__erd/config", { baseHash, appName: name === "" ? null : name });
+      if (res.status === 200) {
+        const body = JSON.parse(res.body) as { revision: string };
+        rememberOwnRevision(body.revision);
+        await loadConfig(body.revision);
+        addToast(t("tableEdit.saved"));
+      } else {
+        addToast(`${t("save.failed")} (HTTP ${res.status})`, "error");
+      }
+    } catch {
+      addToast(t("save.failed"), "error");
+    } finally {
+      setSavingName(false);
+    }
+  };
+
+  // データリセット: スキーマ情報を削除し、通常のロード経路をやり直す（ブートストラップ画面へ）
+  const doReset = async (): Promise<void> => {
+    setConfirmReset(false);
+    setOpen(false);
+    try {
+      const res = await apiPost("/__erd/reset", {});
+      if (res.status === 200) {
+        location.reload();
+      } else {
+        addToast(`${t("reset.failed")} (HTTP ${res.status})`, "error");
+      }
+    } catch {
+      addToast(t("reset.failed"), "error");
+    }
+  };
+
+  const nameChanged = nameDraft.trim() !== appName.trim();
 
   return (
     <div className={styles.settingsMenu} ref={ref}>
@@ -143,7 +213,69 @@ function SettingsMenu() {
               <option value="en">English</option>
             </select>
           </label>
+
+          {/* アプリ名（config.js に保存。サーバーモードのみ変更可能） */}
+          <div className={styles.settingsBlock}>
+            <span className={styles.settingsLabel}>{t("settings.appName")}</span>
+            {serverMode ? (
+              <div className={styles.settingsInputRow}>
+                <input
+                  type="text"
+                  className={styles.settingsInput}
+                  data-testid="app-name-input"
+                  placeholder={t("settings.appNamePlaceholder")}
+                  value={nameDraft}
+                  onChange={(e) => setNameDraft(e.target.value)}
+                />
+                <button
+                  type="button"
+                  className="header-button header-button-primary"
+                  data-testid="app-name-save"
+                  disabled={!nameChanged || savingName}
+                  onClick={() => void saveAppName()}
+                >
+                  {savingName ? t("save.saving") : t("save.button")}
+                </button>
+              </div>
+            ) : (
+              <span className="muted">{appName === "" ? t("settings.appNamePlaceholder") : appName}</span>
+            )}
+          </div>
+
+          {/* データリセット（サーバーモードのみ） */}
+          {serverMode && (
+            <div className={styles.settingsBlock}>
+              <span className={styles.settingsLabel}>{t("settings.dataReset")}</span>
+              <button
+                type="button"
+                className={cx("header-button", styles.dangerButton)}
+                data-testid="data-reset"
+                onClick={() => setConfirmReset(true)}
+              >
+                {t("settings.dataResetAction")}
+              </button>
+            </div>
+          )}
         </div>
+      )}
+
+      {confirmReset && (
+        <Dialog title={t("reset.title")} onClose={() => setConfirmReset(false)}>
+          <p>{t("reset.body")}</p>
+          <div className="dialog-actions">
+            <button
+              type="button"
+              className={cx("header-button", styles.dangerButton)}
+              data-testid="data-reset-confirm"
+              onClick={() => void doReset()}
+            >
+              {t("reset.confirm")}
+            </button>
+            <button type="button" onClick={() => setConfirmReset(false)}>
+              {t("layout.cancel")}
+            </button>
+          </div>
+        </Dialog>
       )}
     </div>
   );

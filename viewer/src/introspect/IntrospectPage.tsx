@@ -68,7 +68,7 @@ const TEMPLATES: { label: string; url: string }[] = [
   { label: "H2", url: "jdbc:h2:./mydb" },
 ];
 
-type Step = "connect" | "preview" | "done";
+type Step = "connect" | "preview";
 
 export function IntrospectPage() {
   const { t } = useI18n();
@@ -112,7 +112,6 @@ export function IntrospectPage() {
   const [decisions, setDecisions] = useState<Record<string, RenameDecision>>({});
   const [selection, setSelection] = useState<Set<string>>(new Set());
   const [confirmGuard, setConfirmGuard] = useState(false);
-  const [result, setResult] = useState<ApplyResponse | null>(null);
 
   // エラーはバナー表示に加えてトースト通知も出す（画面のどこを見ていても気づけるように）
   const fail = (msg: string) => {
@@ -421,7 +420,11 @@ export function IntrospectPage() {
         const body = JSON.parse(res.body) as ApplyResponse;
         rememberOwnRevision(body.revision);
         if (useAppStore.getState().manifest === null) {
-          // 空プロジェクトからの初期化（§3.6）。読み込み経路をやり直す
+          // 空プロジェクトからの初期化（§3.6）。読み込み経路をやり直す。
+          // リロード前にハッシュを ER図 へ移しておく（そのままだと #/introspect に留まり
+          // 逆生成画面のトップへ戻ってしまう）。初回は diagrams が0件なので #/erd に着地し、
+          // ページ作成の導線（ErdEmpty）と未配置トレイが出る
+          location.hash = hrefs.erdHome();
           location.reload();
           return;
         }
@@ -429,8 +432,20 @@ export function IntrospectPage() {
         // K-12 §7.2: 今回の新規テーブルを未配置トレイで「NEW」として先頭に寄せる。
         // セッション限定のメモリ状態であり、リロードで消える（ファイルには残さない）
         useAppStore.getState().setRecentTables(body.unplacedTables);
-        setResult(body);
-        setStep("done");
+        // スキーマ更新後は ER図 画面へ遷移する。結果の要点はトーストで通知して情報を失わない
+        const a = body.applied;
+        addToast(
+          t("introspect.appliedSummary", {
+            added: a.added,
+            renamed: a.renamed,
+            modified: a.modified,
+            removed: a.removed,
+          }),
+        );
+        for (const w of body.warnings) addToast(w.message, "error");
+        if (body.skipped.count > 0) addToast(t("introspect.skipped", { n: body.skipped.count }));
+        const firstDiagram = useAppStore.getState().manifest?.diagrams?.[0]?.id;
+        location.hash = firstDiagram !== undefined ? hrefs.erd(firstDiagram) : hrefs.erdHome();
         return;
       }
       const body = JSON.parse(res.body) as { code?: string; message?: string };
@@ -479,10 +494,6 @@ export function IntrospectPage() {
   };
 
   const undecided = (preview?.renameCandidates ?? []).filter((c) => decisions[c.id] === undefined);
-
-  if (step === "done" && result !== null) {
-    return <ApplyResult result={result} onRestart={() => setStep("connect")} />;
-  }
 
   return (
     <div className={cx("catalog-page", styles.introspectPage)} data-testid="introspect-page">
@@ -936,93 +947,3 @@ function IgnoreList({
   );
 }
 
-/** 適用後（K-12 / K-13）: 未配置テーブルと孤児ノードを次の操作へつなぐ */
-function ApplyResult({ result, onRestart }: { result: ApplyResponse; onRestart: () => void }) {
-  const { t } = useI18n();
-  const a = result.applied;
-  // 逆生成は diagrams/** を書き換えないため、初回はページが0件になる。
-  // その場合は #/erd（ページ作成の導線）へ送る。ここで行き止まりにしない
-  const firstDiagram = useAppStore((s) => s.manifest?.diagrams?.[0]?.id);
-  const placementHref = firstDiagram !== undefined ? hrefs.erd(firstDiagram) : hrefs.erdHome();
-  return (
-    <div className={cx("catalog-page", styles.introspectPage)} data-testid="introspect-page">
-      <div className="catalog-header">
-        <h2>{t("introspect.doneTitle")}</h2>
-      </div>
-      <div className={styles.introspectStats} data-testid="apply-result">
-        <span>{t("introspect.change.added")}: {a.added}</span>
-        <span>{t("introspect.change.renamed")}: {a.renamed}</span>
-        <span>{t("introspect.change.modified")}: {a.modified}</span>
-        <span>{t("introspect.change.removed")}: {a.removed}</span>
-        <span className="muted">
-          {t("introspect.seeded", {
-            tables: result.logicalNamesSeeded.tables,
-            columns: result.logicalNamesSeeded.columns,
-          })}
-        </span>
-      </div>
-
-      {result.skipped.count > 0 && (
-        <div className="notice-banner">
-          {t("introspect.skipped", { n: result.skipped.count })}
-        </div>
-      )}
-
-      {result.unplacedTables.length > 0 && (
-        <section className="form-section">
-          <h3>{t("introspect.unplaced")}</h3>
-          <p className="muted">{t("introspect.unplacedHint")}</p>
-          {/* K-12: 配置操作へ誘導する。ページが1枚も無ければ #/erd が作成の導線を出す */}
-          <p>
-            <Link className="button-link" data-testid="to-placement" href={placementHref}>
-              {t("introspect.toPlacement")}
-            </Link>
-          </p>
-          <ul className="driver-list">
-            {result.unplacedTables.map((id) => (
-              <li key={id}>
-                <Link href={hrefs.table(id)}>{id}</Link>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {result.orphanNodes.length > 0 && (
-        <section className="form-section">
-          <h3>{t("introspect.orphans")}</h3>
-          <p className="muted">{t("introspect.orphansHint")}</p>
-          <ul className="driver-list">
-            {result.orphanNodes.map((o) => (
-              <li key={o.tableId} className="mono">
-                {o.tableId}{" "}
-                <span className="muted">
-                  {o.diagrams.map((d) => (
-                    <Link key={d} href={hrefs.erd(d)}>
-                      {d}{" "}
-                    </Link>
-                  ))}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {result.warnings.map((w, i) => (
-        <div key={i} className="notice-banner">
-          ⚠ {w.message}
-        </div>
-      ))}
-
-      <div className="form-actions">
-        <Link className="button-link" href={hrefs.tables()}>
-          {t("notFound.toTables")}
-        </Link>
-        <button type="button" className="header-button" onClick={onRestart}>
-          {t("introspect.again")}
-        </button>
-      </div>
-    </div>
-  );
-}

@@ -120,7 +120,23 @@ final class ConfigService {
             return new Invalid("drivers must be an object");
         }
 
-        String content = printer.printConfig(new ProjectConfig(patterns, drivers, existing.unknown()));
+        // ---- appName（任意。文字列で設定 / null・空文字で削除）。既知フィールドではないため
+        //      unknown マップへ退避して保存し、プリンタがそのまま書き戻す（前方互換の仕組みに乗る）----
+        Map<String, JsonNode> unknown = new LinkedHashMap<>(existing.unknown());
+        JsonNode an = body.get("appName");
+        if (an != null) {
+            if (an.isNull()) {
+                unknown.remove("appName");
+            } else if (an.isTextual()) {
+                String name = an.asText().trim();
+                if (name.isEmpty()) unknown.remove("appName");
+                else unknown.put("appName", com.fasterxml.jackson.databind.node.TextNode.valueOf(name));
+            } else {
+                return new Invalid("appName must be a string");
+            }
+        }
+
+        String content = printer.printConfig(new ProjectConfig(patterns, drivers, unknown));
         String newHash = Hashes.sha256(content.getBytes(StandardCharsets.UTF_8));
         Map<String, String> written = new LinkedHashMap<>();
         try {
