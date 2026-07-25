@@ -106,13 +106,13 @@ async function main() {
     await row.locator("select").nth(1).selectOption("public.user_profiles"); // 参照先テーブル
     await row.locator("select").nth(2).selectOption("id"); // 参照先カラム
 
-    await page.locator(".form-actions button", { hasText: "保存" }).click();
-    await page.waitForFunction(
-      () => location.hash === "#/tables/public.user_sessions",
-      null,
-      { timeout: 15000 },
-    );
-    check("save navigates back to the detail page", true);
+    // 保存はヘッダの保存アイコンから（変更があると活性化する）。保存後も編集は継続する
+    await page.waitForSelector('[data-testid="save-button"]:not([disabled])', { timeout: 15000 });
+    await page.getByTestId("save-button").click();
+    // 保存が済むと未保存フラグが落ち、保存アイコンが saved（非活性）に戻る
+    await page.waitForSelector('[data-testid="save-button"][data-status="saved"]', { timeout: 15000 });
+    const stillEditing = (await page.evaluate(() => location.hash)) === "#/tables/public.user_sessions/edit";
+    check("save persists and stays in edit mode", stillEditing);
 
     const schemaText = readFileSync(
       join(dir, "data", "schema", "public", "user_sessions.js"),
@@ -149,17 +149,9 @@ async function main() {
       .locator("tr", { has: page.locator("td", { hasText: "session_token" }) })
       .locator("input");
     await typeInto(rowInput, "セッショントークン");
-    const saveButton = page.locator(".columns-toolbar button", { hasText: "保存" });
-    await page.waitForFunction(
-      () => {
-        const buttons = [...document.querySelectorAll(".columns-toolbar button")];
-        const save = buttons.find((b) => b.textContent.includes("保存"));
-        return save !== undefined && !save.disabled;
-      },
-      null,
-      { timeout: 20000 },
-    );
-    await saveButton.click();
+    // 保存はヘッダの保存アイコン。全テーブルのロード完了で活性化するまで待ってから押す
+    await page.waitForSelector('[data-testid="save-button"]:not([disabled])', { timeout: 20000 });
+    await page.getByTestId("save-button").click();
     // 保存が済むと dirty マークが消える（辞書は index.js を再生成しない。P §4.3）
     await page.waitForFunction(
       () => document.querySelectorAll(".columns-table .row-dirty").length === 0,

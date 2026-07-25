@@ -61,13 +61,8 @@ async function dragNode(page, id, dx, dy) {
 }
 
 async function waitSaved(page) {
-  await page.waitForFunction(
-    () => {
-      const el = document.querySelector('[data-testid="save-status"]');
-      return el !== null && (el.textContent.includes("保存済み") || el.textContent.includes("Saved"));
-    },
-    { timeout: 10000 },
-  );
+  // 保存アイコンの data-status が saved になれば保存完了（バッジ表示は廃止）
+  await page.waitForSelector('[data-testid="save-button"][data-status="saved"]', { timeout: 10000 });
 }
 
 async function main() {
@@ -125,7 +120,7 @@ async function main() {
 
     // [編集開始] は編集ルート #/erd/<id>/edit へのリンク（ロックは無い。H-11 廃止）
     await page.click('[data-testid="session-toggle"]');
-    await page.waitForSelector('[data-testid="session-badge"][data-editing="true"]', { timeout: 5000 });
+    await page.waitForSelector('[data-testid="session-toggle"][data-editing="true"]', { timeout: 5000 });
     check("editing route entered (no lock)", true);
 
     // ---- 2. ドラッグ → 明示保存（H-01 / H-03 / T-2。自動保存は無い） ----
@@ -174,10 +169,7 @@ async function main() {
 
     // ---- 5. 未保存 + 外部変更 → バナー[無視] → 保存で 409 STALE → 上書き（部分更新。T-7/§4.3） ----
     await dragNode(page, "public.user_profiles", 100, 60); // user_profiles を動かす（未保存）
-    await page.waitForFunction(() => {
-      const el = document.querySelector('[data-testid="save-status"]');
-      return el !== null && (el.textContent.includes("未保存") || el.textContent.includes("unsaved"));
-    });
+    await page.waitForSelector('[data-testid="save-button"][data-status="dirty"]');
     // 外部で users を動かす（自分は user_profiles しか触っていない）
     writeFileSync(file, readFileSync(file, "utf-8")
         .replace(/"public\.users": \{ pos: \[\d+, \d+\]/, '"public.users": { pos: [160, 160]'));
@@ -199,17 +191,10 @@ async function main() {
     check("overwrite saves my user_profiles move",
         !text.includes('"public.user_profiles": { pos: [80, 256]'));
 
-    // ---- 6. エクスポート = ディスクとバイト一致（H-13 / T-15） ----
-    await page.click("text=配置をエクスポート");
-    await page.waitForSelector('[data-testid="export-code"]');
-    const exported = await page.inputValue('[data-testid="export-code"]');
-    const onDisk = readFileSync(file, "utf-8");
-    check("export equals file on disk byte-for-byte (T-15)", exported === onDisk);
-    await page.keyboard.press("Escape");
-
-    // 編集終了（未保存なし）→ 閲覧ルートへ戻る
-    await page.click('[data-testid="session-toggle"]');
-    await page.waitForFunction(() => document.querySelector('[data-testid="session-badge"][data-editing="true"]') === null);
+    // ---- 6. 編集終了（未保存なし）→ 閲覧ルートへ戻る ----
+    // （エクスポートは静的モード専用になったため、バイト一致の検証は下の静的モードで行う）
+    await page.click('[data-testid="session-toggle"][data-editing="true"]');
+    await page.waitForFunction(() => document.querySelector('[data-testid="session-toggle"][data-editing="true"]') === null);
     check("session ends back to viewing", true);
 
     check("no page errors (server mode)", pageErrors.length === 0);
@@ -221,15 +206,16 @@ async function main() {
     const staticPage = await browser.newPage({ viewport: { width: 1400, height: 900 } });
     await staticPage.goto("file:///" + join(dir, "index.html").replaceAll("\\", "/"));
     await staticPage.waitForSelector('[data-testid="erd-node"]', { timeout: 15000 });
-    // 静的モードでも [編集開始] で編集ルートへ入れる（ロック無し。警告はヘッダに常時表示）
+    // 静的モードでも [編集開始] で編集ルートへ入れる（ロック無し）。
+    // 保存はできないため、ヘッダには保存アイコンではなくエクスポートアイコンが出る
     await staticPage.click('[data-testid="session-toggle"]');
-    await staticPage.waitForSelector('[data-testid="session-badge"][data-editing="true"]');
+    await staticPage.waitForSelector('[data-testid="session-toggle"][data-editing="true"]');
     check("static mode: editing starts (no lock)", true);
-    check("static mode: not-saved warning shown",
-        await staticPage.locator('[data-testid="save-warn"]').isVisible());
+    check("static mode: export button shown (no save)",
+        await staticPage.locator('[data-testid="export-button"]').isVisible());
 
     await dragNode(staticPage, "public.users", 200, 0);
-    await staticPage.click("text=配置をエクスポート");
+    await staticPage.click('[data-testid="export-button"]');
     await staticPage.waitForSelector('[data-testid="export-code"]');
     const staticExport = await staticPage.inputValue('[data-testid="export-code"]');
     const posNow = await nodePosOnCanvas(staticPage, "public.users");

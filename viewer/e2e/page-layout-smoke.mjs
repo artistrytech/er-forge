@@ -48,16 +48,10 @@ function manifestText(dir) {
 }
 
 async function waitSaved(page) {
-  // 自動保存は無い（H-03）。明示的に保存してから「保存済み」を待つ。
+  // 自動保存は無い（H-03）。明示的に保存してから保存アイコンの data-status=saved を待つ。
   // 未保存が無ければ Ctrl+S は no-op（既に保存済みのまま）
   await page.keyboard.press("Control+s");
-  await page.waitForFunction(
-    () => {
-      const el = document.querySelector('[data-testid="save-status"]');
-      return el !== null && (el.textContent.includes("保存済み") || el.textContent.includes("Saved"));
-    },
-    { timeout: 15000 },
-  );
+  await page.waitForSelector('[data-testid="save-button"][data-status="saved"]', { timeout: 15000 });
 }
 
 /** ファイルが条件を満たすまで待つ（ページ管理 API は保存ステータスを動かさない） */
@@ -119,7 +113,7 @@ async function main() {
     await page.goto(`${url}#/erd/users`);
     await page.waitForSelector('[data-testid="erd-node"]', { timeout: 15000 });
     await page.click('[data-testid="session-toggle"]');
-    await page.waitForSelector('[data-testid="session-badge"][data-editing="true"]', { timeout: 5000 });
+    await page.waitForSelector('[data-testid="session-toggle"][data-editing="true"]', { timeout: 5000 });
 
     const before = nodesInFile(dir, "users");
 
@@ -228,7 +222,7 @@ async function main() {
 
     // 新規ページ作成後は閲覧ルートに着地する。配置するには編集ルートへ入る
     await page.click('[data-testid="session-toggle"]');
-    await page.waitForSelector('[data-testid="session-badge"][data-editing="true"]', { timeout: 5000 });
+    await page.waitForSelector('[data-testid="session-toggle"][data-editing="true"]', { timeout: 5000 });
 
     // ---- 4b. I-04 / §5.9: 別ページに配置済みのテーブルを、この空ページへ配置する ----
     // users ページにあるテーブルを billing にも足す（移動ではなく複数ページ配置）
@@ -310,7 +304,7 @@ async function main() {
     await staticPage.waitForSelector('[data-testid="erd-node"]', { timeout: 15000 });
     // 静的モードでも [編集開始] で編集ルートへ入れる（ロック無し・保存不可）
     await staticPage.click('[data-testid="session-toggle"]');
-    await staticPage.waitForSelector('[data-testid="session-badge"][data-editing="true"]');
+    await staticPage.waitForSelector('[data-testid="session-toggle"][data-editing="true"]');
     check("static mode: auto layout is disabled",
         await staticPage.locator('[data-testid="auto-layout"]').isDisabled());
     check("static mode: page management is not offered",

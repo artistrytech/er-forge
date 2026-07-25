@@ -5,9 +5,7 @@
 import { useI18n } from "../i18n/useI18n";
 import { formatName, resolveTableName } from "../model/logicalName";
 import { useAppStore } from "../model/store";
-import { Link } from "../ui/Link";
 import { NotFound } from "../ui/NotFound";
-import { hrefs } from "../ui/router";
 import { TableInfo } from "../ui/TableInfo";
 import styles from "./TableDetail.module.scss";
 
@@ -32,11 +30,7 @@ export function TableDetail({ tableId, notice }: { tableId: string; notice?: str
       <div className="catalog-header">
         <h2>{title}</h2>
         <span className="mono muted">{tableId}</span>
-        {serverMode === true && (
-          <Link className="button-link" href={hrefs.tableEdit(tableId)}>
-            {t("catalog.edit")}
-          </Link>
-        )}
+        {/* 編集開始はヘッダ（EditControls）のペンアイコンに集約 */}
       </div>
       <TableInfo tableId={tableId} />
       {serverMode === true && (

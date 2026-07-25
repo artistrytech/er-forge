@@ -11,6 +11,7 @@ import { useI18n } from "./i18n/useI18n";
 import { IntrospectPage } from "./introspect/IntrospectPage";
 import { totalTableCount, useAppStore, type Fatal } from "./model/store";
 import { useEditStore } from "./model/editStore";
+import { usePageEditStore } from "./model/pageEditStore";
 import { BootstrapScreen } from "./ui/BootstrapScreen";
 import { EditDialogs, ExternalUpdateBanner, Toasts } from "./ui/EditDialogs";
 import { ErdEmpty } from "./ui/ErdEmpty";
@@ -44,8 +45,10 @@ export function App() {
   const lastTableId = useAppStore((s) => s.lastTableId);
   const setLastTableId = useAppStore((s) => s.setLastTableId);
   const exportDiagramId = useEditStore((s) => s.exportDiagramId);
-  // 未保存（編集中で pending あり）は beforeunload ガードと同じ判定（editStore §2.1）
-  const hasUnsaved = useEditStore((s) => s.session === "editing" && s.pendingCount > 0);
+  // 未保存: ER図編集（正味の変更 netDirty）またはテーブル/カラム編集（pageEditStore の dirty）
+  const erdUnsaved = useEditStore((s) => s.session === "editing" && s.netDirty);
+  const pageUnsaved = usePageEditStore((s) => s.controller?.dirty === true);
+  const hasUnsaved = erdUnsaved || pageUnsaved;
 
   // N-01: Cmd/Ctrl + K で検索を開く
   useEffect(() => {
@@ -227,7 +230,7 @@ export function App() {
 
   return (
     <div className={styles.appRoot}>
-      <Header currentDiagramId={currentDiagramId} onErdRoute={onErdRoute} />
+      <Header currentDiagramId={currentDiagramId} />
       {failedIds.length > 0 && loaded + failed >= total && (
         <div className="error-banner">
           {t("banner.missingTables", { list: failedIds.join(", ") })}

@@ -12,11 +12,11 @@ import { useI18n } from "../i18n/useI18n";
 import { apiGet, apiPut } from "../model/api";
 import { aggregateColumns, parseTsvPairs } from "../model/columnDictionary";
 import { rememberOwnRevision } from "../model/editStore";
+import { usePageEditStore } from "../model/pageEditStore";
 import { reloadDictionary } from "../model/loader";
 import { matchText, type MatchMode } from "../model/search";
 import { totalTableCount, useAppStore } from "../model/store";
 import { Dialog } from "../ui/Dialog";
-import { Link } from "../ui/Link";
 import { hrefs, type ColumnMatch } from "../ui/router";
 
 type Filter = "all" | "unset" | "overridden" | "orphan";
@@ -111,32 +111,27 @@ export function ColumnsPage({
   }, [rows, draft, filter, search, matchMode]);
 
   const dirty = dirtyKeys.size > 0;
-  const dirtyRef = useRef(dirty);
-  dirtyRef.current = dirty;
 
-  // O-09 と同じ未保存警告（編集ルートでのみ）
+  // 保存・編集終了はヘッダ（EditControls）から行う。編集ルート滞在中だけコントローラを登録する。
+  // 未保存があってもリロード・他ページ遷移は妨げない（確認は終了操作に限定）。
+  const setController = usePageEditStore((s) => s.setController);
+  const saveRef = useRef<(force: boolean) => void>(() => {});
   useEffect(() => {
-    if (!canEdit) return;
-    const onBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (dirtyRef.current) e.preventDefault();
-    };
-    window.addEventListener("beforeunload", onBeforeUnload);
-    return () => window.removeEventListener("beforeunload", onBeforeUnload);
-  }, [canEdit]);
-  useEffect(() => {
-    if (!canEdit) return;
-    const ownHash = hrefs.columnsEdit();
-    const onHashChange = () => {
-      if (!dirtyRef.current || location.hash === ownHash) return;
-      if (!window.confirm(t("tableEdit.leaveConfirm"))) {
-        location.hash = ownHash;
-      } else {
-        dirtyRef.current = false;
-      }
-    };
-    window.addEventListener("hashchange", onHashChange);
-    return () => window.removeEventListener("hashchange", onHashChange);
-  }, [canEdit, t]);
+    if (!canEdit) {
+      setController(null);
+      return;
+    }
+    setController({
+      dirty,
+      saving,
+      canSave: allLoaded && baseHash !== null,
+      save: () => saveRef.current(false),
+      end: () => {
+        location.hash = hrefs.columns();
+      },
+    });
+    return () => setController(null);
+  }, [canEdit, dirty, saving, allLoaded, baseHash, setController]);
 
   const setValue = (name: string, value: string) => {
     setDraft((d) => ({ ...d, [name]: value }));
@@ -178,11 +173,9 @@ export function ColumnsPage({
         rememberOwnRevision(body.revision);
         setBaseHash(body.newHash);
         setDirtyKeys(new Set());
-        dirtyRef.current = false;
         await reloadDictionary(body.revision);
         addToast(t("tableEdit.saved"));
-        // 保存後は閲覧モードへ戻る（テーブル編集と同様。§2.4）
-        location.hash = hrefs.columns();
+        // 保存後も編集は継続する（ER図・テーブル編集と同じ）
       } else if (res.status === 409) {
         setConflict(true);
       } else {
@@ -194,6 +187,21 @@ export function ColumnsPage({
       setSaving(false);
     }
   };
+
+  saveRef.current = save;
+
+  // N-10: Cmd/Ctrl+S で保存（ER図・テーブル編集と同じ）。編集ルートでのみ有効
+  useEffect(() => {
+    if (!canEdit) return;
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        void saveRef.current(false);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [canEdit]);
 
   const discard = () => {
     setDraft({ ...(dictionary?.columns ?? {}) });
@@ -215,11 +223,7 @@ export function ColumnsPage({
       <div className="catalog-header">
         <h2>{t("columnsPage.title")}</h2>
         <span className="muted">{t("columnsPage.count", { n: rows.length })}</span>
-        {!editing && serverMode && (
-          <Link className="header-button header-button-primary" href={hrefs.columnsEdit()}>
-            {t("session.startEdit")}
-          </Link>
-        )}
+        {/* 編集開始・保存・終了はヘッダ（EditControls）に集約 */}
       </div>
       <p className="muted form-hint">{t("columnsPage.hint")}</p>
 
@@ -275,24 +279,10 @@ export function ColumnsPage({
           ))}
         </select>
         {canEdit && (
-          <>
-            <button type="button" className="header-button" onClick={() => setPasteOpen(true)}>
-              {t("columnsPage.paste")}
-            </button>
-            <span className="spacer" />
-            <button type="button" className="header-button" disabled={!dirty || saving} onClick={discard}>
-              {t("tableEdit.discard")}
-            </button>
-            <button
-              type="button"
-              className="header-button header-button-primary"
-              data-testid="save-button"
-              disabled={!dirty || saving || !allLoaded || baseHash === null}
-              onClick={() => void save(false)}
-            >
-              {saving ? t("save.saving") : t("save.button")}
-            </button>
-          </>
+          // 一括貼り付けは編集ユーティリティのためここに残す。保存・破棄・終了はヘッダへ集約
+          <button type="button" className="header-button" onClick={() => setPasteOpen(true)}>
+            {t("columnsPage.paste")}
+          </button>
         )}
       </div>
 

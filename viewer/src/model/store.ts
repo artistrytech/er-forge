@@ -76,6 +76,9 @@ export interface AppState {
 
 /** 最後に閲覧したテーブルの永続化キー（origin 単位。存在しない ID は読み込み側で無視する） */
 const LAST_TABLE_KEY = "erd-last-table";
+/** ユーザ独自設定（言語・表示名）の永続化キー（設定メニューから変更・localStorage 保存） */
+const LANG_KEY = "erd-lang";
+const NAME_DISPLAY_KEY = "erd-name-display";
 
 function readLastTableId(): string | null {
   try {
@@ -85,9 +88,38 @@ function readLastTableId(): string | null {
   }
 }
 
+function readStoredLang(): Lang | null {
+  try {
+    const v = localStorage.getItem(LANG_KEY);
+    return v === "ja" || v === "en" ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+function readStoredNameDisplay(): NameDisplay | null {
+  try {
+    const v = localStorage.getItem(NAME_DISPLAY_KEY);
+    return v === "both" || v === "logical" || v === "physical" ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+function persist(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // localStorage 不可でもメモリ内では有効（致命的ではない）
+  }
+}
+
 export const useAppStore = create<AppState>((set) => ({
-  lang: detectLang(typeof navigator !== "undefined" ? navigator.languages ?? [] : []),
-  nameDisplay: "both",
+  // ユーザ独自設定があれば優先し、無ければ環境から判定・既定を使う（設定メニュー / L-04）
+  lang:
+    readStoredLang() ??
+    detectLang(typeof navigator !== "undefined" ? navigator.languages ?? [] : []),
+  nameDisplay: readStoredNameDisplay() ?? "both",
   serverMode: null,
 
   fatal: null,
@@ -111,8 +143,14 @@ export const useAppStore = create<AppState>((set) => ({
   recentTables: [],
   lastTableId: readLastTableId(),
 
-  setLang: (lang) => set({ lang }),
-  setNameDisplay: (nameDisplay) => set({ nameDisplay }),
+  setLang: (lang) => {
+    set({ lang });
+    persist(LANG_KEY, lang);
+  },
+  setNameDisplay: (nameDisplay) => {
+    set({ nameDisplay });
+    persist(NAME_DISPLAY_KEY, nameDisplay);
+  },
   openDialog: (dialog) => set({ dialog }),
   closeDialog: () => set({ dialog: null }),
   setSearchOpen: (searchOpen) => set({ searchOpen }),

@@ -70,7 +70,8 @@ async function main() {
   check("cardinality markers render", (await page.locator('[data-testid="card-marker"]').count()) >= 8);
   check("legend visible", await page.locator('[data-testid="erd-legend"]').isVisible());
   check("mode badge shows static", await page.locator('[data-testid="mode-badge"][data-mode="static"]').isVisible());
-  check("session badge shows viewing", await page.locator('[data-testid="session-badge"]').isVisible());
+  // 閲覧中は「編集開始」（ペン）が出る。バッジ表示は廃止
+  check("start-edit shown when viewing", await page.locator('[data-testid="session-toggle"][data-editing="false"]').isVisible());
   check("minimap renders nodes", (await page.locator(".react-flow__minimap-node").count()) === 3);
 
   // 2) ページ切替（B-01）: サイドバーのリンクで billing へ
@@ -157,7 +158,9 @@ async function main() {
   await page.waitForSelector(".notice-banner");
   check("edit route shows read-only notice", await page.locator(".notice-banner").isVisible());
 
-  // 11) 言語切替（L-04）
+  // 11) 言語切替（L-04）: 設定（歯車）メニューを開いてから言語セレクトを操作する
+  await page.click('[data-testid="settings-button"]');
+  await page.waitForSelector('[data-testid="settings-menu"]');
   await page.selectOption('[data-testid="header-select"] >> nth=1', "en");
   check(
     "language switch to English",

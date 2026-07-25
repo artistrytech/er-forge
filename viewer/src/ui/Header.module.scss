@@ -66,7 +66,7 @@
   margin-left: auto;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .header-select {
@@ -79,12 +79,66 @@
   font-weight: 500;
 }
 
-.mode-badge,
-.session-badge {
-  font-size: 12px;
-  padding: 5px 10px;
-  border-radius: 6px;
-  white-space: nowrap;
+/* ---- アイコンボタン（設定・保存・編集開始/終了・エクスポート） ---- */
+
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: none;
+  color: #4b5563;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.icon-button:hover:not(:disabled) {
+  background: var(--accent-soft);
+  color: var(--text-strong);
+}
+
+.icon-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.icon-button.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* 変更あり = 目立たせる（保存を促す）。危険 = 保存失敗 */
+.icon-primary:not(:disabled) {
+  background: var(--accent);
+  color: var(--ink-text, #fff);
+  border-color: var(--accent);
+}
+
+.icon-primary:not(:disabled):hover {
+  background: var(--accent);
+  color: var(--ink-text, #fff);
+  filter: brightness(1.05);
+}
+
+.icon-danger:not(:disabled) {
+  background: var(--error);
+  color: #fff;
+  border-color: var(--error);
+}
+
+/* ---- 動作モード（アイコン） ---- */
+
+.mode-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
 }
 
 .mode-static {
@@ -97,9 +151,46 @@
   color: var(--ok);
 }
 
-.session-badge {
-  background: var(--accent-soft);
-  color: var(--accent);
+/* ---- 設定メニュー（歯車 + ドロップダウン） ---- */
+
+.settings-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.settings-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 50;
+  min-width: 240px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settings-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-strong);
+  white-space: nowrap;
+}
+
+.settings-row .header-select {
+  flex: 1;
+  max-width: 150px;
 }
 
 .progress-bar {
@@ -115,44 +206,4 @@
   height: 100%;
   background: var(--accent);
   transition: width 0.3s ease;
-}
-
-/* ---- 編集セッション（H-04 / H-09 / H-13 / M-01） ---- */
-
-.session-editing {
-  color: var(--accent);
-  font-weight: 600;
-}
-
-.save-warn {
-  color: var(--warn);
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-.save-status {
-  font-size: 12px;
-  color: var(--text-muted);
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
-}
-
-.save-status button {
-  padding: 2px 8px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--panel);
-  color: inherit;
-  cursor: pointer;
-}
-
-.save-dirty {
-  color: var(--warn);
-}
-
-.save-failed {
-  color: var(--error);
-  font-weight: 600;
 }

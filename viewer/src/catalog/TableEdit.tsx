@@ -11,6 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../i18n/useI18n";
 import { apiGet, apiPut } from "../model/api";
 import { rememberOwnRevision } from "../model/editStore";
+import { usePageEditStore } from "../model/pageEditStore";
 import { invalidateTable, loadTable, reloadIndex } from "../model/loader";
 import {
   buildDraft,
@@ -92,30 +93,24 @@ export function TableEdit({ tableId }: { tableId: string }) {
     () => draft !== null && JSON.stringify(draft) !== initialJson,
     [draft, initialJson],
   );
-  const dirtyRef = useRef(dirty);
-  dirtyRef.current = dirty;
 
-  // O-09: 未保存変更の警告（タブ閉じ + ハッシュ遷移）
+  // 保存・編集終了はヘッダ（EditControls）から行う。編集画面がマウント中だけ、
+  // ヘッダが操作できるようコントローラを登録する（pageEditStore）。
+  // 未保存があってもリロード・他ページ遷移は妨げない（確認は終了操作に限定）。
+  const setController = usePageEditStore((s) => s.setController);
+  const saveRef = useRef<(force: boolean) => void>(() => {});
   useEffect(() => {
-    const onBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (dirtyRef.current) e.preventDefault();
-    };
-    window.addEventListener("beforeunload", onBeforeUnload);
-    return () => window.removeEventListener("beforeunload", onBeforeUnload);
-  }, []);
-  useEffect(() => {
-    const ownHash = hrefs.tableEdit(tableId);
-    const onHashChange = () => {
-      if (!dirtyRef.current || location.hash === ownHash) return;
-      if (!window.confirm(t("tableEdit.leaveConfirm"))) {
-        location.hash = ownHash;
-      } else {
-        dirtyRef.current = false;
-      }
-    };
-    window.addEventListener("hashchange", onHashChange);
-    return () => window.removeEventListener("hashchange", onHashChange);
-  }, [tableId, t]);
+    setController({
+      dirty,
+      saving,
+      canSave: committed !== null,
+      save: () => saveRef.current(false),
+      end: () => {
+        location.hash = hrefs.table(tableId);
+      },
+    });
+    return () => setController(null);
+  }, [dirty, saving, committed, tableId, setController]);
 
   const existingTableIds = useMemo(
     () => new Set((index?.tables ?? []).map((it) => it.id)),
@@ -153,8 +148,11 @@ export function TableEdit({ tableId }: { tableId: string }) {
             warnings: ServerIssue[];
           };
           rememberOwnRevision(body.revision);
-          dirtyRef.current = false;
-          // 保存後は自分で反映する（自分のリビジョンの SSE は無視されるため）
+          // 保存後も編集は継続する（ER図・カラム編集と同じ）。次の保存に備えて baseHash を
+          // 更新し、初期スナップショットを現在の draft に置き換えて未保存フラグを落とす。
+          setCommitted((c) => (c ? { table: c.table, baseHash: body.newHash } : c));
+          setInitialJson(JSON.stringify(draft));
+          // 他の画面（詳細・ER図）に反映する（自分のリビジョンの SSE は無視されるため）
           invalidateTable(tableId);
           void loadTable(tableId);
           void reloadIndex(body.revision);
@@ -163,7 +161,6 @@ export function TableEdit({ tableId }: { tableId: string }) {
               ? t("tableEdit.savedWarnings", { n: body.warnings.length })
               : t("tableEdit.saved"),
           );
-          location.hash = hrefs.table(tableId);
         } else if (res.status === 409) {
           setConflict(true);
         } else if (res.status === 422) {
@@ -181,6 +178,7 @@ export function TableEdit({ tableId }: { tableId: string }) {
     },
     [committed, draft, saving, existingTableIds, tables, tableId, addToast, t],
   );
+  saveRef.current = save;
 
   // N-10: Cmd/Ctrl+S で保存
   useEffect(() => {
@@ -211,9 +209,7 @@ export function TableEdit({ tableId }: { tableId: string }) {
         <h2>
           {t("tableEdit.title")}: <span className="mono">{tableId}</span>
         </h2>
-        <Link className="button-link" href={hrefs.table(tableId)}>
-          {t("tableEdit.backToDetail")}
-        </Link>
+        {/* 保存・変更の破棄・編集終了はヘッダ（EditControls）に集約 */}
       </div>
 
       {allErrors.length > 0 && (
@@ -397,35 +393,6 @@ export function TableEdit({ tableId }: { tableId: string }) {
 
         {/* ---- カーディナリティ（P-11） ---- */}
         <CardinalitySection table={table} draft={draft} onChange={update} />
-
-        <div className="form-actions">
-          <button
-            type="button"
-            className="header-button"
-            disabled={!dirty}
-            data-testid="discard-edit"
-            onClick={() => {
-              // 変更を破棄して編集モードを終了する（詳細画面へ戻る）。
-              // ここで setDraft(buildDraft(...)) してはいけない: 再レンダーで dirty が
-              // 再計算される際、buildDraft が論理制約に新しい uid を振り直すため dirty が
-              // true に戻り、直後の location.hash 変更で離脱確認が誤発火する。
-              // 破棄＝そのまま離脱なので draft は作り直さず、離脱確認だけ抑止する。
-              dirtyRef.current = false;
-              location.hash = hrefs.table(tableId);
-            }}
-          >
-            {t("tableEdit.discard")}
-          </button>
-          <button
-            type="button"
-            className="header-button header-button-primary"
-            disabled={!dirty || saving}
-            onClick={() => void save(false)}
-            title="Ctrl+S"
-          >
-            {saving ? t("save.saving") : t("save.button")}
-          </button>
-        </div>
       </fieldset>
 
       {conflict && (

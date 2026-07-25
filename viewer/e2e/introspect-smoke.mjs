@@ -224,26 +224,20 @@ async function main() {
 
     // 配置するには編集ルートへ入る（[編集開始]）
     await page.getByTestId("session-toggle").click();
-    await page.waitForSelector('[data-testid="session-badge"][data-editing="true"]', { timeout: 5000 });
+    await page.waitForSelector('[data-testid="session-toggle"][data-editing="true"]', { timeout: 5000 });
 
     // 未配置トレイから自動配置（H-08）→ Ctrl+S で保存（自動保存は無い）
     await page.getByTestId("tray-auto-place").click();
     await page.waitForSelector('.react-flow__node[data-id="public.users"]', { timeout: 20000 });
     await page.keyboard.press("Control+s");
-    await page.waitForFunction(
-      () => {
-        const el = document.querySelector('[data-testid="save-status"]');
-        return el !== null && (el.textContent.includes("保存済み") || el.textContent.includes("Saved"));
-      },
-      { timeout: 15000 },
-    );
+    await page.waitForSelector('[data-testid="save-button"][data-status="saved"]', { timeout: 15000 });
     const placed = readFileSync(diagramFile, "utf-8");
     check("K-12 / I-04: unplaced tables are placed onto the new page",
       placed.includes('"public.users"') && placed.includes('"public.orders"'));
 
     // 編集を終える → 閲覧ルートへ戻る
     await page.getByTestId("session-toggle").click();
-    await page.waitForFunction(() => document.querySelector('[data-testid="session-badge"][data-editing="true"]') === null);
+    await page.waitForFunction(() => document.querySelector('[data-testid="session-toggle"][data-editing="true"]') === null);
     const diagramsBefore = readFileSync(diagramFile, "utf-8");
 
     // ---- 2回目: DB にカラムを追加して再実行 ----

@@ -53,6 +53,12 @@ interface EditState {
   failMessage: string | null;
   pages: Record<string, PageEdit>;
   pendingCount: number;
+  /**
+   * 正味の未保存変更があるか（§5.2）。pendingCount は「まだ畳んでいないコマンド数」であり、
+   * 移動→Undo のように相殺されると 2 件残るが実質変更なし。これを committed への畳み込み
+   * （foldToPayload）で判定し、保存アイコンの活性・タイトルの * ・終了確認に使う。
+   */
+  netDirty: boolean;
   dialog: EditDialog | null;
   /** 現在ページが外部で更新された（編集ルート滞在中のバナー。§6.2） */
   externalUpdate: { diagramId: string; revision: string } | null;
@@ -119,6 +125,34 @@ function countPending(pages: Record<string, PageEdit>): number {
   return Object.values(pages).reduce((n, p) => n + p.pending.length, 0);
 }
 
+/**
+ * pending が committed に対して正味の変更を持つか（§5.2）。
+ * 例: ノードを動かして Undo で戻すと pending は 2 件残るが、畳み込むと空 = 変更なし。
+ */
+function hasNetChange(pages: Record<string, PageEdit>): boolean {
+  for (const [id, page] of Object.entries(pages)) {
+    if (page.pending.length === 0) continue;
+    const base = committed.get(id);
+    // committed 未確保（読み込み前に触っていない）なら pending をそのまま変更とみなす
+    if (!base) return true;
+    if (Object.keys(foldToPayload(page.pending, base)).length > 0) return true;
+  }
+  return false;
+}
+
+/** pending 更新後の status / netDirty を求める（保存中・失敗中は M-02 で維持する） */
+function statusForPages(current: SaveStatus, pages: Record<string, PageEdit>): {
+  status: SaveStatus;
+  netDirty: boolean;
+} {
+  const net = hasNetChange(pages);
+  if (!net) {
+    // 相殺されて変更なし: 保存中はそのまま、それ以外は「保存済み」に落とす
+    return { status: current === "saving" ? "saving" : "saved", netDirty: false };
+  }
+  return { status: statusAfterEdit(current), netDirty: true };
+}
+
 function serverMode(): boolean {
   return useAppStore.getState().serverMode === true;
 }
@@ -155,6 +189,7 @@ export const useEditStore = create<EditState>((set, get) => ({
   failMessage: null,
   pages: {},
   pendingCount: 0,
+  netDirty: false,
   dialog: null,
   externalUpdate: null,
   exportDiagramId: null,
@@ -180,7 +215,7 @@ export const useEditStore = create<EditState>((set, get) => ({
       }
       pages[id] = { pending: [], undo: [], redo: [] };
     }
-    set({ pages, pendingCount: 0, session: "viewing", status: "saved", failMessage: null, externalUpdate: null });
+    set({ pages, pendingCount: 0, netDirty: false, session: "viewing", status: "saved", failMessage: null, externalUpdate: null });
   },
 
   closeDialog: () => set({ dialog: null }),
@@ -200,7 +235,8 @@ export const useEditStore = create<EditState>((set, get) => ({
       ...st.pages,
       [diagramId]: { pending: [...page.pending, cmd], undo: undoStack, redo: [] },
     };
-    set({ pages, pendingCount: countPending(pages), status: statusAfterEdit(st.status) });
+    const next = statusForPages(st.status, pages);
+    set({ pages, pendingCount: countPending(pages), status: next.status, netDirty: next.netDirty });
   },
 
   undo: (diagramId) => {
@@ -221,7 +257,8 @@ export const useEditStore = create<EditState>((set, get) => ({
         redo: [...page.redo, cmd],
       },
     };
-    set({ pages, pendingCount: countPending(pages), status: statusAfterEdit(st.status) });
+    const next = statusForPages(st.status, pages);
+    set({ pages, pendingCount: countPending(pages), status: next.status, netDirty: next.netDirty });
   },
 
   redo: (diagramId) => {
@@ -241,7 +278,8 @@ export const useEditStore = create<EditState>((set, get) => ({
         redo: page.redo.slice(0, -1),
       },
     };
-    set({ pages, pendingCount: countPending(pages), status: statusAfterEdit(st.status) });
+    const next = statusForPages(st.status, pages);
+    set({ pages, pendingCount: countPending(pages), status: next.status, netDirty: next.netDirty });
   },
 
   // ---- 保存（H-03 / H-04 / §4。明示保存のみ） ----
@@ -549,10 +587,12 @@ function restorePending(diagramId: string, sent: Command[]): void {
 
 function finishIfIdle(): void {
   const st = useEditStore.getState();
-  if (st.pendingCount === 0) {
-    useEditStore.setState({ status: "saved", failMessage: null });
+  // 相殺で正味変更なしなら「保存済み」に落とす（pending が残っていても畳めば空）
+  const net = hasNetChange(st.pages);
+  if (!net) {
+    useEditStore.setState({ status: "saved", failMessage: null, netDirty: false });
   } else {
-    useEditStore.setState({ status: "dirty" });
+    useEditStore.setState({ status: "dirty", netDirty: true });
   }
 }
 
@@ -684,10 +724,10 @@ async function discardAndReload(diagramId: string, revision?: string): Promise<v
   clearStacks(diagramId);
   await forceReloadDiagram(diagramId, revision);
   await refreshHashes();
-  useEditStore.setState((s) => ({
-    status: s.pendingCount > 0 ? "dirty" : "saved",
-    failMessage: null,
-  }));
+  useEditStore.setState((s) => {
+    const net = hasNetChange(s.pages);
+    return { status: net ? "dirty" : "saved", failMessage: null, netDirty: net };
+  });
   toast(t9n("toast.undoCleared"));
 }
 
@@ -721,13 +761,8 @@ function t9n(key: MsgKey, vars?: Record<string, string | number>): string {
 // -------------------------------------------------------- タブ閉じ・離脱（§2.1）
 
 export function installUnloadHandlers(): void {
-  window.addEventListener("beforeunload", (e) => {
-    const st = useEditStore.getState();
-    // 静的モードでは警告しない（保存手段がないため。§8.1）
-    if (serverMode() && st.session === "editing" && st.pendingCount > 0) {
-      e.preventDefault();
-    }
-  });
+  // 未保存があってもブラウザのリロード・タブ閉じ・他ページへの遷移は妨げない方針
+  // （確認は「編集を終了」操作に限定する）。以前の beforeunload ガードは撤廃した。
 }
 
 // ---------------------------------------- 他画面（テーブル編集・一括編集）との共有

@@ -30,7 +30,6 @@ import { formatName, resolveTableName } from "../model/logicalName";
 import { useAppStore } from "../model/store";
 import type { IndexTable, Relation } from "../model/types";
 import { Dialog } from "../ui/Dialog";
-import { hrefs } from "../ui/router";
 import { useCanvasStore } from "./canvasStore";
 import { RelationEdge, type RelationEdgeType } from "./RelationEdge";
 import { TableNode, type TableNodeType } from "./TableNode";
@@ -103,22 +102,8 @@ function ErdCanvas({ diagramId, focusTableId }: ErdPageProps) {
     return () => setCurrentDiagramId(null);
   }, [diagramId, setCurrentDiagramId]);
 
-  // 編集ルート滞在中は別ルートへ遷移できない（未保存があれば破棄 / キャンセルを確認。
-  // §2.1 / §4.4）。戻る / 進む・リンク遷移のいずれもハッシュ変更として捕捉する。
-  // 確認が通れば App の leaveEditing が未保存を破棄して閲覧へ戻す
-  useEffect(() => {
-    if (!editing) return;
-    const ownHash = hrefs.erdEdit(diagramId);
-    const onHashChange = () => {
-      if (location.hash === ownHash) return;
-      const pending = useEditStore.getState().pages[diagramId]?.pending.length ?? 0;
-      if (pending > 0 && !window.confirm(t("tableEdit.leaveConfirm"))) {
-        location.hash = ownHash;
-      }
-    };
-    window.addEventListener("hashchange", onHashChange);
-    return () => window.removeEventListener("hashchange", onHashChange);
-  }, [editing, diagramId, t]);
+  // 未保存があっても他ルートへの遷移・リロードは妨げない（確認は「編集を終了」操作に限定。
+  // ヘッダの EditControls が担う）。以前あったハッシュ遷移ガードは撤廃した。
 
   const indexTables = useMemo(() => {
     const map = new Map<string, IndexTable>();
