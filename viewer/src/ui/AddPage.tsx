@@ -42,7 +42,7 @@ export function CreateFirstPageButton() {
     <>
       <button
         type="button"
-        className="header-button-primary"
+        className="button-link"
         data-testid="create-first-page"
         onClick={() => setOpen(true)}
       >
