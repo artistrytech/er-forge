@@ -50,6 +50,11 @@ export interface AppState {
   currentDiagramId: string | null;
   toasts: { id: number; text: string; variant: "info" | "error" }[];
   /**
+   * 最後に閲覧したテーブル。テーブル一覧（#/tables）を開いたとき、先頭ではなく
+   * これを復元する。リロードをまたいで復元できるよう localStorage に保持する。
+   */
+  lastTableId: string | null;
+  /**
    * 直近の逆生成で追加されたテーブル（K-12 §7.2）。未配置トレイで「NEW」として先頭に寄せる。
    * **セッション限定のメモリ状態**であり、リロードで消える（ファイルには残さない。
    * 「未配置」自体は index.tables[].diagrams が空という導出結果であって、フラグではない）。
@@ -66,6 +71,18 @@ export interface AppState {
   /** 一時通知。variant="error" は赤系で少し長く表示する（M-01） */
   addToast(text: string, variant?: "info" | "error"): void;
   setRecentTables(ids: string[]): void;
+  setLastTableId(id: string | null): void;
+}
+
+/** 最後に閲覧したテーブルの永続化キー（origin 単位。存在しない ID は読み込み側で無視する） */
+const LAST_TABLE_KEY = "erd-last-table";
+
+function readLastTableId(): string | null {
+  try {
+    return localStorage.getItem(LAST_TABLE_KEY);
+  } catch {
+    return null;
+  }
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -92,6 +109,7 @@ export const useAppStore = create<AppState>((set) => ({
   currentDiagramId: null,
   toasts: [],
   recentTables: [],
+  lastTableId: readLastTableId(),
 
   setLang: (lang) => set({ lang }),
   setNameDisplay: (nameDisplay) => set({ nameDisplay }),
@@ -101,6 +119,15 @@ export const useAppStore = create<AppState>((set) => ({
   setNotice: (notice) => set({ notice }),
   setCurrentDiagramId: (currentDiagramId) => set({ currentDiagramId }),
   setRecentTables: (recentTables) => set({ recentTables }),
+  setLastTableId: (lastTableId) => {
+    set({ lastTableId });
+    try {
+      if (lastTableId === null) localStorage.removeItem(LAST_TABLE_KEY);
+      else localStorage.setItem(LAST_TABLE_KEY, lastTableId);
+    } catch {
+      // localStorage 不可でもメモリ内では復元できる（致命的ではない）
+    }
+  },
   addToast: (text, variant = "info") => {
     const id = ++toastSeq;
     set((s) => ({ toasts: [...s.toasts, { id, text, variant }] }));

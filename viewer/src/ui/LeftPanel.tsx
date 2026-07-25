@@ -649,6 +649,8 @@ function AllLane({
     <div className={styles.lpLane}>
       <div className={styles.lpLaneHead}>
         <input
+          // レーン切替でこのコンポーネントが再マウントされるため、autoFocus で毎回入力へ移る
+          autoFocus
           type="search"
           className={styles.lpFilter} data-testid="lp-filter"
           placeholder={t("panel.allFilter")}
@@ -705,6 +707,8 @@ function SearchLane({
     <div className={styles.lpLane}>
       <div className={styles.lpLaneHead}>
         <input
+          // レーン切替でこのコンポーネントが再マウントされるため、autoFocus で毎回入力へ移る
+          autoFocus
           type="search"
           className={styles.lpFilter} data-testid="lp-filter"
           placeholder={t("search.placeholder")}

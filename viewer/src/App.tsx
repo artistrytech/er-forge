@@ -41,7 +41,11 @@ export function App() {
   const loaded = useAppStore((s) => s.loadedTableCount);
   const failed = useAppStore((s) => s.failedTableCount);
   const total = useAppStore((s) => totalTableCount(s));
+  const lastTableId = useAppStore((s) => s.lastTableId);
+  const setLastTableId = useAppStore((s) => s.setLastTableId);
   const exportDiagramId = useEditStore((s) => s.exportDiagramId);
+  // 未保存（編集中で pending あり）は beforeunload ガードと同じ判定（editStore §2.1）
+  const hasUnsaved = useEditStore((s) => s.session === "editing" && s.pendingCount > 0);
 
   // N-01: Cmd/Ctrl + K で検索を開く
   useEffect(() => {
@@ -65,6 +69,18 @@ export function App() {
       useEditStore.getState().leaveEditing();
     }
   }, [route.kind]);
+
+  // 最後に閲覧したテーブルを覚えておき、テーブル一覧を開いたとき復元する（下の tables 分岐）
+  const viewedTableId = route.kind === "table" ? route.tableId : null;
+  useEffect(() => {
+    if (viewedTableId !== null) setLastTableId(viewedTableId);
+  }, [viewedTableId, setLastTableId]);
+
+  // 編集中に未保存があれば HTML タイトルに * を付ける（他タブでも一目で分かるように）
+  useEffect(() => {
+    const base = "ER Diagram";
+    document.title = hasUnsaved ? `* ${base}` : base;
+  }, [hasUnsaved]);
 
   // 空プロジェクトからの逆生成（§3.6「既存のスキーマから生成する」）。
   // データはまだ無いが、それを作るための画面なので開けなければならない
@@ -93,6 +109,11 @@ export function App() {
   const firstTableId = [...(index?.tables ?? [])].sort((a, b) =>
     a.name.localeCompare(b.name, "ja"),
   )[0]?.id;
+  // 最後に閲覧したテーブルが今も存在すればそれを、無ければ先頭を開く（回答E を維持）
+  const restoreTableId =
+    lastTableId !== null && (index?.tables ?? []).some((tt) => tt.id === lastTableId)
+      ? lastTableId
+      : firstTableId;
 
   // 左パネルの表示対象（回答2: ER用・テーブル用の2インスタンスを常時マウントし表示を出し分ける）
   const panelScope: "erd" | "tables" | null = onErdRoute
@@ -131,9 +152,10 @@ export function App() {
       content = <ErdPage diagramId={route.diagramId} />;
       break;
     case "tables":
-      // 一覧と詳細を統合（案B）。未選択状態は作らず先頭テーブルを開く（回答E）
-      if (firstTableId !== undefined) {
-        replaceRoute(hrefs.table(firstTableId));
+      // 一覧と詳細を統合（案B）。未選択状態は作らず、最後に閲覧したテーブル
+      // （無ければ先頭）を開く（回答E）
+      if (restoreTableId !== undefined) {
+        replaceRoute(hrefs.table(restoreTableId));
         content = null;
       } else {
         content = (
