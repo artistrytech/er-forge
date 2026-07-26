@@ -51,7 +51,7 @@ export interface AppState {
   toasts: { id: number; text: string; variant: "info" | "error" }[];
   /**
    * 最後に閲覧したテーブル。テーブル一覧（#/tables）を開いたとき、先頭ではなく
-   * これを復元する。リロードをまたいで復元できるよう localStorage に保持する。
+   * これを復元する。リロードをまたいで復元できるよう sessionStorage に保持する（タブ単位）。
    */
   lastTableId: string | null;
   /** 最後に閲覧した ER図ページ。#/erd（ページ未指定）を開いたときにこれを復元する。 */
@@ -77,16 +77,20 @@ export interface AppState {
   setLastDiagramId(id: string | null): void;
 }
 
-/** 最後に閲覧したテーブル / ページの永続化キー（origin 単位。存在しない ID は読み込み側で無視する） */
+/**
+ * 最後に閲覧したテーブル / ページの保持キー（**タブ単位**。存在しない ID は読み込み側で無視する）。
+ * sessionStorage に置くため、リロード・ワークスペース切替では復元されるが、
+ * 別タブ・タブを閉じた後は引き継がない（別タブは既定の着地点から始まる）。
+ */
 const LAST_TABLE_KEY = "erd-last-table";
 const LAST_DIAGRAM_KEY = "erd-last-diagram";
 /** ユーザ独自設定（言語・表示名）の永続化キー（設定メニューから変更・localStorage 保存） */
 const LANG_KEY = "erd-lang";
 const NAME_DISPLAY_KEY = "erd-name-display";
 
-function readLocal(key: string): string | null {
+function readSession(key: string): string | null {
   try {
-    return localStorage.getItem(key);
+    return sessionStorage.getItem(key);
   } catch {
     return null;
   }
@@ -118,12 +122,12 @@ function persist(key: string, value: string): void {
   }
 }
 
-function persistOrRemove(key: string, value: string | null): void {
+function persistOrRemoveSession(key: string, value: string | null): void {
   try {
-    if (value === null) localStorage.removeItem(key);
-    else localStorage.setItem(key, value);
+    if (value === null) sessionStorage.removeItem(key);
+    else sessionStorage.setItem(key, value);
   } catch {
-    // localStorage 不可でもメモリ内では復元できる（致命的ではない）
+    // sessionStorage 不可でもメモリ内では復元できる（致命的ではない）
   }
 }
 
@@ -154,8 +158,8 @@ export const useAppStore = create<AppState>((set) => ({
   currentDiagramId: null,
   toasts: [],
   recentTables: [],
-  lastTableId: readLocal(LAST_TABLE_KEY),
-  lastDiagramId: readLocal(LAST_DIAGRAM_KEY),
+  lastTableId: readSession(LAST_TABLE_KEY),
+  lastDiagramId: readSession(LAST_DIAGRAM_KEY),
 
   setLang: (lang) => {
     set({ lang });
@@ -173,11 +177,11 @@ export const useAppStore = create<AppState>((set) => ({
   setRecentTables: (recentTables) => set({ recentTables }),
   setLastTableId: (lastTableId) => {
     set({ lastTableId });
-    persistOrRemove(LAST_TABLE_KEY, lastTableId);
+    persistOrRemoveSession(LAST_TABLE_KEY, lastTableId);
   },
   setLastDiagramId: (lastDiagramId) => {
     set({ lastDiagramId });
-    persistOrRemove(LAST_DIAGRAM_KEY, lastDiagramId);
+    persistOrRemoveSession(LAST_DIAGRAM_KEY, lastDiagramId);
   },
   addToast: (text, variant = "info") => {
     const id = ++toastSeq;
