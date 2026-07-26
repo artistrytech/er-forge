@@ -80,6 +80,7 @@ export function Toasts() {
         <div
           key={toast.id}
           className={cx(styles.toast, toast.variant === "error" && styles.toastError)}
+          data-testid="toast"
           role={toast.variant === "error" ? "alert" : undefined}
         >
           {toast.text}

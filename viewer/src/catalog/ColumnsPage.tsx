@@ -9,7 +9,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../i18n/useI18n";
-import { apiGet, apiPut } from "../model/api";
+import { apiGet, apiPut, wpath } from "../model/api";
 import { aggregateColumns, parseTsvPairs } from "../model/columnDictionary";
 import { rememberOwnRevision } from "../model/editStore";
 import { usePageEditStore } from "../model/pageEditStore";
@@ -72,7 +72,7 @@ export function ColumnsPage({
   useEffect(() => {
     // baseHash は保存にのみ使う。閲覧モード / 静的モードでは取りに行かない
     if (!canEdit) return;
-    apiGet("/__erd/dictionary").then(
+    apiGet(wpath("/dictionary")).then(
       (res) => {
         if (res.status === 200) {
           setBaseHash((JSON.parse(res.body) as { baseHash: string }).baseHash);
@@ -167,7 +167,7 @@ export function ColumnsPage({
     }
     setSaving(true);
     try {
-      const res = await apiPut("/__erd/dictionary", { baseHash, force, columns });
+      const res = await apiPut(wpath("/dictionary"), { baseHash, force, columns });
       if (res.status === 200) {
         const body = JSON.parse(res.body) as { revision: string; newHash: string };
         rememberOwnRevision(body.revision);
@@ -211,7 +211,7 @@ export function ColumnsPage({
   const reloadFromServer = async () => {
     setConflict(false);
     await reloadDictionary(String(Date.now()));
-    const res = await apiGet("/__erd/dictionary");
+    const res = await apiGet(wpath("/dictionary"));
     if (res.status === 200) {
       setBaseHash((JSON.parse(res.body) as { baseHash: string }).baseHash);
     }

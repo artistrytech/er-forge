@@ -105,9 +105,12 @@ class IntrospectServiceTest {
         return body;
     }
 
+    /** テストのワークスペース（セッションの帰属先。ここでは1つしか使わない） */
+    private static final String WS = "default";
+
     @SuppressWarnings("unchecked")
     private Map<String, Object> preview(Path erdDir, Path dataDir, String name) throws Exception {
-        IntrospectService.Outcome outcome = service.preview(erdDir, dataDir, request(name));
+        IntrospectService.Outcome outcome = service.preview(WS, erdDir, dataDir, request(name));
         IntrospectService.Ok ok = assertInstanceOf(IntrospectService.Ok.class, outcome);
         return (Map<String, Object>) ok.body();
     }
@@ -164,7 +167,7 @@ class IntrospectServiceTest {
             List<String> ids = selectableIds(preview);
             assertTrue(ids.contains("table:public.users/displayName"));
 
-            IntrospectService.Outcome outcome = service.apply(root.resolve(".erd"), dataDir,
+            IntrospectService.Outcome outcome = service.apply(WS, root.resolve(".erd"), dataDir,
                     applyBody(preview, ids));
             assertInstanceOf(IntrospectService.Ok.class, outcome);
 
@@ -206,7 +209,7 @@ class IntrospectServiceTest {
             }
 
             Map<String, Object> preview = preview(root.resolve(".erd"), dataDir, "svc3");
-            IntrospectService.Outcome outcome = service.apply(root.resolve(".erd"), dataDir,
+            IntrospectService.Outcome outcome = service.apply(WS, root.resolve(".erd"), dataDir,
                     applyBody(preview, selectableIds(preview)));
             assertInstanceOf(IntrospectService.Ok.class, outcome);
 
@@ -229,7 +232,7 @@ class IntrospectServiceTest {
             Files.writeString(file, "ERD.dictionary({\n  columns: {\n    id: \"ID\",\n  },\n});\n");
             String after = Hashes.fingerprint(dataDir);
 
-            IntrospectService.Outcome outcome = service.apply(root.resolve(".erd"), dataDir,
+            IntrospectService.Outcome outcome = service.apply(WS, root.resolve(".erd"), dataDir,
                     applyBody(preview, selectableIds(preview)));
 
             assertInstanceOf(IntrospectService.Stale.class, outcome);
@@ -248,7 +251,7 @@ class IntrospectServiceTest {
             }
 
             Map<String, Object> preview = preview(root.resolve(".erd"), dataDir, "svc5");
-            IntrospectService.Outcome outcome = service.apply(root.resolve(".erd"), dataDir,
+            IntrospectService.Outcome outcome = service.apply(WS, root.resolve(".erd"), dataDir,
                     applyBody(preview, selectableIds(preview)));
             IntrospectService.Ok ok = assertInstanceOf(IntrospectService.Ok.class, outcome);
 

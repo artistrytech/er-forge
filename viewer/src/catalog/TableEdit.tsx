@@ -9,7 +9,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../i18n/useI18n";
-import { apiGet, apiPut } from "../model/api";
+import { apiGet, apiPut, wpath } from "../model/api";
 import { rememberOwnRevision } from "../model/editStore";
 import { usePageEditStore } from "../model/pageEditStore";
 import { invalidateTable, loadTable, reloadIndex } from "../model/loader";
@@ -68,7 +68,7 @@ export function TableEdit({ tableId }: { tableId: string }) {
       return;
     }
     try {
-      const res = await apiGet(`/__erd/tables/${encodeURIComponent(tableId)}`);
+      const res = await apiGet(wpath(`/tables/${encodeURIComponent(tableId)}`));
       if (res.status !== 200) {
         setLoadFailed(true);
         return;
@@ -136,7 +136,7 @@ export function TableEdit({ tableId }: { tableId: string }) {
       }
       setSaving(true);
       try {
-        const res = await apiPut(`/__erd/tables/${encodeURIComponent(tableId)}`, {
+        const res = await apiPut(wpath(`/tables/${encodeURIComponent(tableId)}`), {
           baseHash: committed.baseHash,
           force,
           table: tableBody,

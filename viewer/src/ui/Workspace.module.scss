@@ -1,0 +1,149 @@
+/* ワークスペースの切替メニュー・作成/削除ダイアログ・welcome 画面のスタイル */
+
+.workspace-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.workspace-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.workspace-button:hover,
+.workspace-button.open {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.workspace-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 50;
+  min-width: 220px;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+}
+
+.workspace-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-strong);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.workspace-item:hover {
+  background: var(--accent-soft);
+}
+
+.workspace-item.current {
+  background: var(--ink);
+  color: var(--ink-text);
+}
+
+.workspace-item.current:hover {
+  background: var(--ink);
+}
+
+.workspace-item-name {
+  font-weight: 600;
+}
+
+.workspace-item-id {
+  font-size: 11.5px;
+  opacity: 0.7;
+  font-family: var(--mono, monospace);
+}
+
+.workspace-add {
+  margin-top: 4px;
+  padding: 7px 10px;
+  border: none;
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 6px 6px;
+  background: none;
+  color: var(--accent);
+  font-size: 12.5px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.workspace-add:hover {
+  background: var(--accent-soft);
+}
+
+/* ---- 入力フォーム（作成・welcome・削除確認） ---- */
+
+.workspace-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 4px 0 12px;
+}
+
+.workspace-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.workspace-field input {
+  padding: 7px 10px;
+  border: 1px solid var(--input-border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text-strong);
+  font-size: 13px;
+}
+
+.workspace-field-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.workspace-hint {
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.workspace-error {
+  color: var(--error);
+  font-size: 12.5px;
+}
+
+.workspace-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 12px 0;
+}
+

@@ -16,7 +16,7 @@
  */
 import { chromium } from "playwright";
 import { spawn } from "node:child_process";
-import { mkdtempSync, copyFileSync, existsSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, copyFileSync, existsSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -37,7 +37,7 @@ function javaBin() {
 }
 
 function usersPosInFile(dir) {
-  const text = readFileSync(join(dir, "data", "diagrams", "users.js"), "utf-8");
+  const text = readFileSync(join(dir, "workspace-default", "data", "diagrams", "users.js"), "utf-8");
   const m = text.match(/"public\.users": \{ pos: \[(-?\d+), (-?\d+)\]/);
   return m ? [Number(m[1]), Number(m[2])] : null;
 }
@@ -72,6 +72,8 @@ async function main() {
   }
   const dir = mkdtempSync(join(tmpdir(), "erd-edit-"));
   copyFileSync(INDEX, join(dir, "index.html"));
+  // ワークスペースを1つ用意しておく（サーバーは起動時に workspace-* を走査して認識する）
+  mkdirSync(join(dir, "workspace-default", "data"), { recursive: true });
 
   const proc = spawn(javaBin(), ["-jar", JAR], {
     cwd: dir,
@@ -92,7 +94,7 @@ async function main() {
     const token = new URL(url).searchParams.get("t");
 
     // サンプルデータを直接投入（ブートストラップは server-smoke で検証済み）
-    const res = await fetch(`http://127.0.0.1:5371/__erd/bootstrap?t=${token}`, {
+    const res = await fetch(`http://127.0.0.1:5371/__erd/w/default/bootstrap?t=${token}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ mode: "sample" }),
@@ -150,7 +152,7 @@ async function main() {
 
     // ---- 4. 編集ルートでの外部変更 → バナー[再読込]で反映（H-09 / §6.2） ----
     // 編集中は自動再読込せず、バナーで選ばせる（未保存の有無に関わらず。§6.2）
-    const file = join(dir, "data", "diagrams", "users.js");
+    const file = join(dir, "workspace-default", "data", "diagrams", "users.js");
     writeFileSync(file, readFileSync(file, "utf-8")
         .replace(/"public\.users": \{ pos: \[\d+, \d+\]/, '"public.users": { pos: [96, 96]'));
     await page.waitForSelector('[data-testid="external-banner"]', { timeout: 10000 });

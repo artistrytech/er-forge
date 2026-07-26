@@ -58,6 +58,16 @@ public final class MigrationRunner {
      * @throws NewerDataException データがサーバーより新しい形式のとき（データには触れない）
      */
     public Result run(Path projectRoot) {
+        return run(projectRoot, projectRoot.resolve(".erd").resolve("backup"));
+    }
+
+    /**
+     * バックアップの置き場所を指定して移行する。ワークスペース（{@code erd/workspace-<id>/}）は
+     * Git 管理下にあるため、バックアップは {@code .erd/workspace-<id>/backup/} 側へ逃がす。
+     *
+     * @throws NewerDataException データがサーバーより新しい形式のとき（データには触れない）
+     */
+    public Result run(Path projectRoot, Path backupRoot) {
         Path dataDir = projectRoot.resolve("data");
         Manifest manifest = store.readManifestOnly(dataDir);
         int from = manifest.schemaVersion();
@@ -70,7 +80,7 @@ public final class MigrationRunner {
         }
 
         List<Migration> plan = plan(from);
-        Path backupDir = backup(projectRoot, dataDir);
+        Path backupDir = backup(backupRoot, dataDir);
         try {
             ProjectStore.LoadResult loaded = store.read(dataDir);
             if (!loaded.fileErrors().isEmpty()) {
@@ -109,9 +119,9 @@ public final class MigrationRunner {
         return plan;
     }
 
-    private Path backup(Path projectRoot, Path dataDir) {
+    private Path backup(Path backupRoot, Path dataDir) {
         String stamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss-SSS"));
-        Path backupDir = projectRoot.resolve(".erd").resolve("backup").resolve(stamp);
+        Path backupDir = backupRoot.resolve(stamp);
         copyTree(dataDir, backupDir);
         return backupDir;
     }

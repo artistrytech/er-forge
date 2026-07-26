@@ -11,7 +11,7 @@
  */
 import { chromium } from "playwright";
 import { spawn } from "node:child_process";
-import { mkdtempSync, copyFileSync, existsSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, copyFileSync, existsSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -34,7 +34,7 @@ function javaBin() {
 
 /** ダイアグラムファイルの nodes を { tableId: [x, y] } として読む */
 function nodesInFile(dir, page) {
-  const file = join(dir, "data", "diagrams", `${page}.js`);
+  const file = join(dir, "workspace-default", "data", "diagrams", `${page}.js`);
   if (!existsSync(file)) return null;
   const out = {};
   const re = /"([\w.]+)": \{ pos: \[(-?\d+), (-?\d+)\]/g;
@@ -44,7 +44,7 @@ function nodesInFile(dir, page) {
 }
 
 function manifestText(dir) {
-  return readFileSync(join(dir, "data", "manifest.js"), "utf-8");
+  return readFileSync(join(dir, "workspace-default", "data", "manifest.js"), "utf-8");
 }
 
 async function waitSaved(page) {
@@ -71,6 +71,8 @@ async function main() {
   }
   const dir = mkdtempSync(join(tmpdir(), "erd-pages-"));
   copyFileSync(INDEX, join(dir, "index.html"));
+  // ワークスペースを1つ用意しておく（サーバーは起動時に workspace-* を走査して認識する）
+  mkdirSync(join(dir, "workspace-default", "data"), { recursive: true });
 
   const proc = spawn(javaBin(), ["-jar", JAR], {
     cwd: dir,
@@ -90,7 +92,7 @@ async function main() {
     if (url === null) throw new Error("server did not start");
     const token = new URL(url).searchParams.get("t");
 
-    const res = await fetch(`http://127.0.0.1:${PORT}/__erd/bootstrap?t=${token}`, {
+    const res = await fetch(`http://127.0.0.1:${PORT}/__erd/w/default/bootstrap?t=${token}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ mode: "sample" }),
@@ -110,7 +112,7 @@ async function main() {
     const pageErrors = [];
     page.on("pageerror", (e) => pageErrors.push(e.message));
 
-    await page.goto(`${url}#/erd/users`);
+    await page.goto(`${url}#/w/default/erd/users`);
     await page.waitForSelector('[data-testid="erd-node"]', { timeout: 15000 });
     await page.click('[data-testid="session-toggle"]');
     await page.waitForSelector('[data-testid="session-toggle"][data-editing="true"]', { timeout: 5000 });
@@ -127,7 +129,7 @@ async function main() {
     check("I-06: removed node is gone from the page file",
         afterRemove["public.user_sessions"] === undefined);
     check("I-06: schema file remains (definition is not deleted)",
-        existsSync(join(dir, "data", "schema", "public", "user_sessions.js")));
+        existsSync(join(dir, "workspace-default", "data", "schema", "public", "user_sessions.js")));
     check("I-06: other nodes on the page are untouched",
         Object.keys(before).filter((k) => k !== "public.user_sessions")
             .every((k) => afterRemove[k]?.[0] === before[k][0] && afterRemove[k][1] === before[k][1]));
@@ -211,10 +213,10 @@ async function main() {
     await page.locator('[data-testid="page-title"]').pressSequentially("課金");
     await page.click('[data-testid="page-create"]');
     check("I-01: new page file is written",
-        await waitFile(() => existsSync(join(dir, "data", "diagrams", "billing.js"))));
+        await waitFile(() => existsSync(join(dir, "workspace-default", "data", "diagrams", "billing.js"))));
     check("I-01: manifest lists the new page",
         await waitFile(() => manifestText(dir).includes('id: "billing"')));
-    await page.waitForFunction(() => location.hash === "#/erd/billing", { timeout: 5000 });
+    await page.waitForFunction(() => location.hash === "#/w/default/erd/billing", { timeout: 5000 });
     check("I-01: the new page is empty (no nodes)",
         Object.keys(nodesInFile(dir, "billing")).length === 0);
     check("I-01: every table is now unplaced-free but the tray stays empty",
@@ -273,7 +275,7 @@ async function main() {
     check("I-03: rename is reflected in manifest.js",
         await waitFile(() => manifestText(dir).includes("課金ドメイン")));
     check("I-03: rename is reflected in the page file",
-        readFileSync(join(dir, "data", "diagrams", "billing.js"), "utf-8").includes("課金ドメイン"));
+        readFileSync(join(dir, "workspace-default", "data", "diagrams", "billing.js"), "utf-8").includes("課金ドメイン"));
 
     // ---- 6. I-03: 並び替え（billing は末尾 → 1つ上へ） ----
     const orderBefore = manifestText(dir).indexOf('id: "billing"');
@@ -287,11 +289,11 @@ async function main() {
     await page.click('[data-testid="page-delete-billing"]');
     await page.click('[data-testid="page-delete-confirm"]');
     check("I-02: page file is deleted",
-        await waitFile(() => !existsSync(join(dir, "data", "diagrams", "billing.js"))));
+        await waitFile(() => !existsSync(join(dir, "workspace-default", "data", "diagrams", "billing.js"))));
     check("I-02: manifest no longer lists the page",
         !manifestText(dir).includes('id: "billing"'));
     check("I-02: table definitions are untouched",
-        existsSync(join(dir, "data", "schema", "public", "users.js")));
+        existsSync(join(dir, "workspace-default", "data", "schema", "public", "users.js")));
 
     check("no page errors (server mode)", pageErrors.length === 0);
     await page.close();
@@ -300,7 +302,7 @@ async function main() {
     proc.kill();
     await new Promise((r) => setTimeout(r, 500));
     const staticPage = await browser.newPage({ viewport: { width: 1500, height: 950 } });
-    await staticPage.goto("file:///" + join(dir, "index.html").replaceAll("\\", "/") + "#/erd/users");
+    await staticPage.goto("file:///" + join(dir, "index.html").replaceAll("\\", "/") + "#/w/default/erd/users");
     await staticPage.waitForSelector('[data-testid="erd-node"]', { timeout: 15000 });
     // 静的モードでも [編集開始] で編集ルートへ入れる（ロック無し・保存不可）
     await staticPage.click('[data-testid="session-toggle"]');

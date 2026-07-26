@@ -12,7 +12,7 @@
  */
 import { chromium } from "playwright";
 import { spawn } from "node:child_process";
-import { mkdtempSync, copyFileSync, existsSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, copyFileSync, existsSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -49,6 +49,8 @@ async function main() {
   }
   const dir = mkdtempSync(join(tmpdir(), "erd-meta-"));
   copyFileSync(INDEX, join(dir, "index.html"));
+  // ワークスペースを1つ用意しておく（サーバーは起動時に workspace-* を走査して認識する）
+  mkdirSync(join(dir, "workspace-default", "data"), { recursive: true });
 
   const proc = spawn(javaBin(), ["-jar", JAR], {
     cwd: dir,
@@ -72,7 +74,7 @@ async function main() {
     // サンプルデータの取り込み（A-08）。UI を経ずに API で初期化する
     const token = new URL(url).searchParams.get("t");
     const origin = new URL(url).origin;
-    const boot = await fetch(`${origin}/__erd/bootstrap?t=${token}`, {
+    const boot = await fetch(`${origin}/__erd/w/default/bootstrap?t=${token}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ mode: "sample" }),
@@ -82,12 +84,12 @@ async function main() {
     const page = await browser.newPage();
 
     // ---- ベースライン: users ページの破線エッジ数 ----
-    await page.goto(`${url}#/erd/users`);
+    await page.goto(`${url}#/w/default/erd/users`);
     await page.waitForSelector(".react-flow__node", { timeout: 15000 });
     const logicalBefore = await page.locator('[data-testid="erd-edge"][data-kind="logical"]').count();
 
     // ---- テーブル編集画面（O-03）: 論理名 + 論理外部制約を保存 ----
-    await page.goto(`${url}#/tables/public.user_sessions/edit`);
+    await page.goto(`${url}#/w/default/tables/public.user_sessions/edit`);
     await page.waitForFunction(
       () => {
         const f = document.querySelector("fieldset.edit-form");
@@ -111,11 +113,11 @@ async function main() {
     await page.getByTestId("save-button").click();
     // 保存が済むと未保存フラグが落ち、保存アイコンが saved（非活性）に戻る
     await page.waitForSelector('[data-testid="save-button"][data-status="saved"]', { timeout: 15000 });
-    const stillEditing = (await page.evaluate(() => location.hash)) === "#/tables/public.user_sessions/edit";
+    const stillEditing = (await page.evaluate(() => location.hash)) === "#/w/default/tables/public.user_sessions/edit";
     check("save persists and stays in edit mode", stillEditing);
 
     const schemaText = readFileSync(
-      join(dir, "data", "schema", "public", "user_sessions.js"),
+      join(dir, "workspace-default", "data", "schema", "public", "user_sessions.js"),
       "utf-8",
     );
     check("schema file contains the new displayName", schemaText.includes('displayName: "セッション"'));
@@ -125,14 +127,14 @@ async function main() {
         schemaText.includes('table: "public.user_profiles"'),
     );
 
-    const indexText = readFileSync(join(dir, "data", "index.js"), "utf-8");
+    const indexText = readFileSync(join(dir, "workspace-default", "data", "index.js"), "utf-8");
     check(
       "index.js is regenerated with the lfk edge (P §4.3)",
       indexText.includes("public.user_sessions#lfk:lfk_user_sessions_user_id"),
     );
 
     // ---- ER図に破線エッジが増える（Phase4 の完了条件） ----
-    await page.goto(`${url}#/erd/users`);
+    await page.goto(`${url}#/w/default/erd/users`);
     await page.waitForSelector(".react-flow__node", { timeout: 15000 });
     await page.waitForFunction(
       (before) => document.querySelectorAll('[data-testid="erd-edge"][data-kind="logical"]').length === before + 1,
@@ -143,7 +145,7 @@ async function main() {
 
     // ---- カラム論理名の一括編集（P-03） ----
     // 閲覧は #/columns、編集は #/columns/edit（ロックは無い。P-03 §2.4）
-    await page.goto(`${url}#/columns/edit`);
+    await page.goto(`${url}#/w/default/columns/edit`);
     // 全テーブルのロード完了で保存が有効化されるまで編集
     const rowInput = page
       .locator("tr", { has: page.locator("td", { hasText: "session_token" }) })
@@ -158,7 +160,7 @@ async function main() {
       null,
       { timeout: 15000 },
     );
-    const dictText = readFileSync(join(dir, "data", "dictionary.js"), "utf-8");
+    const dictText = readFileSync(join(dir, "workspace-default", "data", "dictionary.js"), "utf-8");
     check("dictionary.js is updated by bulk edit", dictText.includes("セッショントークン"));
 
     await page.close();

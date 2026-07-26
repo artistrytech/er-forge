@@ -27,6 +27,7 @@ import erd.core.model.Table;
 import erd.core.model.TableMeta;
 import erd.core.model.TableSchema;
 import erd.core.model.UniqueConstraint;
+import erd.core.model.Workspace;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -203,6 +204,24 @@ public final class DataFileParser {
             drivers = new DriverConfig(d.text("mavenRepository"), d.textArray("artifacts"));
         }
         return new Parsed<>(new ProjectConfig(ignoreTables, drivers, root.rest()), List.of());
+    }
+
+    /**
+     * {@code erd/workspaces.js}（ワークスペースの索引。ツール生成物）。
+     * 壊れていても起動を止めないよう、要素の欠損は黙って捨てる（存在の正はフォルダ走査）。
+     */
+    public Parsed<List<Workspace>> parseWorkspaces(String content) {
+        Obj root = new Obj(stripWrapper(content, "workspaces"));
+        List<Workspace> out = new ArrayList<>();
+        for (JsonNode w : root.array("workspaces")) {
+            if (!w.isObject()) continue;
+            Obj o = new Obj((ObjectNode) w);
+            String id = o.text("id");
+            String name = o.text("name");
+            if (id == null || id.isEmpty() || !Workspace.isValidId(id)) continue;
+            out.add(new Workspace(id, name == null || name.isEmpty() ? id : name));
+        }
+        return new Parsed<>(out, List.of());
     }
 
     public Parsed<Dictionary> parseDictionary(String content) {

@@ -11,6 +11,14 @@ export const SUPPORTED_SCHEMA_VERSION = 1;
 export const zCardEnd = z.enum(["0..1", "1..1", "0..N", "1..N"]);
 export type CardEnd = z.infer<typeof zCardEnd>;
 
+// ---- workspaces.js（ワークスペースの索引。ツール生成物。§6.1 段階0） ----
+
+export const zWorkspaces = z.looseObject({
+  workspaces: z
+    .array(z.looseObject({ id: z.string(), name: z.string() }))
+    .default([]),
+});
+
 // ---- manifest.js ----
 
 export const zManifest = z.looseObject({
@@ -81,8 +89,6 @@ export type Dictionary = z.infer<typeof zDictionary>;
 
 export const zConfig = z.looseObject({
   ignoreTables: z.array(z.string()).optional(),
-  /** アプリ名（ブラウザタイトル・ヘッダ表示。未設定なら言語に応じた既定名を使う） */
-  appName: z.string().optional(),
 });
 export type Config = z.infer<typeof zConfig>;
 

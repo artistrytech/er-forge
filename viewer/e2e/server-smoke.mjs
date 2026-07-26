@@ -71,24 +71,90 @@ async function main() {
     if (!browser) browser = await chromium.launch();
     const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
 
-    // 1) 空の状態 → ブートストラップ画面
+    // 1) ワークスペースが1つも無い → welcome 画面（§10 の1段目）
     await page.goto(url);
-    await page.waitForSelector(".bootstrap-screen", { timeout: 10000 });
-    check("bootstrap screen shows on empty project", true);
+    await page.waitForSelector('[data-testid="workspace-create-submit"]', { timeout: 10000 });
+    check(
+      "welcome screen suggests the default id",
+      (await page.inputValue('[data-testid="workspace-id-input"]')) === "default",
+    );
+    // 名前は必須（空のままでは作成できない）
+    await page.click('[data-testid="workspace-create-submit"]');
+    check("name is required", (await page.locator('[data-testid="workspace-create-submit"]').count()) === 1);
 
-    // 2) サンプル取り込み → リロード → ER図描画
+    // 2) ワークスペース作成 → ブートストラップ画面（§10 の2段目）
+    await page.locator('[data-testid="workspace-name-input"]').pressSequentially("販売管理");
+    await page.click('[data-testid="workspace-create-submit"]');
+    await page.waitForSelector(".bootstrap-screen", { timeout: 15000 });
+    check("workspace folder created", existsSync(join(dir, "workspace-default", "data")));
+    check("registry generated", existsSync(join(dir, "workspaces.js")));
+    check("url carries the workspace", page.url().includes("#/w/default"));
+
+    // 3) サンプル取り込み → リロード → ER図描画
     await page.click('[data-testid="bootstrap-sample"]');
     await page.waitForSelector('[data-testid="erd-node"]', { timeout: 20000 });
     check("sample import renders ER diagram", (await page.locator('[data-testid="erd-node"]').count()) > 0);
-    check("data files written", existsSync(join(dir, "data", "manifest.js")));
+    check("data files written", existsSync(join(dir, "workspace-default", "data", "manifest.js")));
     check("mode badge shows server", await page.locator('[data-testid="mode-badge"][data-mode="server"]').isVisible());
+    check("title shows the workspace name",
+        (await page.locator('[data-testid="app-title"]').textContent()) === "販売管理");
     check("logical (dashed) edges exist on some page",
-        existsSync(join(dir, "data", "schema", "public", "point_transactions.js")));
+        existsSync(join(dir, "workspace-default", "data", "schema", "public", "point_transactions.js")));
 
-    // 3) 再ロードしても通常表示（ブートストラップは出ない）
+    // 4) 再ロードしても通常表示（ブートストラップは出ない）
     await page.reload();
     await page.waitForSelector('[data-testid="erd-node"]', { timeout: 10000 });
     check("reload shows diagram again", (await page.locator(".bootstrap-screen").count()) === 0);
+
+    // 5) 2つ目のワークスペースを追加 → 切り替わって空（ブートストラップ）に着地する
+    await page.click('[data-testid="workspace-menu-button"]');
+    await page.click('[data-testid="workspace-add"]');
+    await page.locator('[data-testid="workspace-id-input"]').fill("billing");
+    await page.locator('[data-testid="workspace-name-input"]').pressSequentially("課金");
+    await page.click('[data-testid="workspace-create-submit"]');
+    await page.waitForSelector(".bootstrap-screen", { timeout: 15000 });
+    check("second workspace is created empty", existsSync(join(dir, "workspace-billing", "data")));
+    check("switched to the new workspace", page.url().includes("#/w/billing"));
+    check("first workspace is untouched",
+        existsSync(join(dir, "workspace-default", "data", "manifest.js")));
+
+    // 6) プルダウンで戻る（データはワークスペースごとに独立している）
+    await page.click('[data-testid="workspace-menu-button"]');
+    await page.click('[data-testid="workspace-item"][data-workspace-id="default"]');
+    await page.waitForSelector('[data-testid="erd-node"]', { timeout: 15000 });
+    check("switching back restores the first workspace", page.url().includes("#/w/default"));
+
+    // 7) データリセット: このワークスペースのスキーマ情報だけが消え、完了通知が出る
+    //（リロードを挟むため、通知は sessionStorage 経由でリロード後に出る）
+    await page.click('[data-testid="settings-button"]');
+    await page.click('[data-testid="data-reset"]');
+    await page.click('[data-testid="data-reset-confirm"]');
+    await page.waitForSelector(".bootstrap-screen", { timeout: 15000 });
+    check("reset empties the workspace", !existsSync(join(dir, "workspace-default", "data", "manifest.js")));
+    check("reset keeps the workspace itself", existsSync(join(dir, "workspace-default", "data")));
+    check("reset shows a toast after the reload",
+        (await page.locator('[data-testid="toast"]').first().textContent()) === "スキーマ情報を削除しました");
+    // 自分で消したファイルを監視が拾って「外部の変更を反映しました」が出てはいけない
+    await page.waitForTimeout(2000);
+    check("reset does not report an external change",
+        (await page.locator('[data-testid="toast"]').count()) === 1);
+
+    // 8) ワークスペース削除: ID の打ち込みが一致するまで実行できない
+    //（リセット直後はブートストラップ画面。ヘッダが無いのでこの画面の導線から削除する）
+    await page.click('[data-testid="workspace-delete"]');
+    await page.waitForSelector('[data-testid="workspace-delete-input"]');
+    check("delete is blocked until the id matches",
+        await page.locator('[data-testid="workspace-delete-confirm"]').isDisabled());
+    await page.locator('[data-testid="workspace-delete-input"]').pressSequentially("default");
+    await page.click('[data-testid="workspace-delete-confirm"]');
+    // 残った側へ遷移してリロードするので、着地を待ってから通知を見る
+    //（リセットの通知がまだ画面に残っている間に読むと取り違える）
+    await page.waitForFunction(() => location.hash.startsWith("#/w/billing"), null, { timeout: 15000 });
+    await page.waitForSelector('[data-testid="toast"]', { timeout: 15000 });
+    check("workspace folder is gone", !existsSync(join(dir, "workspace-default")));
+    check("delete shows a toast after the reload",
+        (await page.locator('[data-testid="toast"]').textContent()) ===
+          "ワークスペース「販売管理」を削除しました");
 
     await browser.close();
   } finally {

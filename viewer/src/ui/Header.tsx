@@ -6,18 +6,27 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { useI18n } from "../i18n/useI18n";
-import { apiGet, apiPost, apiPut } from "../model/api";
-import { rememberOwnRevision, useEditStore } from "../model/editStore";
-import { loadConfig } from "../model/loader";
+import { apiPatch, apiPost, wpath } from "../model/api";
+import { useEditStore } from "../model/editStore";
 import { usePageEditStore, type PageEditController } from "../model/pageEditStore";
 import type { NameDisplay } from "../model/logicalName";
-import { totalTableCount, useAppStore } from "../model/store";
+import { queueToastAfterReload, totalTableCount, useAppStore } from "../model/store";
+import { isValidWorkspaceId, type WorkspaceRef } from "../model/workspace";
 import type { Lang } from "../i18n/messages";
 import { cx } from "../lib/cx";
+import { Button } from "./Button";
 import { Dialog } from "./Dialog";
 import { Link } from "./Link";
 import { hrefs, useRoute, type Route } from "./router";
+import { WorkspaceDeleteDialog, WorkspaceMenu } from "./Workspace";
 import styles from "./Header.module.scss";
+
+/** 表示中のワークスペース（workspaces.js の一覧から引く） */
+function useCurrentWorkspace(): WorkspaceRef | null {
+  const workspaces = useAppStore((s) => s.workspaces);
+  const workspaceId = useAppStore((s) => s.workspaceId);
+  return workspaces.find((w) => w.id === workspaceId) ?? null;
+}
 
 export function Header({ currentDiagramId }: { currentDiagramId?: string }) {
   const { t } = useI18n();
@@ -29,7 +38,7 @@ export function Header({ currentDiagramId }: { currentDiagramId?: string }) {
   const total = useAppStore((s) => totalTableCount(s));
 
   const lastDiagramId = useAppStore((s) => s.lastDiagramId);
-  const appName = useAppStore((s) => s.config?.appName);
+  const workspace = useCurrentWorkspace();
   const firstDiagram = manifest?.diagrams?.[0]?.id;
   // ER図 の遷移先: 現在ページ → 最後に閲覧したページ（今も存在する場合）→ 先頭ページ。
   // どれも無くても #/erd はページ作成の導線を出すので行き止まりにならない
@@ -40,8 +49,8 @@ export function Header({ currentDiagramId }: { currentDiagramId?: string }) {
   const target = currentDiagramId ?? validLast ?? firstDiagram;
   const erdHref = target !== undefined ? hrefs.erd(target) : hrefs.erdHome();
   const progress = total > 0 ? (loaded + failed) / total : 1;
-  // アプリ名: config.js の appName（未設定なら言語に応じた既定名）
-  const titleText = appName !== undefined && appName.trim() !== "" ? appName : t("app.title");
+  // タイトルは現在のワークスペース名（workspaces.js。未取得なら既定名）
+  const titleText = workspace?.name ?? t("app.title");
 
   // 現在の画面のナビを濃色でハイライトする（モック）
   const route = useRoute();
@@ -62,10 +71,14 @@ export function Header({ currentDiagramId }: { currentDiagramId?: string }) {
           <div className={styles.progressBarFill} style={{ width: `${Math.round(progress * 100)}%` }} />
         </div>
       )}
-      {/* タイトルはリンク化し、挙動は「ER図」ナビと同じにする（同じ erdHref へ） */}
-      <Link className={styles.appTitle} data-testid="app-title" href={erdHref}>
-        {titleText}
-      </Link>
+      {/* タイトル = 現在のワークスペース名。文字列はリンクのまま（挙動は「ER図」ナビと同じ）で、
+          切替は右隣の ▾ に分ける（クリックの意味が競合しないように） */}
+      <div className={styles.appTitleGroup}>
+        <Link className={styles.appTitle} data-testid="app-title" href={erdHref}>
+          {titleText}
+        </Link>
+        <WorkspaceMenu />
+      </div>
       <nav className={styles.appNav}>
         <Link className={nav(onErd)} href={erdHref}>
           {t("nav.erd")}
@@ -99,18 +112,23 @@ function SettingsMenu() {
   const nameDisplay = useAppStore((s) => s.nameDisplay);
   const setNameDisplay = useAppStore((s) => s.setNameDisplay);
   const serverMode = useAppStore((s) => s.serverMode) === true;
-  const appName = useAppStore((s) => s.config?.appName) ?? "";
+  const workspace = useCurrentWorkspace();
   const addToast = useAppStore((s) => s.addToast);
   const [open, setOpen] = useState(false);
-  const [nameDraft, setNameDraft] = useState(appName);
+  const [idDraft, setIdDraft] = useState(workspace?.id ?? "");
+  const [nameDraft, setNameDraft] = useState(workspace?.name ?? "");
   const [savingName, setSavingName] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  // メニューを開いた時点の保存済みアプリ名で下書きを同期する
+  // メニューを開いた時点の保存済みの値で下書きを同期する
   useEffect(() => {
-    if (open) setNameDraft(appName);
-  }, [open, appName]);
+    if (open) {
+      setIdDraft(workspace?.id ?? "");
+      setNameDraft(workspace?.name ?? "");
+    }
+  }, [open, workspace?.id, workspace?.name]);
 
   useEffect(() => {
     if (!open) return;
@@ -128,26 +146,41 @@ function SettingsMenu() {
     };
   }, [open]);
 
-  // アプリ名を config.js に保存する（baseHash を取り直してから PUT）
-  const saveAppName = async (): Promise<void> => {
+  /**
+   * ワークスペースの ID・表示名を変更する。
+   * ID を変えるとフォルダ名（`workspace-<id>`）も変わるため、URL を張り替えてリロードする。
+   */
+  const saveWorkspace = async (): Promise<void> => {
+    if (workspace === null) return;
+    const id = idDraft.trim();
+    const name = nameDraft.trim();
+    if (!isValidWorkspaceId(id)) {
+      addToast(t("workspace.idInvalid"), "error");
+      return;
+    }
+    if (name === "") {
+      addToast(t("workspace.nameRequired"), "error");
+      return;
+    }
     setSavingName(true);
     try {
-      const cfg = await apiGet("/__erd/config");
-      if (cfg.status !== 200) {
-        addToast(t("save.failed"), "error");
+      const res = await apiPatch(`/__erd/workspaces/${encodeURIComponent(workspace.id)}`, {
+        id,
+        name,
+      });
+      if (res.status === 200) {
+        // ID が変わっていれば URL ごと差し替わる（変わっていなければ名前の反映だけ）
+        location.hash = hrefs.workspace(id);
+        location.reload();
         return;
       }
-      const baseHash = (JSON.parse(cfg.body) as { baseHash: string | null }).baseHash ?? "";
-      const name = nameDraft.trim();
-      const res = await apiPut("/__erd/config", { baseHash, appName: name === "" ? null : name });
-      if (res.status === 200) {
-        const body = JSON.parse(res.body) as { revision: string };
-        rememberOwnRevision(body.revision);
-        await loadConfig(body.revision);
-        addToast(t("tableEdit.saved"));
-      } else {
-        addToast(`${t("save.failed")} (HTTP ${res.status})`, "error");
-      }
+      const body = JSON.parse(res.body) as { code?: string };
+      addToast(
+        body.code === "DUPLICATE_ID"
+          ? t("workspace.duplicate", { id })
+          : `${t("save.failed")} (HTTP ${res.status})`,
+        "error",
+      );
     } catch {
       addToast(t("save.failed"), "error");
     } finally {
@@ -155,13 +188,16 @@ function SettingsMenu() {
     }
   };
 
-  // データリセット: スキーマ情報を削除し、通常のロード経路をやり直す（ブートストラップ画面へ）
+  // データリセット: このワークスペースのスキーマ情報だけを削除し、
+  // 通常のロード経路をやり直す（同じワークスペースのブートストラップ画面へ着地する）
   const doReset = async (): Promise<void> => {
     setConfirmReset(false);
     setOpen(false);
     try {
-      const res = await apiPost("/__erd/reset", {});
+      const res = await apiPost(wpath("/reset"), {});
       if (res.status === 200) {
+        // 完了通知はリロード後に出す（この直後に画面を読み込み直すため）
+        queueToastAfterReload(t("reset.done"));
         location.reload();
       } else {
         addToast(`${t("reset.failed")} (HTTP ${res.status})`, "error");
@@ -171,7 +207,9 @@ function SettingsMenu() {
     }
   };
 
-  const nameChanged = nameDraft.trim() !== appName.trim();
+  const workspaceChanged =
+    workspace !== null &&
+    (idDraft.trim() !== workspace.id || nameDraft.trim() !== workspace.name);
 
   return (
     <div className={styles.settingsMenu} ref={ref}>
@@ -214,66 +252,93 @@ function SettingsMenu() {
             </select>
           </label>
 
-          {/* アプリ名（config.js に保存。サーバーモードのみ変更可能） */}
+          {/* ワークスペース（ID・表示名。サーバーモードのみ変更可能） */}
           <div className={styles.settingsBlock}>
-            <span className={styles.settingsLabel}>{t("settings.appName")}</span>
-            {serverMode ? (
-              <div className={styles.settingsInputRow}>
+            <span className={styles.settingsLabel}>{t("workspace.rename")}</span>
+            {serverMode && workspace !== null ? (
+              <>
                 <input
                   type="text"
                   className={styles.settingsInput}
-                  data-testid="app-name-input"
-                  placeholder={t("settings.appNamePlaceholder")}
-                  value={nameDraft}
-                  onChange={(e) => setNameDraft(e.target.value)}
+                  data-testid="workspace-id-input"
+                  aria-label={t("workspace.id")}
+                  value={idDraft}
+                  onChange={(e) => setIdDraft(e.target.value)}
                 />
-                <button
-                  type="button"
-                  className="header-button header-button-primary"
-                  data-testid="app-name-save"
-                  disabled={!nameChanged || savingName}
-                  onClick={() => void saveAppName()}
-                >
-                  {savingName ? t("save.saving") : t("save.button")}
-                </button>
-              </div>
+                <div className={styles.settingsInputRow}>
+                  <input
+                    type="text"
+                    className={styles.settingsInput}
+                    data-testid="workspace-name-input"
+                    aria-label={t("workspace.name")}
+                    value={nameDraft}
+                    onChange={(e) => setNameDraft(e.target.value)}
+                  />
+                  <Button
+                    variant="primary"
+                    data-testid="workspace-save"
+                    disabled={!workspaceChanged || savingName}
+                    onClick={() => void saveWorkspace()}
+                  >
+                    {savingName ? t("save.saving") : t("save.button")}
+                  </Button>
+                </div>
+                {idDraft.trim() !== workspace.id && (
+                  <span className="muted">{t("workspace.renameIdWarn")}</span>
+                )}
+              </>
             ) : (
-              <span className="muted">{appName === "" ? t("settings.appNamePlaceholder") : appName}</span>
+              <span className="muted">{workspace?.name ?? ""}</span>
             )}
           </div>
 
-          {/* データリセット（サーバーモードのみ） */}
+          {/* データリセット（このワークスペースのスキーマ情報だけを消す）とワークスペース削除。
+              破壊力が違うため別々の操作として並べる（§11） */}
           {serverMode && (
             <div className={styles.settingsBlock}>
               <span className={styles.settingsLabel}>{t("settings.dataReset")}</span>
-              <button
-                type="button"
-                className={cx("header-button", styles.dangerButton)}
+              <Button
+                variant="danger"
+                className={styles.blockButton}
                 data-testid="data-reset"
                 onClick={() => setConfirmReset(true)}
               >
                 {t("settings.dataResetAction")}
-              </button>
+              </Button>
+            </div>
+          )}
+          {serverMode && workspace !== null && (
+            <div className={styles.settingsBlock}>
+              <span className={styles.settingsLabel}>{t("workspace.delete")}</span>
+              <Button
+                variant="danger"
+                className={styles.blockButton}
+                data-testid="workspace-delete"
+                onClick={() => setConfirmDelete(true)}
+              >
+                {t("workspace.deleteAction")}
+              </Button>
             </div>
           )}
         </div>
+      )}
+
+      {confirmDelete && workspace !== null && (
+        <WorkspaceDeleteDialog workspace={workspace} onClose={() => setConfirmDelete(false)} />
       )}
 
       {confirmReset && (
         <Dialog title={t("reset.title")} onClose={() => setConfirmReset(false)}>
           <p>{t("reset.body")}</p>
           <div className="dialog-actions">
-            <button
-              type="button"
-              className={cx("header-button", styles.dangerButton)}
+            <Button
+              variant="danger"
               data-testid="data-reset-confirm"
               onClick={() => void doReset()}
             >
               {t("reset.confirm")}
-            </button>
-            <button type="button" onClick={() => setConfirmReset(false)}>
-              {t("layout.cancel")}
-            </button>
+            </Button>
+            <Button onClick={() => setConfirmReset(false)}>{t("layout.cancel")}</Button>
           </div>
         </Dialog>
       )}
@@ -393,9 +458,8 @@ function EditControls({ route }: { route: Route }) {
         <Dialog title={t("edit.stopConfirm.title")} onClose={() => setPendingEnd(null)}>
           <p>{t("session.endConfirmBody")}</p>
           <div className="dialog-actions">
-            <button
-              type="button"
-              className="header-button-primary"
+            <Button
+              variant="primary"
               data-testid="end-confirm-discard"
               onClick={() => {
                 const run = pendingEnd.run;
@@ -404,10 +468,8 @@ function EditControls({ route }: { route: Route }) {
               }}
             >
               {t("edit.stopConfirm.discard")}
-            </button>
-            <button type="button" onClick={() => setPendingEnd(null)}>
-              {t("layout.cancel")}
-            </button>
+            </Button>
+            <Button onClick={() => setPendingEnd(null)}>{t("layout.cancel")}</Button>
           </div>
         </Dialog>
       )}

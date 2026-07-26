@@ -36,6 +36,8 @@ async function main() {
   }
   const dir = mkdtempSync(join(tmpdir(), "erd-gate-"));
   copyFileSync(INDEX, join(dir, "index.html"));
+  // ワークスペースを1つ用意しておく（サーバーは起動時に workspace-* を走査して認識する）
+  mkdirSync(join(dir, "workspace-default", "data"), { recursive: true });
   mkdirSync(join(dir, "drivers")); // 空。config も無い → setup ゲート
 
   const proc = spawn(javaBin(), ["-jar", JAR], {
@@ -94,9 +96,9 @@ async function main() {
     const dir2 = mkdtempSync(join(tmpdir(), "erd-gate2-"));
     copyFileSync(INDEX, join(dir2, "index.html"));
     mkdirSync(join(dir2, "drivers"));
-    mkdirSync(join(dir2, "data"));
+    mkdirSync(join(dir2, "workspace-default", "data"), { recursive: true });
     writeFileSync(
-      join(dir2, "data", "config.js"),
+      join(dir2, "config.js"), // ドライバ設定は全ワークスペース共通（erd/config.js）
       'ERD.config({\n  drivers: {\n    artifacts: [\n      "org.postgresql:postgresql:42.7.4",\n    ],\n  },\n});\n',
       "utf-8",
     );
@@ -113,7 +115,7 @@ async function main() {
     try {
       for (let i = 0; i < 100 && url2 === null; i++) await new Promise((r) => setTimeout(r, 100));
       const page2 = await browser.newPage();
-      await page2.goto(`${url2}#/introspect`);
+      await page2.goto(`${url2}#/w/default/introspect`);
       await page2.waitForSelector('[data-testid="driver-gate"]', { timeout: 15000 });
       const hasDownload = await page2.getByTestId("gate-download").count();
       const hasSetup = await page2.getByTestId("gate-setup").count();

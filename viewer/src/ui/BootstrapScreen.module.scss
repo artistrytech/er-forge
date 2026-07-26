@@ -1,6 +1,13 @@
 /* 空プロジェクトの初期画面（BootstrapScreen）固有のスタイル。
    共有の .fatal-screen / .fatal-card / .button-link は global に残す。 */
 
+/* 見出し = 現在のワークスペース名 + 切替メニュー（空の状態からも他へ移れるように） */
+.bootstrap-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .bootstrap-options {
   display: flex;
   gap: 16px;
@@ -29,19 +36,9 @@
   flex: 1;
 }
 
+/* ボタンの見た目は共有の Button（variant="accent"）に任せ、ここでは配置だけを決める */
 .bootstrap-option button {
-  padding: 6px 12px;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  background: var(--accent);
-  color: #fff;
-  cursor: pointer;
-}
-
-.bootstrap-option button:disabled {
-  background: var(--panel);
-  color: var(--text-muted);
-  cursor: default;
+  align-self: flex-start;
 }
 
 .bootstrap-option-disabled {
@@ -51,4 +48,12 @@
 .bootstrap-error {
   color: var(--error);
   margin-top: 12px;
+}
+
+/* 空のワークスペースをやめる導線（この画面にはヘッダが無い） */
+.bootstrap-footer {
+  margin-top: 20px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  text-align: right;
 }

@@ -81,7 +81,10 @@ export default defineConfig({
     proxy: {
       // SSE（GET /__erd/events）もそのまま流れる
       "/__erd": { target: BACKEND, changeOrigin: false },
-      "/data": { target: BACKEND, changeOrigin: false },
+      // ワークスペースのデータ（workspace-<id>/data/**）と一覧（workspaces.js）。
+      // キーを ^ で始めると正規表現として扱われる
+      "^/workspace-[^/]+/data/": { target: BACKEND, changeOrigin: false },
+      "/workspaces.js": { target: BACKEND, changeOrigin: false },
     },
   },
   build: {

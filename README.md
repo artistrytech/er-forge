@@ -16,7 +16,7 @@
 ## 開発環境の起動
 
 リリースビルドを作り直さなくても、**サーバーと HMR 付きビューアを繋いだ状態**で開発できる。
-**配布物とまったく同じ経路**（Java サーバーが `data/**.js` を配信し、ビューアは `<script>` で読む）
+**配布物とまったく同じ経路**（Java サーバーが `workspace-*/data/**.js` を配信し、ビューアは `<script>` で読む）
 で動くため、dev だけ挙動が違うということがない。ターミナルを2つ使う。
 
 ```sh
@@ -33,19 +33,21 @@ cd viewer && npm run dev
 | | 内容 |
 |---|---|
 | プロジェクトディレクトリ | `dev/`（Git 管理外）。設計書 §3.3 の `erd/` にあたる |
-| 初回起動 | `dev/data/` が空なのでブートストラップ画面が出る。**サンプルを取り込めばすぐ触れる** |
-| JDBC ドライバ | `dev/drivers/*.jar` に置く（逆生成を試す場合。→ [dev-db/](dev-db/README.md)） |
+| データ | `dev/workspace-<id>/data/`（ワークスペース単位。→ 設計書 §3.7） |
+| 初回起動 | ワークスペースが無ければ作成画面 → ブートストラップ画面が出る。**サンプルを取り込めばすぐ触れる** |
+| JDBC ドライバ | `dev/drivers/*.jar` に置く（逆生成を試す場合。→ [dev-db/](dev-db/README.md)）。設定は `dev/config.js`（全ワークスペース共通） |
 | サーバーのポート | `5321`（使用中なら自動で繰り上がる）。`ERD_PORT` で変更できる |
 | トークン | `erd-dev` に固定（`ERD_TOKEN`）。dev の URL を固定するためであり、配布物は毎回ランダム |
 
-**仕組み**: ビューアはデータを常に `<script src="data/**.js">` の相対パスで読む（設計書 §4.3。
-読み込み経路はモードによらず1本）。そこで vite dev が `/data` と `/__erd` を Java サーバーへ
-プロキシする。`GET /__erd/health` が通るのでサーバーモードになる（A-01）。
+**仕組み**: ビューアはデータを常に `<script src="workspace-<id>/data/**.js">` の相対パスで読む
+（設計書 §4.3。読み込み経路はモードによらず1本）。そこで vite dev が `/workspace-*/data/`・
+`/workspaces.js`・`/__erd` を Java サーバーへプロキシする。`GET /__erd/health` が通るので
+サーバーモードになる（A-01）。
 
-> vite の `public/` は**使わない**（`publicDir: false`）。`public/data/**` を置くと `/data` を
-> 先に掴み、**サーバーの実データではなくそちらを見てしまう**ことがあるため、経路を1本に固定している。
-> 静的モード（`file://`）の確認は、ビルドした `index.html` を `data/` の隣に置いて開く
-> （`npm run e2e` がまさにそれを組み立てている）。
+> vite の `public/` は**使わない**（`publicDir: false`）。`public/` 配下に同名のデータを置くと
+> そちらを先に掴み、**サーバーの実データではなくそちらを見てしまう**ことがあるため、経路を1本に固定している。
+> 静的モード（`file://`）の確認は、ビルドした `index.html` を `workspaces.js` と
+> `workspace-<id>/data/` の隣に置いて開く（`npm run e2e` がまさにそれを組み立てている）。
 
 `ERD_PORT` を変えた場合は、ビューア側にも同じ値を渡す（プロキシ先を合わせるため）:
 
@@ -107,7 +109,7 @@ cd server && ./gradlew packageDist
 `server/build.gradle.kts` の `version` で管理する。
 
 JDBC ドライバは配布物に同梱しない。利用者は逆生成画面から主要 DB のドライバを
-Maven からダウンロードできる（設定は `data/config.js` の `drivers`、既定バージョンは
+Maven からダウンロードできる（設定は全ワークスペース共通の `erd/config.js` の `drivers`、既定バージョンは
 `DriverCatalog`）。ライセンス（MySQL は GPL、Oracle は proprietary）と ZIP サイズを
 避けるための方針。
 

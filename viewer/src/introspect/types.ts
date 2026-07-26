@@ -115,12 +115,14 @@ export interface DriverCatalogEntry {
   coordinate: string;
 }
 
-/** GET /__erd/drivers のレスポンス（§7.2）。 */
+/** GET /__erd/drivers のレスポンス（§7.2）。設定は全ワークスペース共通（erd/config.js）。 */
 export interface DriversResponse {
   drivers: DriverInfo[];
   catalog: DriverCatalogEntry[];
   configured: { mavenRepository: string; artifacts: string[] };
   missing: string[];
+  /** 共通のドライバ設定の baseHash（PUT /__erd/drivers/config に返す） */
+  baseHash: string | null;
 }
 
 /** POST /__erd/drivers/download の 1 件分の結果。 */

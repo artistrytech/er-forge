@@ -25,22 +25,9 @@ public final class Main {
     public static void main(String[] args) {
         Path root = Path.of("").toAbsolutePath();
 
-        // データ形式の自動移行（§3.5）。データの方が新しければ起動を中止し、一切触れない
-        if (Files.exists(root.resolve("data/manifest.js"))) {
-            try {
-                MigrationRunner.Result result = new MigrationRunner().run(root);
-                if (result.migrated()) {
-                    System.out.println("Migrated data format from v" + result.fromVersion() + " to v"
-                            + result.toVersion() + ". "
-                            + "Consider committing this migration separately.");
-                }
-            } catch (NewerDataException e) {
-                System.err.println(e.getMessage());
-                System.exit(1);
-            } catch (RuntimeException e) {
-                // 壊れたデータでも閲覧（欠損表示）はできるため、起動自体は続ける
-                System.err.println("Warning: Could not inspect data: " + e.getMessage());
-            }
+        // データ形式の自動移行（§3.5）を全ワークスペースに対して行う
+        for (String id : WorkspaceStore.scan(root)) {
+            migrate(root, id);
         }
 
         // drivers/*.jar を DriverShim 経由で DriverManager に登録する（§7.2）。
@@ -59,6 +46,34 @@ public final class Main {
 
         if (System.getenv("ERD_NO_BROWSER") == null) {
             openBrowser(url);
+        }
+    }
+
+    /**
+     * ワークスペース1つ分の自動移行（§3.5）。
+     *
+     * <p><b>データの方が新しくてもサーバーは起動する</b>（そのワークスペースだけを触らない）。
+     * 複数ワークスペースでは「1つだけ新しい」状態が起こりうるため、全体の起動を止めない。
+     * ビューア側はバージョン不一致をバナーで検出し、そのワークスペースを描画しない（A-04）。
+     */
+    private static void migrate(Path root, String workspaceId) {
+        Path dir = WorkspaceStore.dir(root, workspaceId);
+        if (!Files.exists(dir.resolve("data/manifest.js"))) return;
+        try {
+            MigrationRunner.Result result = new MigrationRunner()
+                    .run(dir, WorkspaceStore.privateDir(root, workspaceId).resolve("backup"));
+            if (result.migrated()) {
+                System.out.println("Migrated data format of workspace \"" + workspaceId + "\" from v"
+                        + result.fromVersion() + " to v" + result.toVersion() + ". "
+                        + "Consider committing this migration separately.");
+            }
+        } catch (NewerDataException e) {
+            System.err.println("Workspace \"" + workspaceId + "\": " + e.getMessage()
+                    + " This workspace is left untouched.");
+        } catch (RuntimeException e) {
+            // 壊れたデータでも閲覧（欠損表示）はできるため、起動自体は続ける
+            System.err.println("Warning: Could not inspect workspace \"" + workspaceId + "\": "
+                    + e.getMessage());
         }
     }
 

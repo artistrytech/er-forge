@@ -19,6 +19,7 @@ import erd.core.model.RelationMeta;
 import erd.core.model.Table;
 import erd.core.model.TableMeta;
 import erd.core.model.UniqueConstraint;
+import erd.core.model.Workspace;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -347,6 +348,31 @@ public final class DataFilePrinter {
             out.close("},");
         }
         emitUnknown(out, c.unknown());
+        out.close("});");
+        return out.result();
+    }
+
+    // ------------------------------------------------------------ workspaces
+
+    /**
+     * {@code erd/workspaces.js}（ワークスペースの索引）。
+     *
+     * <p>1ワークスペース = 1行にする。複数人が別々のワークスペースを追加したときに
+     * Git の競合を解消しやすくするため（並びは ID のコードポイント順で決定論的）。
+     */
+    public String printWorkspaces(List<Workspace> workspaces) {
+        Out out = new Out();
+        out.open("ERD.workspaces({");
+        out.open("workspaces: [");
+        workspaces.stream()
+                .sorted(Comparator.comparing(Workspace::id, CODEPOINT_ORDER))
+                .forEach(w -> {
+                    Pairs p = new Pairs();
+                    p.add("id", JsText.quote(w.id()));
+                    p.add("name", JsText.quote(w.name()));
+                    out.line(p.inline() + ",");
+                });
+        out.close("],");
         out.close("});");
         return out.result();
     }

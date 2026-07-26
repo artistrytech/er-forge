@@ -1,0 +1,63 @@
+/* 共有ボタン（Button.tsx）。既存の .button-link / .header-button と同じ寸法・色を踏襲し、
+   役割ごとの差だけを variant で表す。 */
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border: 1px solid var(--input-border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: #374151;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.button:hover:not(:disabled) {
+  background: var(--accent-soft);
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* 画面上の主導線（空状態・welcome）。既存の .button-link と同じ色 */
+.accent {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.accent:hover:not(:disabled) {
+  background: var(--accent);
+  opacity: 0.9;
+}
+
+/* ダイアログの確定。既存の .header-button-primary と同じ色 */
+.primary {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--ink-text);
+}
+
+.primary:hover:not(:disabled) {
+  background: var(--ink);
+  opacity: 0.9;
+}
+
+/* 破壊的操作（データリセット・ワークスペース削除） */
+.danger {
+  color: var(--error);
+  border-color: var(--error);
+}
+
+.danger:hover:not(:disabled) {
+  background: var(--error);
+  color: #fff;
+}

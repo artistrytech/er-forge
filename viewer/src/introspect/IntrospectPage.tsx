@@ -9,7 +9,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { MsgKey } from "../i18n/messages";
 import { useI18n } from "../i18n/useI18n";
-import { apiGet, apiPost, apiPut } from "../model/api";
+import { apiGet, apiPost, apiPut, wpath } from "../model/api";
 import { rememberOwnRevision } from "../model/editStore";
 import { loadConfig, reloadAfterApply } from "../model/loader";
 import { useAppStore } from "../model/store";
@@ -105,6 +105,8 @@ export function IntrospectPage() {
   const [test, setTest] = useState<ConnectionTest | null>(null);
   const [ignoreText, setIgnoreText] = useState("");
   const [ignoreHash, setIgnoreHash] = useState<string | null>(null);
+  /** 共通のドライバ設定（erd/config.js）の baseHash。無視リストとは別ファイル */
+  const [driverHash, setDriverHash] = useState<string | null>(null);
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -134,53 +136,50 @@ export function IntrospectPage() {
     fail(msg);
   };
 
-  // §7.2: ロード済み・カタログ・config.js のドライバ設定・未取得の一覧をまとめて取得する
+  // §7.2: ロード済み・カタログ・共通のドライバ設定・未取得の一覧をまとめて取得する
   const fetchDrivers = async (): Promise<DriversResponse | null> => {
     const res = await apiGet("/__erd/drivers");
     if (res.status !== 200) return null;
     const body = JSON.parse(res.body) as DriversResponse;
     setDriversResp(body);
+    setDriverHash(body.baseHash ?? null);
     return body;
   };
 
-  // ドライバ設定を config.js（Git 管理・共有）へ保存する。無視リストと同じ baseHash を使う
-  const saveDrivers = async (selection: DriverSelection) => {
-    const res = await apiPut("/__erd/config", {
-      baseHash: ignoreHash,
+  /**
+   * ドライバ設定を保存する。置き場は **全ワークスペース共通の erd/config.js**（Git 管理・共有）で、
+   * ワークスペースごとの無視リスト（workspace-<id>/data/config.js）とは別のファイル。
+   * data/ の外にあるためファイル監視・SSE の対象ではなく、リビジョンも発生しない。
+   */
+  const saveDriverConfig = async (selection: DriverSelection): Promise<boolean> => {
+    const res = await apiPut("/__erd/drivers/config", {
+      baseHash: driverHash,
       drivers: selection,
     });
     if (res.status === 200) {
-      const body = JSON.parse(res.body) as { revision: string; newHash: string };
-      rememberOwnRevision(body.revision);
-      setIgnoreHash(body.newHash);
-      await loadConfig(body.revision);
-      await fetchDrivers();
-      addToast(t("introspect.driversSaved"));
-    } else if (res.status === 409) {
+      setDriverHash((JSON.parse(res.body) as { newHash: string }).newHash);
+      return true;
+    }
+    if (res.status === 409) {
       fail(t("introspect.staleFingerprint"));
     } else {
       fail((JSON.parse(res.body) as { error?: string }).error ?? `HTTP ${res.status}`);
     }
+    return false;
   };
 
-  // 初期設定モーダル: 選んだドライバを config.js に保存（チーム共有）→ ダウンロード＋登録
+  const saveDrivers = async (selection: DriverSelection) => {
+    if (!(await saveDriverConfig(selection))) return;
+    await fetchDrivers();
+    addToast(t("introspect.driversSaved"));
+  };
+
+  // 初期設定モーダル: 選んだドライバを共通設定に保存（チーム共有）→ ダウンロード＋登録
   const setupAndDownload = async (sel: GateSelection) => {
     setDownloading(true);
     setError(null);
     try {
-      const putRes = await apiPut("/__erd/config", { baseHash: ignoreHash, drivers: sel });
-      if (putRes.status === 409) {
-        fail(t("introspect.staleFingerprint"));
-        return;
-      }
-      if (putRes.status !== 200) {
-        fail((JSON.parse(putRes.body) as { error?: string }).error ?? `HTTP ${putRes.status}`);
-        return;
-      }
-      const b = JSON.parse(putRes.body) as { revision: string; newHash: string };
-      rememberOwnRevision(b.revision);
-      setIgnoreHash(b.newHash);
-      await loadConfig(b.revision);
+      if (!(await saveDriverConfig(sel))) return;
       await downloadDrivers(sel.artifacts, sel.mavenRepository);
     } catch {
       fail(t("introspect.networkError"));
@@ -194,26 +193,18 @@ export function IntrospectPage() {
     window.location.hash = hrefs.tables();
   };
 
-  // 接続失敗画面からの「このドライバを取得」: config.js に追加保存（チーム共有）→ ダウンロード＋登録
+  // 接続失敗画面からの「このドライバを取得」: 共通設定に追加保存（チーム共有）→ ダウンロード＋登録
   const getDriverNow = async (entry: DriverCatalogEntry) => {
     setDownloading(true);
     setError(null);
     try {
       const artifacts = [...(driversResp?.configured.artifacts ?? [])];
       if (!artifacts.includes(entry.coordinate)) artifacts.push(entry.coordinate);
-      const putRes = await apiPut("/__erd/config", {
-        baseHash: ignoreHash,
-        drivers: { mavenRepository: driversResp?.configured.mavenRepository, artifacts },
+      const saved = await saveDriverConfig({
+        mavenRepository: driversResp?.configured.mavenRepository ?? "",
+        artifacts,
       });
-      if (putRes.status === 200) {
-        const b = JSON.parse(putRes.body) as { revision: string; newHash: string };
-        rememberOwnRevision(b.revision);
-        setIgnoreHash(b.newHash);
-        await loadConfig(b.revision);
-      } else if (putRes.status === 409) {
-        fail(t("introspect.staleFingerprint"));
-        return;
-      }
+      if (!saved) return;
       const res = await apiPost("/__erd/drivers/download", {
         mavenRepository: driversResp?.configured.mavenRepository,
         artifacts: [entry.coordinate],
@@ -275,7 +266,7 @@ export function IntrospectPage() {
   // ドライバの整備状況は fetchDrivers → gate（useMemo）で判定し、必要ならモーダルで塞ぐ
   useEffect(() => {
     void fetchDrivers();
-    void apiGet("/__erd/connection").then((res) => {
+    void apiGet(wpath("/connection")).then((res) => {
       if (res.status !== 200) return;
       const saved = JSON.parse(res.body) as {
         saved: boolean;
@@ -292,7 +283,7 @@ export function IntrospectPage() {
       setNamespace(saved.namespace ?? "");
       setSavePassword(saved.savePassword ?? false);
     });
-    void apiGet("/__erd/config").then((res) => {
+    void apiGet(wpath("/config")).then((res) => {
       if (res.status === 200) {
         setIgnoreHash((JSON.parse(res.body) as { baseHash: string | null }).baseHash);
       }
@@ -323,7 +314,7 @@ export function IntrospectPage() {
     setBusy(true);
     setError(null);
     try {
-      const res = await apiPost("/__erd/connection/test", { connection });
+      const res = await apiPost(wpath("/connection/test"), { connection });
       if (res.status === 200) {
         const body = JSON.parse(res.body) as ConnectionTest;
         setTest(body);
@@ -341,7 +332,7 @@ export function IntrospectPage() {
 
   // ---- K-05: 接続情報の保存（パスワードは明示的オプトイン） ----
   const saveConnection = async () => {
-    await apiPut("/__erd/connection", {
+    await apiPut(wpath("/connection"), {
       url,
       user,
       password,
@@ -356,7 +347,7 @@ export function IntrospectPage() {
     setBusy(true);
     setError(null);
     try {
-      const res = await apiPost("/__erd/introspect", { connection, scope });
+      const res = await apiPost(wpath("/introspect"), { connection, scope });
       if (res.status === 200) {
         const body = JSON.parse(res.body) as Preview;
         setPreview(body);
@@ -381,7 +372,7 @@ export function IntrospectPage() {
     setDecisions(next);
     setBusy(true);
     try {
-      const res = await apiPost(`/__erd/introspect/${preview.sessionId}/plan`, {
+      const res = await apiPost(wpath(`/introspect/${preview.sessionId}/plan`), {
         renameDecisions: Object.values(next),
       });
       if (res.status === 200) {
@@ -409,7 +400,7 @@ export function IntrospectPage() {
     setError(null);
     setConfirmGuard(false);
     try {
-      const res = await apiPost("/__erd/introspect/apply", {
+      const res = await apiPost(wpath("/introspect/apply"), {
         sessionId: preview.sessionId,
         baseFingerprint: preview.baseFingerprint,
         selection: [...selection],
@@ -467,7 +458,7 @@ export function IntrospectPage() {
 
   // ---- K-15: 無視リストの保存（差分プレビューの削除項目からのショートカットを含む） ----
   const saveIgnore = async (patterns: string[]) => {
-    const res = await apiPut("/__erd/config", {
+    const res = await apiPut(wpath("/config"), {
       baseHash: ignoreHash,
       ignoreTables: patterns,
     });

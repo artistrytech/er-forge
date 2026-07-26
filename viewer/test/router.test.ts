@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
-import { hrefs, parseHash } from "../src/ui/router";
+import { beforeEach, describe, expect, it } from "vitest";
+import { hrefs, parseHash, workspaceIdFromHash } from "../src/ui/router";
+import { setCurrentWorkspaceId } from "../src/model/workspace";
 
 describe("parseHash (B-07 / 設計書 §4.4)", () => {
   it("空・#/ はホーム", () => {
@@ -49,5 +50,37 @@ describe("parseHash (B-07 / 設計書 §4.4)", () => {
       diagramId: "core",
       tableId: id,
     });
+  });
+});
+
+describe("ワークスペース接頭辞（#/w/<id>）", () => {
+  beforeEach(() => {
+    setCurrentWorkspaceId("sales");
+  });
+
+  it("hrefs は現在のワークスペースを URL に含める", () => {
+    expect(hrefs.erd("core")).toBe("#/w/sales/erd/core");
+    expect(hrefs.tables()).toBe("#/w/sales/tables");
+    expect(hrefs.columnsEdit()).toBe("#/w/sales/columns/edit");
+    expect(hrefs.workspace("billing")).toBe("#/w/billing/erd");
+  });
+
+  it("parseHash はワークスペース部を落として画面を解釈する", () => {
+    expect(parseHash("#/w/sales/erd/core")).toEqual({ kind: "erd", diagramId: "core" });
+    expect(parseHash("#/w/sales/erd")).toEqual({ kind: "erdHome" });
+    expect(parseHash("#/w/sales")).toEqual({ kind: "home" });
+    // ワークスペース部が無い URL も従来どおり解釈できる（ローダーが補って書き換える）
+    expect(parseHash("#/erd/core")).toEqual({ kind: "erd", diagramId: "core" });
+  });
+
+  it("workspaceIdFromHash は URL のワークスペースを返す（不正な ID は無視）", () => {
+    expect(workspaceIdFromHash("#/w/sales/erd/core")).toBe("sales");
+    expect(workspaceIdFromHash("#/erd/core")).toBeNull();
+    expect(workspaceIdFromHash("#/w/bad id/erd")).toBeNull();
+  });
+
+  it("往復する（ワークスペース込み）", () => {
+    expect(parseHash(hrefs.erdEdit("core"))).toEqual({ kind: "erdEdit", diagramId: "core" });
+    expect(parseHash(hrefs.introspect())).toEqual({ kind: "introspect" });
   });
 });

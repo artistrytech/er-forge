@@ -9,6 +9,7 @@ import { useState } from "react";
 import { useI18n } from "../i18n/useI18n";
 import { useEditStore } from "../model/editStore";
 import { useAppStore } from "../model/store";
+import { Button } from "./Button";
 import { Dialog } from "./Dialog";
 import { hrefs } from "./router";
 
@@ -40,14 +41,9 @@ export function CreateFirstPageButton() {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <button
-        type="button"
-        className="button-link"
-        data-testid="create-first-page"
-        onClick={() => setOpen(true)}
-      >
+      <Button variant="accent" data-testid="create-first-page" onClick={() => setOpen(true)}>
         {t("page.createFirst")}
-      </button>
+      </Button>
       {open && <AddPageDialog onClose={() => setOpen(false)} />}
     </>
   );
@@ -105,17 +101,15 @@ export function AddPageDialog({ onClose }: { onClose: () => void }) {
         </label>
         {error !== null && <p className="form-error">{error}</p>}
         <div className="dialog-actions">
-          <button
+          <Button
             type="submit"
-            className="header-button-primary"
+            variant="primary"
             data-testid="page-create"
             disabled={busy || id.trim() === "" || title.trim() === ""}
           >
             {t("page.add")}
-          </button>
-          <button type="button" onClick={onClose}>
-            {t("layout.cancel")}
-          </button>
+          </Button>
+          <Button onClick={onClose}>{t("layout.cancel")}</Button>
         </div>
       </form>
     </Dialog>

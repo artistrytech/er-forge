@@ -133,7 +133,7 @@ val npmBuild = tasks.register<Exec>("npmBuild") {
  *
  * ドライバを同梱しないのは意図的: (1) 再配布に伴うライセンス問題（MySQL は GPL、
  * Oracle は proprietary）を避け、(2) ZIP を小さく保つ。既定バージョンは DriverCatalog、
- * チーム共有の設定は data/config.js の drivers に置く。
+ * チーム共有の設定は erd/config.js の drivers に置く（全ワークスペース共通）。
  */
 tasks.register<Zip>("packageDist") {
     group = "build"

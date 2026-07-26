@@ -9,7 +9,7 @@ import { TableEdit } from "./catalog/TableEdit";
 import { ErdPage } from "./canvas/ErdPage";
 import { useI18n } from "./i18n/useI18n";
 import { IntrospectPage } from "./introspect/IntrospectPage";
-import { totalTableCount, useAppStore, type Fatal } from "./model/store";
+import { flushPendingToast, totalTableCount, useAppStore, type Fatal } from "./model/store";
 import { useEditStore } from "./model/editStore";
 import { usePageEditStore } from "./model/pageEditStore";
 import { BootstrapScreen } from "./ui/BootstrapScreen";
@@ -23,6 +23,7 @@ import { LeftPanel } from "./ui/LeftPanel";
 import { RelationDialog } from "./ui/RelationDialog";
 import { SearchDialog } from "./ui/SearchDialog";
 import { TableDetailDialog } from "./ui/TableDetailDialog";
+import { WelcomeScreen, WorkspaceNotFound } from "./ui/Workspace";
 import { hrefs, replaceRoute, useRoute } from "./ui/router";
 import { cx } from "./lib/cx";
 import styles from "./App.module.scss";
@@ -46,12 +47,19 @@ export function App() {
   const setLastTableId = useAppStore((s) => s.setLastTableId);
   const lastDiagramId = useAppStore((s) => s.lastDiagramId);
   const setLastDiagramId = useAppStore((s) => s.setLastDiagramId);
-  const appName = useAppStore((s) => s.config?.appName);
+  const workspaces = useAppStore((s) => s.workspaces);
+  const workspaceId = useAppStore((s) => s.workspaceId);
+  const workspaceName = workspaces.find((w) => w.id === workspaceId)?.name;
   const exportDiagramId = useEditStore((s) => s.exportDiagramId);
   // 未保存: ER図編集（正味の変更 netDirty）またはテーブル/カラム編集（pageEditStore の dirty）
   const erdUnsaved = useEditStore((s) => s.session === "editing" && s.netDirty);
   const pageUnsaved = usePageEditStore((s) => s.controller?.dirty === true);
   const hasUnsaved = erdUnsaved || pageUnsaved;
+
+  // データリセット・ワークスペース削除はリロードを伴うため、完了通知はここで出す
+  useEffect(() => {
+    flushPendingToast();
+  }, []);
 
   // N-01: Cmd/Ctrl + K で検索を開く
   useEffect(() => {
@@ -92,11 +100,14 @@ export function App() {
   }, [viewedDiagramId, setLastDiagramId]);
 
   // 編集中に未保存があれば HTML タイトルに * を付ける（他タブでも一目で分かるように）。
-  // 基準名は config.js の appName（未設定なら言語に応じた既定名）
+  // 基準名はワークスペース名（どの DB を開いているタブかをタブ見出しで区別できるようにする）
   useEffect(() => {
-    const base = appName !== undefined && appName.trim() !== "" ? appName : t("app.title");
+    const base =
+      workspaceName !== undefined && workspaceName !== ""
+        ? `${workspaceName} - ${t("app.title")}`
+        : t("app.title");
     document.title = hasUnsaved ? `* ${base}` : base;
-  }, [hasUnsaved, appName, t]);
+  }, [hasUnsaved, workspaceName, t]);
 
   // 空プロジェクトからの逆生成（§3.6「既存のスキーマから生成する」）。
   // データはまだ無いが、それを作るための画面なので開けなければならない
@@ -107,7 +118,13 @@ export function App() {
     route.kind === "introspect";
 
   if (fatal !== null && !bootstrapping) {
-    return <FatalBanner fatal={fatal} />;
+    // welcome / ブートストラップ画面でも完了通知は出す（削除の直後はここに着地する）
+    return (
+      <>
+        <FatalBanner fatal={fatal} />
+        <Toasts />
+      </>
+    );
   }
   if (!ready && !bootstrapping) {
     return <div className={styles.bootLoading}>{t("canvas.loading")}</div>;
@@ -290,6 +307,16 @@ export function App() {
 function FatalBanner({ fatal }: { fatal: Fatal }) {
   const { t } = useI18n();
   const serverMode = useAppStore((s) => s.serverMode);
+  // ワークスペースが無い / URL が存在しないワークスペースを指している（§4 / §10）
+  if (fatal.kind === "no-workspace") {
+    if (serverMode === null) {
+      return <div className={styles.bootLoading}>{t("canvas.loading")}</div>;
+    }
+    return <WelcomeScreen />;
+  }
+  if (fatal.kind === "workspace-not-found") {
+    return <WorkspaceNotFound id={fatal.id} />;
+  }
   if (fatal.kind === "no-data" || fatal.kind === "empty") {
     // サーバーモードならブートストラップ（A-08）。判定中はどちらの画面も出さない
     if (serverMode === null) {

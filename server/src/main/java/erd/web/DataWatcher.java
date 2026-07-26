@@ -29,6 +29,12 @@ public final class DataWatcher implements AutoCloseable {
 
     private static final long DEBOUNCE_MS = 250;
 
+    /**
+     * 抑止を解いてよくなるまでの待ち時間。デバウンス1回分では、抑止を解いた直後に
+     * 「たった今自分で書いた（消した）分」が外部変更として配信されてしまうため、余裕を持たせる。
+     */
+    static final long SETTLE_MS = DEBOUNCE_MS * 4;
+
     private final Path dataDir;
     private final Revisions revisions;
     private final BiConsumer<String, Set<String>> listener; // (revision, relPaths)
@@ -57,6 +63,23 @@ public final class DataWatcher implements AutoCloseable {
      */
     public void suppress(boolean value) {
         this.suppressed = value;
+    }
+
+    /**
+     * 監視が拾い終わるのを待ってから抑止を解く（ブートストラップ・データリセット用）。
+     *
+     * <p>これらは書き込み後にクライアントがページごと読み込み直すため、SSE で伝える相手がいない。
+     * それでも監視は変更を拾うので、抑止を早く解くと<b>リロード直後のタブに「外部の変更を反映しました」が
+     * 出てしまう</b>（自分の操作なのに他人の変更に見える）。拾い切るまで抑止を保つ。
+     */
+    void settleThenResume() {
+        try {
+            Thread.sleep(SETTLE_MS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } finally {
+            suppressed = false;
+        }
     }
 
     @Override

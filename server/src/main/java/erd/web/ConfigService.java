@@ -19,11 +19,16 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * プロジェクト設定 = テーブル無視リスト（K-15 / §5.4 / §9.4）。
+ * {@code config.js} の読み書き（K-15 / §5.4 / §9.4）。human-owned。
  *
- * <p>{@code data/config.js} は human-owned。逆生成はこのファイルを<b>読むが書き換えない</b>。
- * 更新後、次回の逆生成から新しい無視リストが有効になる（既存のスキーマファイルを遡って
- * 削除することはない）。
+ * <p>2か所で使う。どちらも同じ書式であり、置き場所（引数の {@code dir}）だけが違う。
+ * <ul>
+ *   <li>{@code workspace-<id>/data/config.js} … テーブル無視リスト（ワークスペース単位）</li>
+ *   <li>{@code erd/config.js} … JDBC ドライバ設定（全ワークスペース共通）</li>
+ * </ul>
+ *
+ * <p>逆生成はこのファイルを<b>読むが書き換えない</b>。更新後、次回の逆生成から新しい
+ * 無視リストが有効になる（既存のスキーマファイルを遡って削除することはない）。
  */
 final class ConfigService {
 
@@ -120,21 +125,8 @@ final class ConfigService {
             return new Invalid("drivers must be an object");
         }
 
-        // ---- appName（任意。文字列で設定 / null・空文字で削除）。既知フィールドではないため
-        //      unknown マップへ退避して保存し、プリンタがそのまま書き戻す（前方互換の仕組みに乗る）----
+        // 未知キーはそのまま書き戻す（前方互換。§5.12）
         Map<String, JsonNode> unknown = new LinkedHashMap<>(existing.unknown());
-        JsonNode an = body.get("appName");
-        if (an != null) {
-            if (an.isNull()) {
-                unknown.remove("appName");
-            } else if (an.isTextual()) {
-                String name = an.asText().trim();
-                if (name.isEmpty()) unknown.remove("appName");
-                else unknown.put("appName", com.fasterxml.jackson.databind.node.TextNode.valueOf(name));
-            } else {
-                return new Invalid("appName must be a string");
-            }
-        }
 
         String content = printer.printConfig(new ProjectConfig(patterns, drivers, unknown));
         String newHash = Hashes.sha256(content.getBytes(StandardCharsets.UTF_8));

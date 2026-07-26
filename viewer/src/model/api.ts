@@ -9,6 +9,13 @@ export interface ApiResponse {
   body: string;
 }
 
+/**
+ * ワークスペースに属する API のパス（`/__erd/w/<id>/...`）。
+ * データを触る API はすべてこれを通す。属さないのは疎通確認・ワークスペース管理・
+ * ドライバ設定（全ワークスペース共通）・SSE・自動レイアウトだけ。
+ */
+export { workspaceApi as wpath } from "./workspace";
+
 /** 起動 URL の ?t=<token>（§8.1）。API 呼び出しに引き回す */
 export function apiToken(): string {
   return new URLSearchParams(location.search).get("t") ?? "";

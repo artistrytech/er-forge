@@ -2,10 +2,11 @@
  * インクリメンタルローダー（設計書 §6）。
  *
  * モードにかかわらず、データの読み込みは常に <script> タグによる
- * data/**.js の動的注入で行う（§4.3。API はデータ取得に使わない）。
+ * workspace-<id>/data/**.js の動的注入で行う（§4.3。API はデータ取得に使わない）。
  *
- * 段階1: manifest → 段階2: index + dictionary → 段階3: 表示対象ページ（オンデマンド）
- * → 段階4: 選択テーブルのスキーマ（オンデマンド）→ 段階5: 残り全テーブル（アイドル時）
+ * 段階0: ワークスペース一覧（workspaces.js）→ 段階1: manifest → 段階2: index + dictionary
+ * → 段階3: 表示対象ページ（オンデマンド）→ 段階4: 選択テーブルのスキーマ（オンデマンド）
+ * → 段階5: 残り全テーブル（アイドル時）
  */
 import { useAppStore } from "./store";
 import {
@@ -16,14 +17,22 @@ import {
   zIndexData,
   zManifest,
   zTable,
+  zWorkspaces,
   type Diagram,
   type Table,
 } from "./types";
+import { workspaceIdFromHash } from "../ui/router";
+import {
+  dataBase,
+  setCurrentWorkspaceId,
+  type WorkspaceRef,
+} from "./workspace";
 
-const DATA_BASE = "data/";
+const REGISTRY_FILE = "workspaces.js";
 
 /** データファイルが呼ぶグローバル API の受け皿（設計書 §5.2） */
 interface Staged {
+  workspaces: unknown;
   manifest: unknown;
   config: unknown;
   index: unknown;
@@ -33,6 +42,7 @@ interface Staged {
 }
 
 const staged: Staged = {
+  workspaces: undefined,
   manifest: undefined,
   config: undefined,
   index: undefined,
@@ -44,6 +54,9 @@ const staged: Staged = {
 export function installGlobalApi(): void {
   const g = globalThis as Record<string, unknown>;
   g["ERD"] = {
+    workspaces: (o: unknown) => {
+      staged.workspaces = o;
+    },
     manifest: (o: unknown) => {
       staged.manifest = o;
     },
@@ -105,15 +118,72 @@ function detectMode(): void {
   }
 }
 
+/**
+ * 段階0: ワークスペース一覧（`workspaces.js`）。
+ *
+ * file:// ではディレクトリを走査できないため、このファイルだけが一覧の情報源になる
+ * （サーバーモードではサーバーが走査結果で再生成してから配信する）。
+ * 無い・壊れている場合は空一覧として扱い、welcome 画面へ落とす。
+ */
+async function loadWorkspaces(): Promise<WorkspaceRef[]> {
+  try {
+    await injectScript(REGISTRY_FILE);
+  } catch {
+    return [];
+  }
+  const raw = staged.workspaces;
+  staged.workspaces = undefined;
+  const parsed = zWorkspaces.safeParse(raw);
+  return parsed.success ? parsed.data.workspaces : [];
+}
+
+/**
+ * 表示するワークスペースを決める: URL（`#/w/<id>`）→ 最後に見たもの → 先頭。
+ * URL が存在しない ID を指していた場合は null を返し、呼び出し側が「見つかりません」を出す。
+ */
+function resolveWorkspace(workspaces: WorkspaceRef[]): WorkspaceRef | null {
+  const fromHash = workspaceIdFromHash(location.hash);
+  if (fromHash !== null) {
+    return workspaces.find((w) => w.id === fromHash) ?? null;
+  }
+  const last = useAppStore.getState().lastWorkspaceId;
+  return (
+    (last !== null ? workspaces.find((w) => w.id === last) : undefined) ?? workspaces[0] ?? null
+  );
+}
+
+/** URL にワークスペースが入っていなければ補う（履歴を汚さない） */
+function canonicalizeHash(workspaceId: string): void {
+  if (workspaceIdFromHash(location.hash) === workspaceId) return;
+  const rest = location.hash.replace(/^#/, "").replace(/^\//, "");
+  location.replace(`#/w/${encodeURIComponent(workspaceId)}${rest === "" ? "" : `/${rest}`}`);
+}
+
 /** 起動シーケンス。main.tsx から1回だけ呼ぶ */
 export async function boot(): Promise<void> {
   installGlobalApi();
   detectMode();
   const set = useAppStore.setState;
 
+  // 段階0: ワークスペース（どのデータを読むかがこれで決まる）
+  const workspaces = await loadWorkspaces();
+  set({ workspaces });
+  if (workspaces.length === 0) {
+    set({ fatal: { kind: "no-workspace" } });
+    return;
+  }
+  const current = resolveWorkspace(workspaces);
+  if (current === null) {
+    set({ fatal: { kind: "workspace-not-found", id: workspaceIdFromHash(location.hash) ?? "" } });
+    return;
+  }
+  setCurrentWorkspaceId(current.id);
+  useAppStore.getState().setWorkspace(current.id);
+  canonicalizeHash(current.id);
+
   // 段階1: manifest
   try {
-    await injectScript(DATA_BASE + "manifest.js");
+    await injectScript(dataBase() + "manifest.js");
   } catch {
     set({ fatal: { kind: "no-data" } });
     return;
@@ -141,7 +211,7 @@ export async function boot(): Promise<void> {
   }
 
   // 段階2: index + dictionary（config はサーバーモード専用のため読まない。§6.1）
-  const loadIndex = injectScript(DATA_BASE + "index.js").then(() => {
+  const loadIndex = injectScript(dataBase() + "index.js").then(() => {
     const raw = staged.index;
     staged.index = undefined;
     const parsed = zIndexData.safeParse(raw);
@@ -149,7 +219,7 @@ export async function boot(): Promise<void> {
     useAppStore.setState({ index: parsed.data });
   });
   const dictFile = manifest.dictionary ?? "dictionary.js";
-  const loadDict = injectScript(DATA_BASE + dictFile)
+  const loadDict = injectScript(dataBase() + dictFile)
     .then(() => {
       const raw = staged.dictionary;
       staged.dictionary = undefined;
@@ -164,8 +234,8 @@ export async function boot(): Promise<void> {
     });
 
   try {
-    // config.js もここで読む（アプリ名の表示に使うため静的モードでも必要。欠損は許容）。
-    await Promise.all([loadIndex, loadDict, loadConfig()]);
+    // config.js は閲覧に不要なので読まない（無視リストは逆生成の画面で遅延ロードする。§6.1）
+    await Promise.all([loadIndex, loadDict]);
   } catch {
     set({ fatal: { kind: "bad-data", file: "index.js" } });
     return;
@@ -197,7 +267,7 @@ export function loadDiagram(id: string, version?: string): Promise<Diagram | nul
   if (!ref) {
     return Promise.resolve(null);
   }
-  const p = injectScript(withVersion(DATA_BASE + ref.file, version))
+  const p = injectScript(withVersion(dataBase() + ref.file, version))
     .then(() => {
       const raw = staged.diagrams.get(id);
       staged.diagrams.delete(id);
@@ -234,7 +304,7 @@ export function forceReloadDiagram(id: string, version?: string): Promise<Diagra
 /** index.js の再読込（スキーマ・配置の外部変更でノード名・リレーション・所属ページを追随させる） */
 export async function reloadIndex(version?: string): Promise<void> {
   try {
-    await injectScript(withVersion(DATA_BASE + "index.js", version));
+    await injectScript(withVersion(dataBase() + "index.js", version));
     const raw = staged.index;
     staged.index = undefined;
     const parsed = zIndexData.safeParse(raw);
@@ -249,7 +319,7 @@ export async function reloadIndex(version?: string): Promise<void> {
 export async function reloadDictionary(version?: string): Promise<void> {
   const dictFile = useAppStore.getState().manifest?.dictionary ?? "dictionary.js";
   try {
-    await injectScript(withVersion(DATA_BASE + dictFile, version));
+    await injectScript(withVersion(dataBase() + dictFile, version));
     const raw = staged.dictionary;
     staged.dictionary = undefined;
     const parsed = zDictionary.safeParse(raw);
@@ -268,7 +338,7 @@ export async function reloadDictionary(version?: string): Promise<void> {
 export async function loadConfig(version?: string): Promise<void> {
   const file = useAppStore.getState().manifest?.config ?? "config.js";
   try {
-    await injectScript(withVersion(DATA_BASE + file, version));
+    await injectScript(withVersion(dataBase() + file, version));
     const raw = staged.config;
     staged.config = undefined;
     const parsed = zConfig.safeParse(raw);
@@ -304,7 +374,7 @@ export async function reloadAfterApply(revision: string): Promise<void> {
 
 export async function reloadManifest(version?: string): Promise<void> {
   try {
-    await injectScript(withVersion(DATA_BASE + "manifest.js", version));
+    await injectScript(withVersion(dataBase() + "manifest.js", version));
     const raw = staged.manifest;
     staged.manifest = undefined;
     const parsed = zManifest.safeParse(raw);
@@ -351,7 +421,7 @@ export function loadTable(id: string): Promise<Table | null> {
     markTableError(id, "not in manifest");
     return Promise.resolve(null);
   }
-  const p = injectScript(DATA_BASE + path)
+  const p = injectScript(dataBase() + path)
     .then(() => {
       const raw = staged.tables.get(id);
       staged.tables.delete(id);

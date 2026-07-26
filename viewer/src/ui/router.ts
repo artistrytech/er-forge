@@ -1,8 +1,14 @@
 /**
  * ハッシュルーティング（設計書 §4.4 / B-07）。
  * file:// では History API が使えないため、URL は # ハッシュで表現する。
+ *
+ * すべてのルートは `#/w/<workspaceId>/…` で始まる。**別のワークスペースの ER図 URL を
+ * そのまま人に送れる**ようにするためで、マルチデータベース構成では「どの DB の図か」が
+ * URL に入っていないと共有が成立しない。ワークスペース部を省いた URL（`#/erd/…`）も
+ * 解釈でき、その場合はローダーが現在のワークスペースを補って書き換える。
  */
 import { useSyncExternalStore } from "react";
+import { currentWorkspaceId, isValidWorkspaceId } from "../model/workspace";
 
 /** カラム論理名画面の一致条件（回答A）。検索モーダルからの遷移は exact を埋め込む */
 export type ColumnMatch = "partial" | "prefix" | "suffix" | "exact";
@@ -24,29 +30,44 @@ export type Route =
   | { kind: "introspect" }
   | { kind: "notFound"; path: string };
 
+/** 現在のワークスペースを表す URL 接頭辞（`#/w/<id>`） */
+function base(): string {
+  const ws = currentWorkspaceId();
+  return ws === null ? "#" : `#/w/${encodeURIComponent(ws)}`;
+}
+
 /** ルート → ハッシュ URL（リンク生成はすべてここを通す） */
 export const hrefs = {
-  erdHome: (): string => "#/erd",
+  workspace: (workspaceId: string): string => `#/w/${encodeURIComponent(workspaceId)}/erd`,
+  erdHome: (): string => `${base()}/erd`,
   erd: (diagramId: string, tableId?: string): string =>
     tableId !== undefined
-      ? `#/erd/${encodeURIComponent(diagramId)}/${encodeURIComponent(tableId)}`
-      : `#/erd/${encodeURIComponent(diagramId)}`,
-  erdEdit: (diagramId: string): string => `#/erd/${encodeURIComponent(diagramId)}/edit`,
-  tables: (): string => "#/tables",
-  table: (tableId: string): string => `#/tables/${encodeURIComponent(tableId)}`,
-  tableEdit: (tableId: string): string => `#/tables/${encodeURIComponent(tableId)}/edit`,
+      ? `${base()}/erd/${encodeURIComponent(diagramId)}/${encodeURIComponent(tableId)}`
+      : `${base()}/erd/${encodeURIComponent(diagramId)}`,
+  erdEdit: (diagramId: string): string => `${base()}/erd/${encodeURIComponent(diagramId)}/edit`,
+  tables: (): string => `${base()}/tables`,
+  table: (tableId: string): string => `${base()}/tables/${encodeURIComponent(tableId)}`,
+  tableEdit: (tableId: string): string => `${base()}/tables/${encodeURIComponent(tableId)}/edit`,
   columns: (focusColumn?: string, focusMatch: ColumnMatch = "exact"): string =>
     focusColumn !== undefined
-      ? `#/columns/focus/${encodeURIComponent(focusColumn)}/${focusMatch}`
-      : "#/columns",
-  columnsEdit: (): string => "#/columns/edit",
-  introspect: (): string => "#/introspect",
+      ? `${base()}/columns/focus/${encodeURIComponent(focusColumn)}/${focusMatch}`
+      : `${base()}/columns`,
+  columnsEdit: (): string => `${base()}/columns/edit`,
+  introspect: (): string => `${base()}/introspect`,
 };
 
-export function parseHash(hash: string): Route {
+/** URL が指しているワークスペース（`#/w/<id>/…`）。無ければ null */
+export function workspaceIdFromHash(hash: string): string | null {
+  const segments = hashSegments(hash);
+  if (segments[0] === "w" && segments[1] !== undefined && isValidWorkspaceId(segments[1])) {
+    return segments[1];
+  }
+  return null;
+}
+
+function hashSegments(hash: string): string[] {
   const raw = hash.startsWith("#") ? hash.slice(1) : hash;
-  if (raw === "" || raw === "/") return { kind: "home" };
-  const segments = raw
+  return raw
     .split("/")
     .filter((s) => s !== "")
     .map((s) => {
@@ -56,6 +77,15 @@ export function parseHash(hash: string): Route {
         return s;
       }
     });
+}
+
+export function parseHash(hash: string): Route {
+  let segments = hashSegments(hash);
+  // ワークスペース部は解釈の前に落とす（画面のルートはワークスペースに依存しない）
+  if (segments[0] === "w" && segments[1] !== undefined) {
+    segments = segments.slice(2);
+  }
+  if (segments.length === 0) return { kind: "home" };
 
   const [head, a, b] = segments;
   if (head === "erd") {
@@ -86,7 +116,8 @@ export function parseHash(hash: string): Route {
     }
   }
   if (head === "introspect" && segments.length === 1) return { kind: "introspect" };
-  return { kind: "notFound", path: raw };
+  // 表示用のパスはワークスペース部を落とした残り（`#/w/<id>` は画面の種類に関係しない）
+  return { kind: "notFound", path: `/${segments.join("/")}` };
 }
 
 function subscribe(cb: () => void): () => void {

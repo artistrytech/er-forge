@@ -13,6 +13,13 @@
   flex-wrap: wrap;
 }
 
+/* タイトル（ワークスペース名）と切替 ▾ */
+.app-title-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
 .app-title {
   font-weight: 700;
   font-size: 15px;
@@ -224,15 +231,9 @@
   font-size: 12.5px;
 }
 
-.danger-button {
+/* 設定メニュー内のボタンは左寄せで並べる（見た目は共有の Button に任せる） */
+.block-button {
   align-self: flex-start;
-  color: var(--error);
-  border-color: var(--error);
-}
-
-.danger-button:hover {
-  background: var(--error);
-  color: #fff;
 }
 
 .progress-bar {

@@ -16,7 +16,7 @@
  */
 import { create } from "zustand";
 import { translate, type MsgKey } from "../i18n/messages";
-import { apiDelete, apiGet, apiPatch, apiPost } from "./api";
+import { apiDelete, apiGet, apiPatch, apiPost, wpath } from "./api";
 import { applyCommands, foldToPayload, invert, type Command } from "./commands";
 import {
   forceReloadDiagram,
@@ -26,6 +26,7 @@ import {
   reloadManifest,
 } from "./loader";
 import { useAppStore } from "./store";
+import { currentWorkspaceId } from "./workspace";
 import type { Diagram } from "./types";
 
 export type SaveStatus = "saved" | "dirty" | "saving" | "failed";
@@ -341,11 +342,11 @@ export const useEditStore = create<EditState>((set, get) => ({
   // ---- ページ管理（I-01〜I-03 / §8.2） ----
 
   createPage: (id, title) =>
-    pageOp(() => apiPost("/__erd/diagrams", { id, title })),
+    pageOp(() => apiPost(wpath("/diagrams"), { id, title })),
 
   renamePage: (diagramId, title) =>
     pageOp(() =>
-      apiPatch(`/__erd/diagrams/${encodeURIComponent(diagramId)}`, {
+      apiPatch(wpath(`/diagrams/${encodeURIComponent(diagramId)}`), {
         baseHash: baseHashes.get(`diagrams/${diagramId}.js`) ?? "",
         title,
       }),
@@ -370,7 +371,7 @@ export const useEditStore = create<EditState>((set, get) => ({
       : [otherOrder, selfOrder];
 
     return pageOp(() =>
-      apiPatch(`/__erd/diagrams/${encodeURIComponent(self.id)}`, {
+      apiPatch(wpath(`/diagrams/${encodeURIComponent(self.id)}`), {
         baseHash: baseHashes.get(`diagrams/${self.id}.js`) ?? "",
         order: a,
       }),
@@ -378,7 +379,7 @@ export const useEditStore = create<EditState>((set, get) => ({
       !first.ok
         ? first
         : pageOp(() =>
-            apiPatch(`/__erd/diagrams/${encodeURIComponent(other.id)}`, {
+            apiPatch(wpath(`/diagrams/${encodeURIComponent(other.id)}`), {
               baseHash: baseHashes.get(`diagrams/${other.id}.js`) ?? "",
               order: b,
             }),
@@ -389,7 +390,7 @@ export const useEditStore = create<EditState>((set, get) => ({
   deletePage: (diagramId) =>
     pageOp(
       () =>
-        apiDelete(`/__erd/diagrams/${encodeURIComponent(diagramId)}`, {
+        apiDelete(wpath(`/diagrams/${encodeURIComponent(diagramId)}`), {
           baseHash: baseHashes.get(`diagrams/${diagramId}.js`) ?? "",
         }),
       diagramId,
@@ -531,7 +532,7 @@ async function flush(forceFor?: string): Promise<void> {
   const rel = `diagrams/${diagramId}.js`;
   inflight = true;
   try {
-    const res = await apiPatch(`/__erd/diagrams/${diagramId}`, {
+    const res = await apiPatch(wpath(`/diagrams/${diagramId}`), {
       baseHash: baseHashes.get(rel) ?? "",
       force: forceFor === diagramId,
       nodes,
@@ -620,9 +621,12 @@ export function connectEvents(): void {
   eventSource.addEventListener("change", (e) => {
     try {
       const data = JSON.parse((e as MessageEvent).data as string) as {
+        workspaceId?: string;
         revision: string;
         files: string[];
       };
+      // 別のワークスペースの変更は自分には関係ない（ファイル名は重なる: index.js など）
+      if (data.workspaceId !== undefined && data.workspaceId !== currentWorkspaceId()) return;
       handleChangeEvent(data);
     } catch {
       // 壊れたイベントは無視する
@@ -740,7 +744,7 @@ function clearStacks(diagramId: string): void {
 
 async function refreshHashes(): Promise<void> {
   try {
-    const res = await apiGet("/__erd/project");
+    const res = await apiGet(wpath("/project"));
     if (res.status !== 200) return;
     const body = JSON.parse(res.body) as { files?: Record<string, string> };
     baseHashes.clear();

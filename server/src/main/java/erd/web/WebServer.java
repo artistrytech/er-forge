@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import erd.core.io.ProjectStore;
 import erd.core.migrate.SchemaVersions;
 import erd.core.model.DriverConfig;
+import erd.core.model.Workspace;
 import erd.introspect.DriverCatalog;
 import erd.introspect.DriverDownloader;
 import erd.introspect.Drivers;
@@ -22,22 +23,26 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.stream.Stream;
 
 /**
  * サーバーモードの Web 層。
  *
- * <p>データ本体は API で返さない（§4.3。読み込みは data/**.js の静的配信 + &lt;script&gt; 注入）。
- * API は書き込みと、書き込みに必要なメタ情報（baseHash・リビジョン）のためだけに存在する。
+ * <p>データ本体は API で返さない（§4.3。読み込みは workspace-&lt;id&gt;/data/**.js の静的配信 +
+ * &lt;script&gt; 注入）。API は書き込みと、書き込みに必要なメタ情報（baseHash・リビジョン）のためだけに存在する。
+ *
+ * <p>ワークスペース（マルチデータベース構成の単位）ごとにデータが分かれるため、
+ * データを触る API はすべて {@code /__erd/w/<id>/...} の下にある。ワークスペースに属さないのは
+ * 疎通確認・ワークスペース管理・JDBC ドライバ設定（全ワークスペース共通）・SSE・自動レイアウト。
  */
 public final class WebServer {
 
-    private final Path root;      // erd/（index.html と data/ を含む）
+    private final Path root;      // erd/（index.html と workspace-*/ を含む）
     private final String token;
     private final ObjectMapper mapper = new ObjectMapper();
     private final ProjectStore store = new ProjectStore();
-    private final Revisions revisions = new Revisions();
     private final DiagramService diagrams = new DiagramService();
     private final AutoLayout layout = new AutoLayout();
     private final TableService tables = new TableService();
@@ -45,13 +50,21 @@ public final class WebServer {
     private final ConfigService config = new ConfigService();
     private final ConnectionStore connections = new ConnectionStore();
     private final IntrospectService introspect = new IntrospectService();
+    private final WorkspaceStore workspaces = new WorkspaceStore();
     private final ConcurrentLinkedQueue<SseClient> sseClients = new ConcurrentLinkedQueue<>();
+    /** ワークスペースごとの監視とリビジョン（自己書き込みの帰属はワークスペース内で完結する） */
+    private final Map<String, Runtime> runtimes = new ConcurrentHashMap<>();
     private Javalin app;
-    private DataWatcher watcher;
 
     public WebServer(Path root, String token) {
         this.root = root;
         this.token = token;
+    }
+
+    /** ワークスペース1つ分のサーバー側状態。 */
+    private static final class Runtime {
+        final Revisions revisions = new Revisions();
+        DataWatcher watcher;
     }
 
     /** basePort から空きポートを探して起動し、実際のポートを返す（§8.1）。 */
@@ -60,8 +73,10 @@ public final class WebServer {
             try {
                 app = create();
                 app.start("127.0.0.1", port);
-                watcher = new DataWatcher(root.resolve("data"), revisions, this::broadcast);
-                watcher.start();
+                // 起動時点のワークスペースをすべて監視する（作成・削除・改名で貼り替える）
+                for (String id : WorkspaceStore.scan(root)) {
+                    startWatching(id);
+                }
                 return port;
             } catch (RuntimeException e) {
                 if (!isBindError(e)) throw e;
@@ -71,7 +86,10 @@ public final class WebServer {
     }
 
     public void stop() {
-        if (watcher != null) watcher.close();
+        for (Runtime rt : runtimes.values()) {
+            if (rt.watcher != null) rt.watcher.close();
+        }
+        runtimes.clear();
         if (app != null) app.stop();
     }
 
@@ -83,56 +101,202 @@ public final class WebServer {
 
         javalin.get("/__erd/health", ctx ->
                 ctx.json(Map.of("ok", true, "schemaVersion", SchemaVersions.CURRENT)));
-        javalin.get("/__erd/project", this::project);
-        javalin.post("/__erd/bootstrap", this::bootstrap);
-        javalin.post("/__erd/reset", this::resetData);
 
-        // ページ管理（I-01〜I-03 / I-06）とレイアウト
-        javalin.get("/__erd/diagrams/{id}", this::getDiagram);
-        javalin.post("/__erd/diagrams", this::createDiagram);
-        javalin.delete("/__erd/diagrams/{id}", this::deleteDiagram);
-        javalin.patch("/__erd/diagrams/{id}", this::patchDiagram);
+        // ワークスペース管理（どのワークスペースにも属さない）
+        javalin.get("/__erd/workspaces", this::listWorkspaces);
+        javalin.post("/__erd/workspaces", this::createWorkspace);
+        javalin.patch("/__erd/workspaces/{ws}", this::patchWorkspace);
+        javalin.delete("/__erd/workspaces/{ws}", this::deleteWorkspace);
+
+        // JDBC ドライバ（全ワークスペース共通。設定は erd/config.js、jar は erd/drivers/）
+        javalin.get("/__erd/drivers", this::getDrivers);
+        javalin.put("/__erd/drivers/config", this::putDriverConfig);
+        javalin.post("/__erd/drivers/download", this::postDriverDownload);
+
+        // 座標計算のみ（書き込みをしないためワークスペースに依存しない）
         javalin.post("/__erd/layout/auto", this::layoutAuto);
 
-        javalin.get("/__erd/tables/{id}", this::getTable);
-        javalin.put("/__erd/tables/{id}", this::putTable);
-        javalin.get("/__erd/dictionary", this::getDictionary);
-        javalin.put("/__erd/dictionary", this::putDictionary);
-        javalin.get("/__erd/config", this::getConfig);
-        javalin.put("/__erd/config", this::putConfig);
+        javalin.get("/__erd/w/{ws}/project", this::project);
+        javalin.post("/__erd/w/{ws}/bootstrap", this::bootstrap);
+        javalin.post("/__erd/w/{ws}/reset", this::resetData);
+
+        // ページ管理（I-01〜I-03 / I-06）とレイアウト
+        javalin.get("/__erd/w/{ws}/diagrams/{id}", this::getDiagram);
+        javalin.post("/__erd/w/{ws}/diagrams", this::createDiagram);
+        javalin.delete("/__erd/w/{ws}/diagrams/{id}", this::deleteDiagram);
+        javalin.patch("/__erd/w/{ws}/diagrams/{id}", this::patchDiagram);
+
+        javalin.get("/__erd/w/{ws}/tables/{id}", this::getTable);
+        javalin.put("/__erd/w/{ws}/tables/{id}", this::putTable);
+        javalin.get("/__erd/w/{ws}/dictionary", this::getDictionary);
+        javalin.put("/__erd/w/{ws}/dictionary", this::putDictionary);
+        javalin.get("/__erd/w/{ws}/config", this::getConfig);
+        javalin.put("/__erd/w/{ws}/config", this::putConfig);
 
         // 逆生成（K-01〜K-14）
-        javalin.get("/__erd/drivers", this::getDrivers);
-        javalin.post("/__erd/drivers/download", this::postDriverDownload);
-        javalin.get("/__erd/connection", this::getConnection);
-        javalin.put("/__erd/connection", this::putConnection);
-        javalin.post("/__erd/connection/test", this::testConnection);
-        javalin.post("/__erd/introspect", this::postIntrospect);
-        javalin.get("/__erd/introspect/{sessionId}", this::getIntrospect);
-        javalin.post("/__erd/introspect/{sessionId}/plan", this::postIntrospectPlan);
-        javalin.post("/__erd/introspect/apply", this::postIntrospectApply);
+        javalin.get("/__erd/w/{ws}/connection", this::getConnection);
+        javalin.put("/__erd/w/{ws}/connection", this::putConnection);
+        javalin.post("/__erd/w/{ws}/connection/test", this::testConnection);
+        javalin.post("/__erd/w/{ws}/introspect", this::postIntrospect);
+        javalin.get("/__erd/w/{ws}/introspect/{sessionId}", this::getIntrospect);
+        javalin.post("/__erd/w/{ws}/introspect/{sessionId}/plan", this::postIntrospectPlan);
+        javalin.post("/__erd/w/{ws}/introspect/apply", this::postIntrospectApply);
 
         javalin.sse("/__erd/events", this::sse);
 
         javalin.get("/", this::serveIndex);
         javalin.get("/index.html", this::serveIndex);
-        javalin.get("/data/<path>", this::serveData);
+        javalin.get("/" + WorkspaceStore.REGISTRY, this::serveRegistry);
+        javalin.get("/" + Workspace.PREFIX + "{ws}/data/<path>", this::serveData);
         return javalin;
+    }
+
+    // ------------------------------------------------------------ workspaces
+
+    /** プルダウンの中身（§2）。存在の正はフォルダ走査で、表示名は workspaces.js から。 */
+    private void listWorkspaces(Context ctx) {
+        if (!authorized(ctx)) {
+            ctx.status(403).json(Map.of("error", "forbidden"));
+            return;
+        }
+        ctx.json(Map.of("workspaces", workspaces.list(root)));
+    }
+
+    /** 空のワークスペースを作る。中身の初期化はブートストラップ画面（§3.6）で行う。 */
+    private void createWorkspace(Context ctx) throws Exception {
+        if (!authorized(ctx)) {
+            ctx.status(403).json(Map.of("error", "forbidden"));
+            return;
+        }
+        JsonNode body = ctx.body().isEmpty() ? mapper.createObjectNode() : mapper.readTree(ctx.body());
+        String id = body.path("id").asText("").trim();
+        if (id.isEmpty()) id = Workspace.DEFAULT_ID;
+        String name = body.path("name").asText("").trim();
+        if (!Workspace.isValidId(id)) {
+            ctx.status(400).json(Map.of("code", "VALIDATION", "field", "id",
+                    "message", "id must match [A-Za-z0-9][A-Za-z0-9_-]{0,31}"));
+            return;
+        }
+        if (name.isEmpty()) {
+            ctx.status(400).json(Map.of("code", "VALIDATION", "field", "name",
+                    "message", "name is required"));
+            return;
+        }
+        if (WorkspaceStore.conflicts(root, id)) {
+            ctx.status(409).json(Map.of("code", "DUPLICATE_ID", "id", id));
+            return;
+        }
+        Workspace created = workspaces.create(root, id, name);
+        startWatching(created.id());
+        System.out.println("Created workspace: " + WorkspaceStore.dir(root, created.id()));
+        ctx.json(created);
+    }
+
+    /**
+     * ID・表示名の変更。ID を変えるとフォルダ名も変わるため、Git 上は「削除＋追加」の差分になる
+     * （警告は画面側で出す）。監視は貼り替える。
+     */
+    private void patchWorkspace(Context ctx) throws Exception {
+        if (!authorized(ctx)) {
+            ctx.status(403).json(Map.of("error", "forbidden"));
+            return;
+        }
+        String oldId = ctx.pathParam("ws");
+        Workspace current = workspaces.find(root, oldId);
+        if (current == null) {
+            ctx.status(404).json(Map.of("error", "workspace not found"));
+            return;
+        }
+        JsonNode body = mapper.readTree(ctx.body());
+        String newId = body.hasNonNull("id") ? body.get("id").asText("").trim() : oldId;
+        String newName = body.hasNonNull("name") ? body.get("name").asText("").trim() : current.name();
+        if (!Workspace.isValidId(newId)) {
+            ctx.status(400).json(Map.of("code", "VALIDATION", "field", "id",
+                    "message", "id must match [A-Za-z0-9][A-Za-z0-9_-]{0,31}"));
+            return;
+        }
+        if (newName.isEmpty()) {
+            ctx.status(400).json(Map.of("code", "VALIDATION", "field", "name",
+                    "message", "name is required"));
+            return;
+        }
+        if (!newId.equals(oldId) && WorkspaceStore.conflicts(root, newId)) {
+            ctx.status(409).json(Map.of("code", "DUPLICATE_ID", "id", newId));
+            return;
+        }
+        if (!newId.equals(oldId)) stopWatching(oldId);
+        Workspace renamed = workspaces.rename(root, oldId, newId, newName);
+        if (!newId.equals(oldId)) startWatching(newId);
+        ctx.json(renamed);
+    }
+
+    /** ワークスペースを丸ごと削除する（データリセットとは別物。§11）。 */
+    private void deleteWorkspace(Context ctx) {
+        if (!authorized(ctx)) {
+            ctx.status(403).json(Map.of("error", "forbidden"));
+            return;
+        }
+        String id = ctx.pathParam("ws");
+        if (!WorkspaceStore.exists(root, id)) {
+            ctx.status(404).json(Map.of("error", "workspace not found"));
+            return;
+        }
+        stopWatching(id);
+        workspaces.delete(root, id);
+        System.out.println("Deleted workspace: " + WorkspaceStore.dir(root, id));
+        ctx.json(Map.of("ok", true, "workspaces", workspaces.list(root)));
+    }
+
+    // ------------------------------------------------------- workspace 解決
+
+    /**
+     * 書き込み・読み出しの共通ガード。トークンとワークスペースの存在を確かめ、
+     * data ディレクトリを返す（不正なら応答を書いて null）。
+     */
+    private Path dataDirOrFail(Context ctx) {
+        if (!authorized(ctx)) {
+            ctx.status(403).json(Map.of("error", "forbidden"));
+            return null;
+        }
+        String id = ctx.pathParam("ws");
+        if (!WorkspaceStore.exists(root, id)) {
+            ctx.status(404).json(Map.of("error", "workspace not found"));
+            return null;
+        }
+        return WorkspaceStore.dataDir(root, id);
+    }
+
+    private Revisions revisions(Context ctx) {
+        return runtime(ctx.pathParam("ws")).revisions;
+    }
+
+    private Runtime runtime(String wsId) {
+        return runtimes.computeIfAbsent(wsId, id -> new Runtime());
+    }
+
+    private void startWatching(String wsId) {
+        Runtime rt = runtime(wsId);
+        if (rt.watcher != null) return;
+        rt.watcher = new DataWatcher(WorkspaceStore.dataDir(root, wsId), rt.revisions,
+                (revision, files) -> broadcast(wsId, revision, files));
+        rt.watcher.start();
+    }
+
+    private void stopWatching(String wsId) {
+        Runtime rt = runtimes.remove(wsId);
+        if (rt != null && rt.watcher != null) rt.watcher.close();
     }
 
     // --------------------------------------------------------------- project
 
     /** リビジョン・各ファイルの baseHash・schemaVersion・ブートストラップの要否（§8.2）。 */
     private void project(Context ctx) throws Exception {
-        if (!authorized(ctx)) {
-            ctx.status(403).json(Map.of("error", "forbidden"));
-            return;
-        }
+        Path dataDir = dataDirOrFail(ctx);
+        if (dataDir == null) return;
         ObjectNode res = mapper.createObjectNode();
         res.put("schemaVersion", SchemaVersions.CURRENT);
-        res.put("needsBootstrap", needsBootstrap());
+        res.put("needsBootstrap", needsBootstrap(dataDir));
         ObjectNode files = res.putObject("files");
-        Path dataDir = root.resolve("data");
         if (Files.isDirectory(dataDir)) {
             try (Stream<Path> walk = Files.walk(dataDir)) {
                 List<Path> list = walk
@@ -151,11 +315,9 @@ public final class WebServer {
 
     /** ページの baseHash（編集開始前の取得用）。データ本体は返さない（§4.3）。 */
     private void getDiagram(Context ctx) {
-        if (!authorized(ctx)) {
-            ctx.status(403).json(Map.of("error", "forbidden"));
-            return;
-        }
-        String hash = diagrams.baseHash(root.resolve("data"), ctx.pathParam("id"));
+        Path dataDir = dataDirOrFail(ctx);
+        if (dataDir == null) return;
+        String hash = diagrams.baseHash(dataDir, ctx.pathParam("id"));
         if (hash == null) {
             ctx.status(404).json(Map.of("error", "not found"));
             return;
@@ -184,12 +346,10 @@ public final class WebServer {
     private void writeDiagram(Context ctx,
                               java.util.function.BiFunction<Path, JsonNode, DiagramService.Outcome> op)
             throws Exception {
-        if (!authorized(ctx)) {
-            ctx.status(403).json(Map.of("error", "forbidden"));
-            return;
-        }
+        Path dataDir = dataDirOrFail(ctx);
+        if (dataDir == null) return;
         JsonNode body = ctx.body().isEmpty() ? mapper.createObjectNode() : mapper.readTree(ctx.body());
-        DiagramService.Outcome outcome = op.apply(root.resolve("data"), body);
+        DiagramService.Outcome outcome = op.apply(dataDir, body);
         if (outcome instanceof DiagramService.NotFound) {
             ctx.status(404).json(Map.of("error", "not found"));
         } else if (outcome instanceof DiagramService.Stale stale) {
@@ -199,6 +359,7 @@ public final class WebServer {
         } else if (outcome instanceof DiagramService.Invalid invalid) {
             ctx.status(400).json(Map.of("code", "VALIDATION", "message", invalid.message()));
         } else if (outcome instanceof DiagramService.Ok ok) {
+            Revisions revisions = revisions(ctx);
             String revision = revisions.next();
             ok.writtenFiles().forEach((rel, hash) -> revisions.recordWrite(rel, hash, revision));
             ObjectNode res = mapper.createObjectNode();
@@ -255,11 +416,9 @@ public final class WebServer {
 
     /** 編集画面の初期値（O-03 §7）。データ本体は返さない（<script> 経路で読む）。baseHash のみ。 */
     private void getTable(Context ctx) {
-        if (!authorized(ctx)) {
-            ctx.status(403).json(Map.of("error", "forbidden"));
-            return;
-        }
-        String hash = tables.baseHash(root.resolve("data"), ctx.pathParam("id"));
+        Path dataDir = dataDirOrFail(ctx);
+        if (dataDir == null) return;
+        String hash = tables.baseHash(dataDir, ctx.pathParam("id"));
         if (hash == null) {
             ctx.status(404).json(Map.of("error", "not found"));
             return;
@@ -269,12 +428,10 @@ public final class WebServer {
 
     /** テーブル1件の全文置換保存（O-08 / J-05 / §4.2）。baseHash が必須。 */
     private void putTable(Context ctx) throws Exception {
-        if (!authorized(ctx)) {
-            ctx.status(403).json(Map.of("error", "forbidden"));
-            return;
-        }
+        Path dataDir = dataDirOrFail(ctx);
+        if (dataDir == null) return;
         JsonNode body = mapper.readTree(ctx.body());
-        TableService.Outcome outcome = tables.put(root.resolve("data"), ctx.pathParam("id"), body);
+        TableService.Outcome outcome = tables.put(dataDir, ctx.pathParam("id"), body);
         if (outcome instanceof TableService.NotFound) {
             ctx.status(404).json(Map.of("error", "not found"));
         } else if (outcome instanceof TableService.Stale stale) {
@@ -285,6 +442,7 @@ public final class WebServer {
                     "errors", invalid.errors().stream().map(TableService.Issue::toMap).toList(),
                     "warnings", invalid.warnings().stream().map(TableService.Issue::toMap).toList()));
         } else if (outcome instanceof TableService.Ok ok) {
+            Revisions revisions = revisions(ctx);
             String revision = revisions.next();
             ok.writtenFiles().forEach((rel, hash) -> revisions.recordWrite(rel, hash, revision));
             ctx.json(Map.of(
@@ -295,26 +453,23 @@ public final class WebServer {
     }
 
     private void getDictionary(Context ctx) {
-        if (!authorized(ctx)) {
-            ctx.status(403).json(Map.of("error", "forbidden"));
-            return;
-        }
-        ctx.json(Map.of("baseHash", dictionary.baseHash(root.resolve("data"))));
+        Path dataDir = dataDirOrFail(ctx);
+        if (dataDir == null) return;
+        ctx.json(Map.of("baseHash", dictionary.baseHash(dataDir)));
     }
 
     /** 辞書の一括更新（P-03 §2.4）。全体を1回の PUT で置換する。 */
     private void putDictionary(Context ctx) throws Exception {
-        if (!authorized(ctx)) {
-            ctx.status(403).json(Map.of("error", "forbidden"));
-            return;
-        }
+        Path dataDir = dataDirOrFail(ctx);
+        if (dataDir == null) return;
         JsonNode body = mapper.readTree(ctx.body());
-        DictionaryService.Outcome outcome = dictionary.put(root.resolve("data"), body);
+        DictionaryService.Outcome outcome = dictionary.put(dataDir, body);
         if (outcome instanceof DictionaryService.Stale stale) {
             ctx.status(409).json(Map.of("code", "STALE", "currentHash", stale.currentHash()));
         } else if (outcome instanceof DictionaryService.Invalid invalid) {
             ctx.status(400).json(Map.of("error", invalid.message()));
         } else if (outcome instanceof DictionaryService.Ok ok) {
+            Revisions revisions = revisions(ctx);
             String revision = revisions.next();
             ok.writtenFiles().forEach((rel, hash) -> revisions.recordWrite(rel, hash, revision));
             ctx.json(Map.of("revision", revision, "newHash", ok.newHash()));
@@ -324,13 +479,11 @@ public final class WebServer {
     // ---------------------------------------------------- config（無視リスト / K-15）
 
     private void getConfig(Context ctx) {
-        if (!authorized(ctx)) {
-            ctx.status(403).json(Map.of("error", "forbidden"));
-            return;
-        }
-        var cfg = config.read(root.resolve("data"));
+        Path dataDir = dataDirOrFail(ctx);
+        if (dataDir == null) return;
+        var cfg = config.read(dataDir);
         ObjectNode res = mapper.createObjectNode();
-        res.put("baseHash", config.baseHash(root.resolve("data")));
+        res.put("baseHash", config.baseHash(dataDir));
         var arr = res.putArray("ignoreTables");
         cfg.ignoreTables().forEach(arr::add);
         ctx.json(res);
@@ -338,17 +491,16 @@ public final class WebServer {
 
     /** 無視リストの更新（§9.4）。config.js を書き換えるのみで、スキーマには一切触れない。 */
     private void putConfig(Context ctx) throws Exception {
-        if (!authorized(ctx)) {
-            ctx.status(403).json(Map.of("error", "forbidden"));
-            return;
-        }
+        Path dataDir = dataDirOrFail(ctx);
+        if (dataDir == null) return;
         JsonNode body = mapper.readTree(ctx.body());
-        ConfigService.Outcome outcome = config.put(root.resolve("data"), body);
+        ConfigService.Outcome outcome = config.put(dataDir, body);
         if (outcome instanceof ConfigService.Stale stale) {
             ctx.status(409).json(Map.of("code", "STALE", "currentHash", stale.currentHash()));
         } else if (outcome instanceof ConfigService.Invalid invalid) {
             ctx.status(400).json(Map.of("error", invalid.message()));
         } else if (outcome instanceof ConfigService.Ok ok) {
+            Revisions revisions = revisions(ctx);
             String revision = revisions.next();
             ok.writtenFiles().forEach((rel, hash) -> revisions.recordWrite(rel, hash, revision));
             ctx.json(Map.of("revision", revision, "newHash", ok.newHash()));
@@ -358,16 +510,17 @@ public final class WebServer {
     // --------------------------------------------------------- 逆生成（K-01〜K-14）
 
     /**
-     * K-01 / §7.2: ロード済みドライバ・既定カタログ・config.js のドライバ設定・未取得の一覧。
+     * K-01 / §7.2: ロード済みドライバ・既定カタログ・ドライバ設定・未取得の一覧。
      *
-     * <p>逆生成画面の入口で使う。{@code missing} が空でなければ画面側がダウンロードの確認を出す。
+     * <p>ドライバ設定は<b>全ワークスペース共通</b>（{@code erd/config.js}）。接続先 DB が
+     * ワークスペースごとに違っても、必要なドライバはチームで揃えたい設定だからである。
      */
     private void getDrivers(Context ctx) {
         if (!authorized(ctx)) {
             ctx.status(403).json(Map.of("error", "forbidden"));
             return;
         }
-        DriverConfig cfg = config.read(root.resolve("data")).drivers();
+        DriverConfig cfg = config.read(root).drivers();
         String repo = cfg.mavenRepository() != null && !cfg.mavenRepository().isBlank()
                 ? cfg.mavenRepository() : DriverCatalog.DEFAULT_MAVEN_REPOSITORY;
 
@@ -386,11 +539,30 @@ public final class WebServer {
                 missing.add(coordinate);
             }
         }
+        res.put("baseHash", config.baseHash(root));
         ctx.json(res);
     }
 
+    /** 共通のドライバ設定（{@code erd/config.js}）の更新。 */
+    private void putDriverConfig(Context ctx) throws Exception {
+        if (!authorized(ctx)) {
+            ctx.status(403).json(Map.of("error", "forbidden"));
+            return;
+        }
+        JsonNode body = mapper.readTree(ctx.body());
+        ConfigService.Outcome outcome = config.put(root, body);
+        if (outcome instanceof ConfigService.Stale stale) {
+            ctx.status(409).json(Map.of("code", "STALE", "currentHash", stale.currentHash()));
+        } else if (outcome instanceof ConfigService.Invalid invalid) {
+            ctx.status(400).json(Map.of("error", invalid.message()));
+        } else if (outcome instanceof ConfigService.Ok ok) {
+            // erd/config.js は data/ の外にあり、ファイル監視・SSE の対象ではない
+            ctx.json(Map.of("ok", true, "newHash", ok.newHash()));
+        }
+    }
+
     /**
-     * §7.2: config.js のドライバ座標を Maven からダウンロードして {@code drivers/} に置き、登録する。
+     * §7.2: ドライバ座標を Maven からダウンロードして {@code drivers/} に置き、登録する。
      *
      * <p>本文 {@code { mavenRepository?, artifacts: [coord...] }}。artifacts は「今ダウンロードする対象」
      * （通常は {@code missing}）。ダウンロード自体は破壊的でないが外部通信を伴うため、確認は画面側で取る。
@@ -408,8 +580,7 @@ public final class WebServer {
         }
         String repo = body.hasNonNull("mavenRepository") ? body.get("mavenRepository").asText() : null;
         if (repo == null || repo.isBlank()) {
-            DriverConfig cfg = config.read(root.resolve("data")).drivers();
-            repo = cfg.mavenRepository();
+            repo = config.read(root).drivers().mavenRepository();
         }
         DriverDownloader downloader = new DriverDownloader();
         ArrayNode results = mapper.createArrayNode();
@@ -430,40 +601,31 @@ public final class WebServer {
         ctx.json(res);
     }
 
-    /** {@code drivers/}（Git 管理外。JDBC ドライバの jar 置き場。§7.2）。 */
+    /** {@code drivers/}（Git 管理外。JDBC ドライバの jar 置き場。全ワークスペース共通。§7.2）。 */
     private Path driversDir() {
         return root.resolve("drivers");
     }
 
     /** K-05: 保存された接続設定（パスワードは明示的に保存した場合のみ含む）。 */
     private void getConnection(Context ctx) {
-        if (!authorized(ctx)) {
-            ctx.status(403).json(Map.of("error", "forbidden"));
-            return;
-        }
-        ctx.json(connections.forClient(erdDir()));
+        if (dataDirOrFail(ctx) == null) return;
+        ctx.json(connections.forClient(privateDir(ctx)));
     }
 
     private void putConnection(Context ctx) throws Exception {
-        if (!authorized(ctx)) {
-            ctx.status(403).json(Map.of("error", "forbidden"));
-            return;
-        }
+        if (dataDirOrFail(ctx) == null) return;
         JsonNode body = mapper.readTree(ctx.body());
         if (body.path("clear").asBoolean(false)) {
-            connections.delete(erdDir());
+            connections.delete(privateDir(ctx));
         } else {
-            connections.save(erdDir(), body);
+            connections.save(privateDir(ctx), body);
         }
         ctx.json(Map.of("ok", true));
     }
 
     /** K-04: 接続テスト（製品名・バージョン・ネームスペース一覧）。 */
     private void testConnection(Context ctx) throws Exception {
-        if (!authorized(ctx)) {
-            ctx.status(403).json(Map.of("error", "forbidden"));
-            return;
-        }
+        if (dataDirOrFail(ctx) == null) return;
         try {
             ctx.json(introspect.test(mapper.readTree(ctx.body())));
         } catch (java.sql.SQLException e) {
@@ -473,12 +635,11 @@ public final class WebServer {
 
     /** K-07 → K-08: 逆生成を実行し、差分プレビューを返す（1バイトも書き込まない。INV-4）。 */
     private void postIntrospect(Context ctx) throws Exception {
-        if (!authorized(ctx)) {
-            ctx.status(403).json(Map.of("error", "forbidden"));
-            return;
-        }
+        Path dataDir = dataDirOrFail(ctx);
+        if (dataDir == null) return;
         try {
-            respond(ctx, introspect.preview(erdDir(), root.resolve("data"), mapper.readTree(ctx.body())));
+            respond(ctx, introspect.preview(ctx.pathParam("ws"), privateDir(ctx), dataDir,
+                    mapper.readTree(ctx.body())));
         } catch (java.sql.SQLException e) {
             ctx.status(400).json(Map.of("code", "CONNECT_FAILED", "message", String.valueOf(e.getMessage())));
         }
@@ -486,11 +647,9 @@ public final class WebServer {
 
     /** プレビューの再取得（ブラウザのリロード対策）。失効時は 410。 */
     private void getIntrospect(Context ctx) {
-        if (!authorized(ctx)) {
-            ctx.status(403).json(Map.of("error", "forbidden"));
-            return;
-        }
-        respond(ctx, introspect.reload(erdDir(), root.resolve("data"),
+        Path dataDir = dataDirOrFail(ctx);
+        if (dataDir == null) return;
+        respond(ctx, introspect.reload(ctx.pathParam("ws"), privateDir(ctx), dataDir,
                 ctx.pathParam("sessionId"), List.of()));
     }
 
@@ -499,13 +658,11 @@ public final class WebServer {
      * 差分ロジックはサーバーの単一実装に集約し、UI 側に持たせない。
      */
     private void postIntrospectPlan(Context ctx) throws Exception {
-        if (!authorized(ctx)) {
-            ctx.status(403).json(Map.of("error", "forbidden"));
-            return;
-        }
+        Path dataDir = dataDirOrFail(ctx);
+        if (dataDir == null) return;
         JsonNode body = mapper.readTree(ctx.body());
-        respond(ctx, introspect.reload(erdDir(), root.resolve("data"), ctx.pathParam("sessionId"),
-                introspect.decisions(body.path("renameDecisions"))));
+        respond(ctx, introspect.reload(ctx.pathParam("ws"), privateDir(ctx), dataDir,
+                ctx.pathParam("sessionId"), introspect.decisions(body.path("renameDecisions"))));
     }
 
     /**
@@ -513,24 +670,25 @@ public final class WebServer {
      * まとめて通知する（§8.6。中間状態をビューアに読ませない）。
      */
     private void postIntrospectApply(Context ctx) throws Exception {
-        if (!authorized(ctx)) {
-            ctx.status(403).json(Map.of("error", "forbidden"));
-            return;
-        }
+        Path dataDir = dataDirOrFail(ctx);
+        if (dataDir == null) return;
+        String wsId = ctx.pathParam("ws");
         JsonNode body = mapper.readTree(ctx.body());
         IntrospectService.Outcome outcome;
+        DataWatcher watcher = runtime(wsId).watcher;
         if (watcher != null) watcher.suppress(true);
         try {
-            outcome = introspect.apply(erdDir(), root.resolve("data"), body);
+            outcome = introspect.apply(wsId, privateDir(ctx), dataDir, body);
         } finally {
             if (watcher != null) watcher.suppress(false);
         }
         if (outcome instanceof IntrospectService.Ok ok && !ok.writtenFiles().isEmpty()) {
+            Revisions revisions = revisions(ctx);
             String revision = revisions.next();
             ok.writtenFiles().forEach((rel, hash) -> revisions.recordWrite(rel, hash, revision));
             ObjectNode res = mapper.valueToTree(ok.body());
             res.put("revision", revision);
-            broadcast(revision, ok.writtenFiles().keySet());
+            broadcast(wsId, revision, ok.writtenFiles().keySet());
             ctx.json(res);
             return;
         }
@@ -554,10 +712,9 @@ public final class WebServer {
         }
     }
 
-    /** `.erd/`（Git 管理外。接続設定・バックアップ）。erd/ の親に置く（§3.3）。 */
-    private Path erdDir() {
-        Path parent = root.getParent();
-        return parent != null ? parent.resolve(".erd") : root.resolve(".erd");
+    /** {@code .erd/workspace-<id>/}（Git 管理外。接続設定・バックアップ）。 */
+    private Path privateDir(Context ctx) {
+        return WorkspaceStore.privateDir(root, ctx.pathParam("ws"));
     }
 
     // ------------------------------------------------------------------- SSE
@@ -572,9 +729,13 @@ public final class WebServer {
         client.onClose(() -> sseClients.remove(client));
     }
 
-    /** ファイル監視からの変更通知を全クライアントへ配る（H-09）。 */
-    private void broadcast(String revision, Set<String> files) {
+    /**
+     * ファイル監視からの変更通知を全クライアントへ配る（H-09）。
+     * どのワークスペースの変更かを載せる（別のワークスペースを開いているタブが反応しないように）。
+     */
+    private void broadcast(String wsId, String revision, Set<String> files) {
         ObjectNode payload = mapper.createObjectNode();
+        payload.put("workspaceId", wsId);
         payload.put("revision", revision);
         var arr = payload.putArray("files");
         files.stream().sorted().forEach(arr::add);
@@ -588,66 +749,73 @@ public final class WebServer {
 
     /** 初回起動の初期化（§3.6）。既存データがある場合は実行できない（上書き事故を防ぐ）。 */
     private void bootstrap(Context ctx) throws Exception {
-        if (!authorized(ctx)) {
-            ctx.status(403).json(Map.of("error", "forbidden"));
-            return;
-        }
+        Path dataDir = dataDirOrFail(ctx);
+        if (dataDir == null) return;
         String mode = ctx.body().isEmpty() ? "" : mapper.readTree(ctx.body()).path("mode").asText("");
         if (!"sample".equals(mode)) {
             ctx.status(400).json(Map.of("error", "unsupported mode: " + mode));
             return;
         }
-        if (!needsBootstrap()) {
+        if (!needsBootstrap(dataDir)) {
             ctx.status(409).json(Map.of("error", "already-initialized"));
             return;
         }
-        int tables = SampleData.writeTo(root.resolve("data"));
-        System.out.println("Wrote sample data (" + tables + " tables): "
-                + root.resolve("data"));
+        int tables = quietly(ctx.pathParam("ws"), () -> SampleData.writeTo(dataDir));
+        System.out.println("Wrote sample data (" + tables + " tables): " + dataDir);
         ctx.json(Map.of("ok", true, "tables", tables));
     }
 
     /**
-     * データリセット（設定メニュー）。スキーマ情報に関するデータをすべて削除する。
+     * 監視を抑止したまま書き込み、拾い終わってから解く。
+     *
+     * <p>ブートストラップとデータリセットは、完了後にクライアントがページごと読み込み直す。
+     * SSE で伝える相手がいないのに監視だけは変更を拾うため、抑止しないと
+     * <b>リロード直後のタブに「外部の変更を反映しました」が出てしまう</b>（自分の操作なのに
+     * 他人の変更に見える）。逆生成の適用（§8.6）と違い、まとめ直した通知も送らない。
+     */
+    private <T> T quietly(String wsId, java.util.concurrent.Callable<T> body) throws Exception {
+        DataWatcher watcher = runtime(wsId).watcher;
+        if (watcher == null) return body.call();
+        watcher.suppress(true);
+        try {
+            return body.call();
+        } finally {
+            watcher.settleThenResume();
+        }
+    }
+
+    /**
+     * データリセット（設定メニュー）。<b>そのワークスペースの</b>スキーマ情報をすべて削除する。
      * schema/**・diagrams/**・index.js・dictionary.js・manifest.js を消し、config.js は残す
-     * （JDBC ドライバ設定・アプリ名などの human-owned な設定を保持する）。
-     * 削除後はクライアントがリロードし、ブートストラップ画面（空プロジェクト）に着地する。
+     * （無視リストなど human-owned な設定を保持する）。ワークスペース自体は残るため、
+     * 削除後はブートストラップ画面（空プロジェクト）に着地する。
      */
     private void resetData(Context ctx) throws Exception {
-        if (!authorized(ctx)) {
-            ctx.status(403).json(Map.of("error", "forbidden"));
-            return;
-        }
-        Path data = root.resolve("data");
-        deleteRecursively(data.resolve("schema"));
-        deleteRecursively(data.resolve("diagrams"));
-        Files.deleteIfExists(data.resolve("index.js"));
-        Files.deleteIfExists(data.resolve("dictionary.js"));
-        Files.deleteIfExists(data.resolve("manifest.js"));
+        Path data = dataDirOrFail(ctx);
+        if (data == null) return;
+        quietly(ctx.pathParam("ws"), () -> {
+            deleteRecursively(data.resolve("schema"));
+            deleteRecursively(data.resolve("diagrams"));
+            Files.deleteIfExists(data.resolve("index.js"));
+            Files.deleteIfExists(data.resolve("dictionary.js"));
+            Files.deleteIfExists(data.resolve("manifest.js"));
+            return null;
+        });
         System.out.println("Reset schema data (kept config.js): " + data);
         ctx.json(Map.of("ok", true));
     }
 
     /** ディレクトリを中身ごと削除する（存在しなければ何もしない）。 */
     private static void deleteRecursively(Path dir) throws java.io.IOException {
-        if (!Files.exists(dir)) return;
-        try (Stream<Path> walk = Files.walk(dir)) {
-            walk.sorted(java.util.Comparator.reverseOrder()).forEach(p -> {
-                try {
-                    Files.deleteIfExists(p);
-                } catch (java.io.IOException e) {
-                    throw new java.io.UncheckedIOException(e);
-                }
-            });
-        }
+        WorkspaceStore.deleteTree(dir);
     }
 
     /** manifest.js が無い、またはテーブル0件のときのみブートストラップ可能（§3.6）。 */
-    private boolean needsBootstrap() {
-        Path manifest = root.resolve("data/manifest.js");
+    private boolean needsBootstrap(Path dataDir) {
+        Path manifest = dataDir.resolve("manifest.js");
         if (!Files.exists(manifest)) return true;
         try {
-            return store.readManifestOnly(root.resolve("data")).tables().isEmpty();
+            return store.readManifestOnly(dataDir).tables().isEmpty();
         } catch (RuntimeException e) {
             // 壊れた既存データは「存在する」として扱い、上書きしない
             return false;
@@ -678,8 +846,29 @@ public final class WebServer {
         ctx.contentType("text/html; charset=utf-8").result(Files.readAllBytes(index));
     }
 
+    /**
+     * ワークスペースの索引（§2）。file:// と同じ相対パスで読めるよう、ここでも配信する。
+     * 走査結果とずれていれば書き直してから返す（外から workspace-* を足された場合に追随する）。
+     */
+    private void serveRegistry(Context ctx) throws Exception {
+        workspaces.list(root);
+        Path file = root.resolve(WorkspaceStore.REGISTRY);
+        ctx.header("Cache-Control", "no-cache");
+        ctx.contentType("text/javascript; charset=utf-8");
+        if (Files.isRegularFile(file)) {
+            ctx.result(Files.readAllBytes(file));
+        } else {
+            ctx.result("ERD.workspaces({\n  workspaces: [\n  ],\n});\n");
+        }
+    }
+
     private void serveData(Context ctx) throws Exception {
-        Path base = root.resolve("data").normalize();
+        String wsId = ctx.pathParam("ws");
+        if (!WorkspaceStore.exists(root, wsId)) {
+            ctx.status(404).contentType("text/plain; charset=utf-8").result("not found");
+            return;
+        }
+        Path base = WorkspaceStore.dataDir(root, wsId).normalize();
         Path file = base.resolve(ctx.pathParam("path")).normalize();
         if (!file.startsWith(base) || !Files.isRegularFile(file)) {
             ctx.status(404).contentType("text/plain; charset=utf-8").result("not found");

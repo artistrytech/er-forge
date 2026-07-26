@@ -93,6 +93,8 @@ async function main() {
 
   const dir = mkdtempSync(join(tmpdir(), "erd-intro-"));
   copyFileSync(INDEX, join(dir, "index.html"));
+  // ワークスペースを1つ用意しておく（サーバーは起動時に workspace-* を走査して認識する）
+  mkdirSync(join(dir, "workspace-default", "data"), { recursive: true });
   mkdirSync(join(dir, "drivers"));
   copyFileSync(h2, join(dir, "drivers", "h2.jar"));
   writeFileSync(join(dir, "schema.sql"), SCHEMA_SQL, "utf-8");
@@ -153,7 +155,7 @@ async function main() {
     check("preview reports 2 added tables", /追加: 2/.test(stats));
 
     // プレビューは1バイトも書き込まない（INV-4）
-    check("preview writes nothing (INV-4)", !existsSync(join(dir, "data", "manifest.js")));
+    check("preview writes nothing (INV-4)", !existsSync(join(dir, "workspace-default", "data", "manifest.js")));
 
     // ---- K-11: 適用 → data/** が生成される ----
     await page.getByTestId("apply").click();
@@ -161,22 +163,22 @@ async function main() {
     await page.waitForSelector('.react-flow, .catalog-page, [data-testid="app-main"]', { timeout: 30000 });
     await new Promise((r) => setTimeout(r, 500));
 
-    const usersFile = join(dir, "data", "schema", "public", "users.js");
+    const usersFile = join(dir, "workspace-default", "data", "schema", "public", "users.js");
     check("schema files are generated", existsSync(usersFile));
     const usersText = readFileSync(usersFile, "utf-8");
     // K-14: コメントの1行目が論理名の初期値として書かれる
     check("logical name is seeded from the DB comment (K-14)",
       usersText.includes('displayName: "ユーザーマスタ"'));
     check("physical FK is captured",
-      readFileSync(join(dir, "data", "schema", "public", "orders.js"), "utf-8")
+      readFileSync(join(dir, "workspace-default", "data", "schema", "public", "orders.js"), "utf-8")
         .includes('table: "public.users"'));
 
     // ---- 人が meta と ER図の配置を整備した状態を作る ----
     const token = new URL(url).searchParams.get("t");
     const origin = new URL(url).origin;
     // 編集ロックは無い（H-11 廃止）。baseHash だけで直接書ける（§8.3）
-    const table = await (await fetch(`${origin}/__erd/tables/public.users?t=${token}`)).json();
-    const put = await fetch(`${origin}/__erd/tables/public.users?t=${token}`, {
+    const table = await (await fetch(`${origin}/__erd/w/default/tables/public.users?t=${token}`)).json();
+    const put = await fetch(`${origin}/__erd/w/default/tables/public.users?t=${token}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -207,8 +209,8 @@ async function main() {
     // ---- K-12 / I-01: 逆生成の直後は ER図 のページが0件。そこから GUI だけで配置まで進める ----
     // 逆生成は diagrams/** を書かない（INV-2）ため、ページは人が作る。ここに導線が無いと
     // 「DB から生成したが ER図 を描けない」行き止まりになる（設計書 §3.4 の運用フロー）
-    const diagramFile = join(dir, "data", "diagrams", "main.js");
-    await page.goto(`${url}#/erd`);
+    const diagramFile = join(dir, "workspace-default", "data", "diagrams", "main.js");
+    await page.goto(`${url}#/w/default/erd`);
     await page.reload();
     await page.waitForSelector('[data-testid="erd-empty"]', { timeout: 15000 });
     check("K-12: the no-pages state offers page creation after introspection", true);
@@ -219,7 +221,7 @@ async function main() {
     await page.getByTestId("page-id").pressSequentially("main");
     await page.getByTestId("page-title").pressSequentially("メイン");
     await page.getByTestId("page-create").click();
-    await page.waitForFunction(() => location.hash === "#/erd/main", { timeout: 10000 });
+    await page.waitForFunction(() => location.hash === "#/w/default/erd/main", { timeout: 10000 });
     check("I-01: the first page is created from the GUI", existsSync(diagramFile));
 
     // 配置するには編集ルートへ入る（[編集開始]）
@@ -227,7 +229,11 @@ async function main() {
     await page.waitForSelector('[data-testid="session-toggle"][data-editing="true"]', { timeout: 5000 });
 
     // 未配置トレイから自動配置（H-08）→ Ctrl+S で保存（自動保存は無い）
-    await page.getByTestId("tray-auto-place").click();
+    // トレイは「未配置」の擬似ページを選んだときに出る（左パネルの2レーン構成）。
+    // ER用・テーブル用の2パネルが常時マウントされているため、表示中のものに限定する
+    const visiblePanel = '[data-testid="panel-slot"]:not([data-hidden]) ';
+    await page.click(visiblePanel + '[data-testid="unplaced-page"]');
+    await page.click(visiblePanel + '[data-testid="tray-auto-place"]');
     await page.waitForSelector('.react-flow__node[data-id="public.users"]', { timeout: 20000 });
     await page.keyboard.press("Control+s");
     await page.waitForSelector('[data-testid="save-button"][data-status="saved"]', { timeout: 15000 });
@@ -241,7 +247,7 @@ async function main() {
     const diagramsBefore = readFileSync(diagramFile, "utf-8");
 
     // ---- 2回目: DB にカラムを追加して再実行 ----
-    await page.goto(`${url}#/introspect`);
+    await page.goto(`${url}#/w/default/introspect`);
     await page.reload();
     await page.waitForSelector('[data-testid="introspect-page"]', { timeout: 15000 });
     await page.getByTestId("jdbc-url").click();
@@ -260,7 +266,7 @@ async function main() {
 
     await page.getByTestId("apply").click();
     // 適用後は ER図 画面へ遷移する（結果サマリはトースト通知）
-    await page.waitForFunction(() => location.hash.startsWith("#/erd"), null, { timeout: 30000 });
+    await page.waitForFunction(() => location.hash.startsWith("#/w/default/erd"), null, { timeout: 30000 });
     check("apply completes and navigates to the ER diagram", true);
 
     const usersAfter = readFileSync(usersFile, "utf-8");

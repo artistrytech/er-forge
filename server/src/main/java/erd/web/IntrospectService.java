@@ -58,9 +58,12 @@ final class IntrospectService {
 
     private static final Duration TTL = Duration.ofMinutes(30);
 
-    /** プレビューのスナップショット（§1）。適用まで DB に再接続しない。 */
-    record Session(String id, Instant expiresAt, RawSchema raw, IntrospectOptions options,
-                   String url, String fingerprint) {}
+    /**
+     * プレビューのスナップショット（§1）。適用まで DB に再接続しない。
+     * どのワークスペースで取ったプレビューかを持ち、他のワークスペースへは適用させない。
+     */
+    record Session(String id, String workspaceId, Instant expiresAt, RawSchema raw,
+                   IntrospectOptions options, String url, String fingerprint) {}
 
     sealed interface Outcome permits Ok, Gone, Stale, Bad, Failed {}
 
@@ -113,7 +116,7 @@ final class IntrospectService {
     // -------------------------------------------------------------- プレビュー
 
     /** K-07 → K-08: 内省を実行し、差分プレビューを返す（書き込みなし。INV-4）。 */
-    Outcome preview(Path erdDir, Path dataDir, JsonNode body) throws SQLException {
+    Outcome preview(String workspaceId, Path erdDir, Path dataDir, JsonNode body) throws SQLException {
         JsonNode scope = body.path("scope");
         List<String> include = strings(scope.path("include"));
         List<String> exclude = strings(scope.path("exclude"));
@@ -127,8 +130,8 @@ final class IntrospectService {
         }
 
         String url = body.path("connection").path("url").asText("");
-        Session session = new Session("s-" + UUID.randomUUID(), Instant.now().plus(TTL), raw,
-                options, url, Hashes.fingerprint(dataDir));
+        Session session = new Session("s-" + UUID.randomUUID(), workspaceId, Instant.now().plus(TTL),
+                raw, options, url, Hashes.fingerprint(dataDir));
         sessions.put(session.id(), session);
         purgeExpired();
 
@@ -136,9 +139,10 @@ final class IntrospectService {
         return new Ok(response(erdDir, session, plan, List.of()), null, Map.of());
     }
 
-    /** GET /__erd/introspect/:sessionId（ブラウザのリロード対策）。失効時は 410。 */
-    Outcome reload(Path erdDir, Path dataDir, String sessionId, List<RenameDecision> decisions) {
-        Session session = session(sessionId);
+    /** GET /__erd/w/:ws/introspect/:sessionId（ブラウザのリロード対策）。失効時は 410。 */
+    Outcome reload(String workspaceId, Path erdDir, Path dataDir, String sessionId,
+                   List<RenameDecision> decisions) {
+        Session session = session(sessionId, workspaceId);
         if (session == null) {
             return new Gone("The preview has expired. Run it again.");
         }
@@ -202,8 +206,8 @@ final class IntrospectService {
      *
      * @param body { sessionId, baseFingerprint, selection: [...], renameDecisions: [...], confirmed }
      */
-    Outcome apply(Path erdDir, Path dataDir, JsonNode body) {
-        Session session = session(body.path("sessionId").asText(""));
+    Outcome apply(String workspaceId, Path erdDir, Path dataDir, JsonNode body) {
+        Session session = session(body.path("sessionId").asText(""), workspaceId);
         if (session == null) {
             return new Gone("The preview has expired. Run it again.");
         }
@@ -376,14 +380,15 @@ final class IntrospectService {
 
     // ------------------------------------------------------------------ 補助
 
-    Session session(String id) {
+    /** 期限内かつ同じワークスペースで取ったセッションだけを返す（他は失効扱い）。 */
+    Session session(String id, String workspaceId) {
         Session s = sessions.get(id);
         if (s == null) return null;
         if (s.expiresAt().isBefore(Instant.now())) {
             sessions.remove(id);
             return null;
         }
-        return s;
+        return java.util.Objects.equals(s.workspaceId(), workspaceId) ? s : null;
     }
 
     private void purgeExpired() {
