@@ -18,8 +18,12 @@ export type Route =
   /** ページ未指定の ER図。ページがあれば先頭へ転送し、無ければ作成の導線を出す（I-01） */
   | { kind: "erdHome" }
   | { kind: "erd"; diagramId: string; tableId?: string }
-  /** ER図の配置編集（閲覧ルートから [編集開始] で遷移。§4.4 / H-10） */
-  | { kind: "erdEdit"; diagramId: string }
+  /**
+   * ER図の配置編集（閲覧ルートから [編集開始] で遷移。§4.4 / H-10）。
+   * tableId は編集中のフォーカス先（左パネルからテーブルを選んでも編集を抜けないように、
+   * 閲覧ルートと同じフォーカス指定を編集ルートでも表せるようにする）。
+   */
+  | { kind: "erdEdit"; diagramId: string; tableId?: string }
   | { kind: "tables" }
   | { kind: "table"; tableId: string }
   | { kind: "tableEdit"; tableId: string }
@@ -44,7 +48,10 @@ export const hrefs = {
     tableId !== undefined
       ? `${base()}/erd/${encodeURIComponent(diagramId)}/${encodeURIComponent(tableId)}`
       : `${base()}/erd/${encodeURIComponent(diagramId)}`,
-  erdEdit: (diagramId: string): string => `${base()}/erd/${encodeURIComponent(diagramId)}/edit`,
+  erdEdit: (diagramId: string, tableId?: string): string =>
+    tableId !== undefined
+      ? `${base()}/erd/${encodeURIComponent(diagramId)}/edit/${encodeURIComponent(tableId)}`
+      : `${base()}/erd/${encodeURIComponent(diagramId)}/edit`,
   tables: (): string => `${base()}/tables`,
   table: (tableId: string): string => `${base()}/tables/${encodeURIComponent(tableId)}`,
   tableEdit: (tableId: string): string => `${base()}/tables/${encodeURIComponent(tableId)}/edit`,
@@ -94,6 +101,10 @@ export function parseHash(hash: string): Route {
       if (segments.length === 2) return { kind: "erd", diagramId: a };
       if (segments.length === 3 && b === "edit") return { kind: "erdEdit", diagramId: a };
       if (segments.length === 3 && b !== undefined) return { kind: "erd", diagramId: a, tableId: b };
+      // 編集中のフォーカス（#/erd/<id>/edit/<tableId>）
+      if (segments.length === 4 && b === "edit" && segments[3] !== undefined) {
+        return { kind: "erdEdit", diagramId: a, tableId: segments[3] };
+      }
     }
   }
   if (head === "tables") {

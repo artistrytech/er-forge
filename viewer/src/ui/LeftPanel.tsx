@@ -14,8 +14,12 @@
  *
  * テーブルを選択したときの遷移（回答3 / 6）:
  * - ER画面: 現在のページにあればフォーカス、別ページにあればそのページでフォーカス、
- *   未配置なら詳細ダイアログ（ダブルクリック相当）。
+ *   未配置なら詳細ダイアログ（ダブルクリック相当）。**編集中は編集ルートのままフォーカスする**。
  * - テーブル画面: 右ペインに詳細（URL にテーブルを埋め込む）。
+ *
+ * 編集の導線は2つあり、どちらか一方しか有効にならない:
+ * - ER図の配置編集（editStore のセッション。保存が要る）… 未配置トレイからの配置・ドラッグ
+ * - ページ情報の編集（「ページ」見出しの ✎。**即時にファイルへ書かれる**）… 追加・改名・並替・削除
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useI18n } from "../i18n/useI18n";
@@ -49,20 +53,53 @@ interface LeftPanelProps {
 
 export function LeftPanel({ scope, currentDiagramId, activeTableId }: LeftPanelProps) {
   const [lane, setLane] = useState<Lane>("pages");
+  // ER画面では、キャンバス上でノードを選んだときも一覧の選択を追随させる（双方向）。
+  // 一覧 → キャンバスは URL のフォーカス経由、キャンバス → 一覧はこの選択状態経由になる
+  const selection = useCanvasStore((s) => s.selection);
+  const active =
+    scope === "erd"
+      ? selection?.type === "node"
+        ? selection.id
+        : undefined
+      : activeTableId;
   return (
     <div className={styles.leftPanel}>
       <IconRail lane={lane} onChange={setLane} />
       <div className={styles.lpBody}>
         {lane === "pages" && (
-          <PagesLane scope={scope} currentDiagramId={currentDiagramId} activeTableId={activeTableId} />
+          <PagesLane scope={scope} currentDiagramId={currentDiagramId} activeTableId={active} />
         )}
         {lane === "all" && (
-          <AllLane scope={scope} currentDiagramId={currentDiagramId} activeTableId={activeTableId} />
+          <AllLane scope={scope} currentDiagramId={currentDiagramId} activeTableId={active} />
         )}
-        {lane === "search" && <SearchLane scope={scope} activeTableId={activeTableId} />}
+        {lane === "search" && <SearchLane scope={scope} activeTableId={active} />}
       </div>
     </div>
   );
+}
+
+/**
+ * テーブルがどのページに載っているか。index.js の tables[].diagrams は**保存後にしか
+ * 更新されない**ため、それだけを見ると保存前の配置・除去が一覧に反映されない
+ * （配置したのに未配置トレイに残り続ける）。読み込み済みのページの view（committed + pending）
+ * で上書きし、未保存の追加・除去も一覧に効かせる。
+ */
+function usePlacement(): Map<string, string[]> {
+  const index = useAppStore((s) => s.index);
+  const diagrams = useAppStore((s) => s.diagrams);
+  return useMemo(() => {
+    const loaded = Object.entries(diagrams);
+    const map = new Map<string, string[]>();
+    for (const it of index?.tables ?? []) {
+      const pages = new Set(it.diagrams ?? []);
+      for (const [diagramId, diagram] of loaded) {
+        if (diagram.nodes?.[it.id] !== undefined) pages.add(diagramId);
+        else pages.delete(diagramId);
+      }
+      map.set(it.id, [...pages]);
+    }
+    return map;
+  }, [index, diagrams]);
 }
 
 // ------------------------------------------------------------------ アイコンレール
@@ -96,30 +133,43 @@ function IconRail({ lane, onChange }: { lane: Lane; onChange: (l: Lane) => void 
 }
 
 /**
+ * ER図のページを開く URL。**編集中は編集ルート（.../edit）を保つ**（左パネルを触るたびに
+ * 編集が終わってしまわないように。編集ルートを離れると App がセッションを閉じる）。
+ */
+function useErdHref(): (diagramId: string, tableId?: string) => string {
+  const editing = useEditStore((s) => s.session === "editing");
+  return useCallback(
+    (diagramId: string, tableId?: string) =>
+      editing ? hrefs.erdEdit(diagramId, tableId) : hrefs.erd(diagramId, tableId),
+    [editing],
+  );
+}
+
+/**
  * 「ページ」レーンからのテーブル選択（従来通り）。ER図では現在のページでフォーカス、
  * 別ページにあればそのページでフォーカス、未配置は詳細ダイアログ（回答3 / 6）。
  */
 function useTableSelect(scope: PanelScope, currentDiagramId?: string): (tableId: string) => void {
-  const index = useAppStore((s) => s.index);
   const openDialog = useAppStore((s) => s.openDialog);
+  const placement = usePlacement();
+  const erdHref = useErdHref();
   return useCallback(
     (tableId: string) => {
       if (scope === "tables") {
         location.hash = hrefs.table(tableId);
         return;
       }
-      const it = index?.tables?.find((x) => x.id === tableId);
-      const diagrams = it?.diagrams ?? [];
+      const diagrams = placement.get(tableId) ?? [];
       const otherPage = diagrams[0];
       if (currentDiagramId !== undefined && diagrams.includes(currentDiagramId)) {
-        location.hash = hrefs.erd(currentDiagramId, tableId); // 現在のページでフォーカス
+        location.hash = erdHref(currentDiagramId, tableId); // 現在のページでフォーカス
       } else if (otherPage !== undefined) {
-        location.hash = hrefs.erd(otherPage, tableId); // 別ページでフォーカス（回答6）
+        location.hash = erdHref(otherPage, tableId); // 別ページでフォーカス（回答6）
       } else {
         openDialog({ type: "table", id: tableId }); // 未配置は詳細ダイアログ（回答3）
       }
     },
-    [scope, currentDiagramId, index, openDialog],
+    [scope, currentDiagramId, placement, erdHref, openDialog],
   );
 }
 
@@ -134,8 +184,9 @@ function useListTableSelect(scope: PanelScope): {
   select: (tableId: string) => void;
   pickerNode: React.ReactNode;
 } {
-  const index = useAppStore((s) => s.index);
   const openDialog = useAppStore((s) => s.openDialog);
+  const placement = usePlacement();
+  const erdHref = useErdHref();
   const [picker, setPicker] = useState<{ tableId: string; pages: string[] } | null>(null);
 
   const select = useCallback(
@@ -144,17 +195,16 @@ function useListTableSelect(scope: PanelScope): {
         location.hash = hrefs.table(tableId);
         return;
       }
-      const it = index?.tables?.find((x) => x.id === tableId);
-      const pages = it?.diagrams ?? [];
+      const pages = placement.get(tableId) ?? [];
       if (pages.length === 0) {
         openDialog({ type: "table", id: tableId }); // 未配置は詳細ダイアログ
       } else if (pages.length === 1) {
-        location.hash = hrefs.erd(pages[0]!, tableId); // 1ページはそのページでフォーカス
+        location.hash = erdHref(pages[0]!, tableId); // 1ページはそのページでフォーカス
       } else {
         setPicker({ tableId, pages }); // 複数ページはダイアログで選ばせる
       }
     },
-    [scope, index, openDialog],
+    [scope, placement, erdHref, openDialog],
   );
 
   const pickerNode =
@@ -163,7 +213,7 @@ function useListTableSelect(scope: PanelScope): {
         tableId={picker.tableId}
         pages={picker.pages}
         onPick={(page) => {
-          location.hash = hrefs.erd(page, picker.tableId);
+          location.hash = erdHref(page, picker.tableId);
           setPicker(null);
         }}
         onClose={() => setPicker(null)}
@@ -226,9 +276,19 @@ function PagesLane({
   const nameDisplay = useAppStore((s) => s.nameDisplay);
   const serverMode = useAppStore((s) => s.serverMode === true);
   const editing = useEditStore((s) => s.session === "editing");
+  const pageInfoEditing = useAppStore((s) => s.pageInfoEditing);
+  const placement = usePlacement();
   const onSelect = useTableSelect(scope, currentDiagramId);
-  // ページの追加/改名/並替/削除・配置は ER×編集×サーバーのときだけ（テーブル画面は閲覧専用）
-  const canManage = scope === "erd" && editing && serverMode;
+  const erdHref = useErdHref();
+  /*
+   * ページ情報（追加・改名・並び替え・削除）は**即時にファイルへ書かれる**ため、ER図の配置編集
+   * （保存が要る）とは導線を分ける。ここは「ページ」見出しの ✎ で入る専用モードで、ER編集中は
+   * 入れない（逆にこのモード中は ER・テーブルの編集を始められない。Header 側で止めている）。
+   * テーブル画面の左パネルからも同じように扱える。
+   */
+  const canManage = serverMode && pageInfoEditing && !editing;
+  // 未配置トレイからの配置は ER図の編集セッション側の操作（ページ情報編集とは別物）
+  const canPlace = scope === "erd" && editing && serverMode;
 
   const diagrams = useMemo(
     () => [...(manifest?.diagrams ?? [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
@@ -249,21 +309,21 @@ function PagesLane({
 
   const tableCountByDiagram = useMemo(() => {
     const counts = new Map<string, number>();
-    for (const it of index?.tables ?? []) {
-      for (const d of it.diagrams ?? []) counts.set(d, (counts.get(d) ?? 0) + 1);
+    for (const pages of placement.values()) {
+      for (const d of pages) counts.set(d, (counts.get(d) ?? 0) + 1);
     }
     return counts;
-  }, [index]);
+  }, [placement]);
 
   const sortedTables = useMemo(
     () => [...(index?.tables ?? [])].sort((a, b) => a.name.localeCompare(b.name, "ja")),
     [index],
   );
-  const unplaced = sortedTables.filter((it) => (it.diagrams ?? []).length === 0);
+  const unplaced = sortedTables.filter((it) => (placement.get(it.id) ?? []).length === 0);
   const pageTables =
     selectedPage === undefined || selectedPage === UNPLACED
       ? []
-      : sortedTables.filter((it) => (it.diagrams ?? []).includes(selectedPage));
+      : sortedTables.filter((it) => (placement.get(it.id) ?? []).includes(selectedPage));
 
   // 未配置の疑似ページを選択中に未配置が尽きたら、実ページの表示へ戻す
   // （配置し終えたら未配置トレイは消える。K-12 §7.1）
@@ -277,8 +337,9 @@ function PagesLane({
   const selectPage = (id: string): void => {
     setSelectedPage(id);
     // ER図では実ページの選択でそのページへ遷移（現在のページを切り替える）。
+    // 編集中は編集ルートのまま切り替える（ページを選ぶだけで編集が終わらないように）。
     // 未配置の疑似ページは見た目上のページ切り替えをしない（回答D）
-    if (scope === "erd" && id !== UNPLACED) location.hash = hrefs.erd(id);
+    if (scope === "erd" && id !== UNPLACED) location.hash = erdHref(id);
   };
 
   return (
@@ -286,7 +347,12 @@ function PagesLane({
       <div className={styles.sidebarSection}>
         <div className={styles.sidebarHeading}>
           {t("sidebar.pages")}
-          {canManage && <AddPageButton />}
+          {serverMode && (
+            <span className={styles.pageHeadActions}>
+              {canManage && <AddPageButton />}
+              <PageInfoEditToggle editing={canManage} lockedByErd={editing} />
+            </span>
+          )}
         </div>
         <ul>
           {diagrams.map((d, i) => (
@@ -330,7 +396,7 @@ function PagesLane({
       {showTray ? (
         <UnplacedTray
           tables={unplaced}
-          canManage={canManage}
+          editingLayout={canPlace}
           inErd={scope === "erd" && currentDiagramId !== undefined}
           nameDisplay={nameDisplay}
           activeTableId={activeTableId}
@@ -348,6 +414,7 @@ function PagesLane({
                 key={it.id}
                 className={cx(styles.lpItem, it.id === activeTableId && styles.active)}
                 data-testid="lp-item"
+                data-active={it.id === activeTableId ? "true" : undefined}
                 data-color={colorAttr(it.color)}
               >
                 <button type="button" className={styles.lpItemBtn} onClick={() => onSelect(it.id)}>
@@ -361,6 +428,34 @@ function PagesLane({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * ページ情報の編集モードの開始・終了（「ページ」見出しの横）。
+ * ER図の編集セッションとは相互排他で、ER編集中は押せない。
+ */
+function PageInfoEditToggle({ editing, lockedByErd }: { editing: boolean; lockedByErd: boolean }) {
+  const { t } = useI18n();
+  const setPageInfoEditing = useAppStore((s) => s.setPageInfoEditing);
+  return (
+    <button
+      type="button"
+      className={cx("sidebar-icon-button", styles.pageInfoToggle)}
+      data-testid="page-info-toggle"
+      data-editing={editing ? "true" : "false"}
+      disabled={lockedByErd}
+      title={
+        lockedByErd
+          ? t("page.infoEditLocked")
+          : editing
+            ? t("page.infoEditEnd")
+            : t("page.infoEditStart")
+      }
+      onClick={() => setPageInfoEditing(!editing)}
+    >
+      {editing ? "✕" : "✎"}
+    </button>
   );
 }
 
@@ -388,7 +483,9 @@ function PageControls({
   const onDeleted = (): void => {
     setConfirming(false);
     addToast(t("page.deleted", { title }));
-    // 削除したページを開いていたら、ページ一覧の先頭へ戻す（白画面にしない。B-11）
+    // 削除したページを**開いていたときだけ**先頭ページへ戻す（白画面にしない。B-11）。
+    // テーブル画面や別ページから消した場合は、今いる画面に留まる
+    if (useAppStore.getState().currentDiagramId !== diagramId) return;
     const first = useAppStore.getState().manifest?.diagrams?.[0]?.id;
     location.hash = first !== undefined ? hrefs.erd(first) : hrefs.tables();
   };
@@ -517,14 +614,15 @@ function RenamePageDialog({
 
 function UnplacedTray({
   tables,
-  canManage,
+  editingLayout,
   inErd,
   nameDisplay,
   activeTableId,
   onSelect,
 }: {
   tables: IndexTable[];
-  canManage: boolean;
+  /** ER図の配置編集中か（トレイからの配置はこのセッションの操作。ページ情報編集とは別） */
+  editingLayout: boolean;
   inErd: boolean;
   nameDisplay: NameDisplay;
   activeTableId?: string;
@@ -541,7 +639,7 @@ function UnplacedTray({
     return [...tables].sort((a, b) => Number(isNew(b)) - Number(isNew(a)));
   }, [tables, recent]);
 
-  const canPlace = canManage && inErd && placeTables !== null;
+  const canPlace = editingLayout && inErd && placeTables !== null;
   const toggle = (id: string): void =>
     setSelected((prev) => {
       const next = new Set(prev);
@@ -583,6 +681,7 @@ function UnplacedTray({
             key={it.id}
             className={cx(styles.trayRow, styles.lpItem, it.id === activeTableId && styles.active)}
             data-testid="lp-item"
+            data-active={it.id === activeTableId ? "true" : undefined}
             data-color={colorAttr(it.color)}
           >
             {canPlace && (
@@ -636,6 +735,7 @@ function AllLane({
   const serverMode = useAppStore((s) => s.serverMode === true);
   const editing = useEditStore((s) => s.session === "editing");
   const placeTables = useCanvasStore((s) => s.placeTables);
+  const placement = usePlacement();
   const { select: onSelect, pickerNode } = useListTableSelect(scope);
   const [filter, setFilter] = useState("");
 
@@ -677,7 +777,10 @@ function AllLane({
             it={it}
             active={it.id === activeTableId}
             nameDisplay={nameDisplay}
-            currentDiagramId={currentDiagramId}
+            onPage={
+              currentDiagramId !== undefined &&
+              (placement.get(it.id) ?? []).includes(currentDiagramId)
+            }
             canPlace={canPlace}
             onSelect={onSelect}
             onPlace={placeTables}
@@ -754,6 +857,7 @@ function SearchLane({
                 key={hit.tableId}
                 className={cx(styles.lpItem, hit.tableId === activeTableId && styles.active)}
                 data-testid="lp-item"
+                data-active={hit.tableId === activeTableId ? "true" : undefined}
                 data-color={colorAttr(it.color)}
               >
                 <button type="button" className={styles.lpItemBtn} onClick={() => onSelect(hit.tableId)}>
@@ -786,7 +890,7 @@ function TableRow({
   it,
   active,
   nameDisplay,
-  currentDiagramId,
+  onPage,
   canPlace,
   onSelect,
   onPlace,
@@ -794,19 +898,20 @@ function TableRow({
   it: IndexTable;
   active: boolean;
   nameDisplay: NameDisplay;
-  currentDiagramId?: string;
+  /** 現在のページに配置済みか（保存前の追加・除去も反映した判定） */
+  onPage: boolean;
   canPlace: boolean;
   onSelect: (id: string) => void;
   onPlace: ((ids: string[], at?: [number, number]) => void) | null;
 }) {
   const { t } = useI18n();
-  const onPage = currentDiagramId !== undefined && (it.diagrams ?? []).includes(currentDiagramId);
   const draggable = canPlace && !onPage;
   const label = formatName(resolveIndexTableName(it), it.name, nameDisplay);
   return (
     <li
       className={cx(styles.lpItem, styles.sidebarTableRow, active && styles.active)}
       data-testid="lp-item"
+      data-active={active ? "true" : undefined}
       data-color={colorAttr(it.color)}
     >
       {/* 行全体を1つのボタンにする（ラベル以外を押しても反応するように）。DnD の起点も兼ねる */}

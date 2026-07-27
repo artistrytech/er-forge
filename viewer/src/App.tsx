@@ -84,6 +84,20 @@ export function App() {
     }
   }, [route.kind]);
 
+  // 左パネルのページ情報編集（即時反映）は、パネルが出ていない画面と ER図の編集中には
+  // 成立しない（見えない編集モードを残さない／ER編集とは相互排他）。ここで確実に解除する
+  const panelHidden =
+    route.kind !== "erd" &&
+    route.kind !== "erdHome" &&
+    route.kind !== "erdEdit" &&
+    route.kind !== "tables" &&
+    route.kind !== "table";
+  useEffect(() => {
+    if (panelHidden || route.kind === "erdEdit") {
+      useAppStore.getState().setPageInfoEditing(false);
+    }
+  }, [panelHidden, route.kind]);
+
   // 最後に閲覧したテーブルを覚えておき、テーブル一覧を開いたとき復元する（下の tables 分岐）
   const viewedTableId = route.kind === "table" ? route.tableId : null;
   useEffect(() => {
@@ -153,14 +167,15 @@ export function App() {
       ? lastTableId
       : firstTableId;
 
-  // 左パネルの表示対象（回答2: ER用・テーブル用の2インスタンスを常時マウントし表示を出し分ける）
+  // 左パネルの表示対象（回答2: ER用・テーブル用の2インスタンスを常時マウントし表示を出し分ける）。
+  // テーブル編集中は隠す（編集フォームに集中させ、そこから他テーブルへ飛ばせないようにする）
   const panelScope: "erd" | "tables" | null = onErdRoute
     ? "erd"
-    : route.kind === "tables" || route.kind === "table" || route.kind === "tableEdit"
+    : route.kind === "tables" || route.kind === "table"
       ? "tables"
       : null;
   const activeTableId =
-    route.kind === "erd"
+    route.kind === "erd" || route.kind === "erdEdit"
       ? route.tableId
       : route.kind === "table" || route.kind === "tableEdit"
         ? route.tableId
@@ -188,8 +203,9 @@ export function App() {
       content = <ErdPage diagramId={route.diagramId} focusTableId={route.tableId} />;
       break;
     case "erdEdit":
-      // 編集ルート。ER図は静的モードでも編集できる（保存不可の警告つき。§9.7）
-      content = <ErdPage diagramId={route.diagramId} />;
+      // 編集ルート。ER図は静的モードでも編集できる（保存不可の警告つき。§9.7）。
+      // 左パネルからテーブルを選んだときも編集を抜けずにフォーカスできる（tableId 付き）
+      content = <ErdPage diagramId={route.diagramId} focusTableId={route.tableId} />;
       break;
     case "tables":
       // 一覧と詳細を統合（案B）。未選択状態は作らず、最後に閲覧したテーブル

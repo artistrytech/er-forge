@@ -41,8 +41,15 @@ function openWorkspace(id: string): void {
 
 // ------------------------------------------------------------- プルダウン
 
-/** タイトル横の切替メニュー（一覧 + 末尾に [＋ 追加]）。単純なリストで、絞り込みは持たない */
-export function WorkspaceMenu() {
+/**
+ * ヘッダのタイトル（＝現在のワークスペース名）と切替メニュー（一覧 + 末尾に [＋ 追加]）。
+ * 単純なリストで、絞り込みは持たない。
+ *
+ * 名前は**リンクではなくプルダウンのボタンそのもの**にしている。以前は「名前 = ER図へのリンク」
+ * ＋「隣の ▾ = 切替」の2つに分かれており、同じ見た目の並びでクリックの意味が食い違っていた。
+ * ER図へは共通ヘッダのナビから行ける（ここでの重複を無くす）。
+ */
+export function WorkspaceMenu({ title, className }: { title: string; className?: string }) {
   const { t } = useI18n();
   const workspaces = useAppStore((s) => s.workspaces);
   const workspaceId = useAppStore((s) => s.workspaceId);
@@ -77,7 +84,7 @@ export function WorkspaceMenu() {
   };
 
   return (
-    <div className={styles.workspaceMenu} ref={ref}>
+    <div className={cx(styles.workspaceMenu, className)} ref={ref}>
       <button
         type="button"
         className={cx(styles.workspaceButton, open && styles.open)}
@@ -87,6 +94,9 @@ export function WorkspaceMenu() {
         title={t("workspace.switch")}
         onClick={() => setOpen((o) => !o)}
       >
+        <span className={styles.workspaceTitle} data-testid="app-title">
+          {title}
+        </span>
         <ChevronIcon />
       </button>
       {open && (

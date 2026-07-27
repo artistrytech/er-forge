@@ -55,10 +55,26 @@ export function Header({ currentDiagramId }: { currentDiagramId?: string }) {
   // 現在の画面のナビを濃色でハイライトする（モック）
   const route = useRoute();
   const kind = route.kind;
-  const nav = (on: boolean): string => cx(styles.appNavLink, on && styles.active);
   const onErd = kind === "erd" || kind === "erdHome" || kind === "erdEdit";
   const onTables = kind === "tables" || kind === "table" || kind === "tableEdit";
   const onColumns = kind === "columns" || kind === "columnsEdit";
+
+  /*
+   * 編集中は**ほかの画面へのナビを非活性にする**。編集ルートを離れると編集セッションが
+   * 終わる（App がルートに追従する）ため、ナビを踏むと気づかないうちに編集が終了してしまう。
+   * 現在の画面のナビだけは残すが、編集ルートを指させて「押しても何も起きない」ようにする。
+   * 静的モードのテーブル/カラム編集ルートは App が閲覧へ逃がすので、ここでは編集扱いしない。
+   */
+  const erdEditing = kind === "erdEdit";
+  const tableEditing = kind === "tableEdit" && serverMode === true;
+  const columnsEditing = kind === "columnsEdit" && serverMode === true;
+  const editingRoute = erdEditing || tableEditing || columnsEditing;
+  const navHref = {
+    erd: route.kind === "erdEdit" ? hrefs.erdEdit(route.diagramId) : erdHref,
+    tables:
+      route.kind === "tableEdit" && tableEditing ? hrefs.tableEdit(route.tableId) : hrefs.tables(),
+    columns: columnsEditing ? hrefs.columnsEdit() : hrefs.columns(),
+  };
 
   return (
     <header className={styles.appHeader}>
@@ -71,28 +87,26 @@ export function Header({ currentDiagramId }: { currentDiagramId?: string }) {
           <div className={styles.progressBarFill} style={{ width: `${Math.round(progress * 100)}%` }} />
         </div>
       )}
-      {/* タイトル = 現在のワークスペース名。文字列はリンクのまま（挙動は「ER図」ナビと同じ）で、
-          切替は右隣の ▾ に分ける（クリックの意味が競合しないように） */}
-      <div className={styles.appTitleGroup}>
-        <Link className={styles.appTitle} data-testid="app-title" href={erdHref}>
-          {titleText}
-        </Link>
-        <WorkspaceMenu />
-      </div>
+      {/* タイトル = 現在のワークスペース名。名前そのものが切替プルダウンのボタン */}
+      <WorkspaceMenu title={titleText} className={styles.appTitle} />
       <nav className={styles.appNav}>
-        <Link className={nav(onErd)} href={erdHref}>
+        <NavLink href={navHref.erd} active={onErd} disabled={editingRoute && !erdEditing}>
           {t("nav.erd")}
-        </Link>
-        <Link className={nav(onTables)} href={hrefs.tables()}>
+        </NavLink>
+        <NavLink href={navHref.tables} active={onTables} disabled={editingRoute && !tableEditing}>
           {t("nav.tables")}
-        </Link>
-        <Link className={nav(onColumns)} href={hrefs.columns()}>
+        </NavLink>
+        <NavLink
+          href={navHref.columns}
+          active={onColumns}
+          disabled={editingRoute && !columnsEditing}
+        >
           {t("nav.columns")}
-        </Link>
+        </NavLink>
         {serverMode === true && (
-          <Link className={nav(kind === "introspect")} href={hrefs.introspect()}>
+          <NavLink href={hrefs.introspect()} active={kind === "introspect"} disabled={editingRoute}>
             {t("nav.introspect")}
-          </Link>
+          </NavLink>
         )}
       </nav>
       <div className={styles.appHeaderRight}>
@@ -102,6 +116,37 @@ export function Header({ currentDiagramId }: { currentDiagramId?: string }) {
         <EditControls route={route} />
       </div>
     </header>
+  );
+}
+
+/**
+ * 共通ヘッダのナビ1件。非活性のときは <a> ではなく <span> にする
+ * （href を消しただけの <a> はキーボード・中クリックで辿れてしまうため）。
+ */
+function NavLink({
+  href,
+  active,
+  disabled,
+  children,
+}: {
+  href: string;
+  active: boolean;
+  disabled: boolean;
+  children: React.ReactNode;
+}) {
+  const { t } = useI18n();
+  const className = cx(styles.appNavLink, active && styles.active, disabled && styles.disabled);
+  if (disabled) {
+    return (
+      <span className={className} aria-disabled="true" data-disabled="true" title={t("session.navLocked")}>
+        {children}
+      </span>
+    );
+  }
+  return (
+    <Link className={className} href={href}>
+      {children}
+    </Link>
   );
 }
 
@@ -386,6 +431,9 @@ function EditControls({ route }: { route: Route }) {
   const retry = useEditStore((s) => s.retry);
   const openExport = useEditStore((s) => s.openExport);
   const controller = usePageEditStore((s) => s.controller);
+  // ページ情報（追加・改名・並び替え・削除）の編集中は、ER図・テーブルの編集を始めさせない。
+  // どちらも「編集中」の見た目になり、何を編集しているのかが読めなくなるため（相互排他）
+  const pageInfoEditing = useAppStore((s) => s.pageInfoEditing);
   // 未保存があるまま終了を押したときに開く確認（保持している関数を実行すると終了する）
   const [pendingEnd, setPendingEnd] = useState<{ run: () => void } | null>(null);
 
@@ -402,7 +450,7 @@ function EditControls({ route }: { route: Route }) {
     if (erdId !== undefined) {
       const editing = session === "editing";
       if (!editing) {
-        body = <StartEditButton href={hrefs.erdEdit(erdId)} />;
+        body = <StartEditButton href={hrefs.erdEdit(erdId)} locked={pageInfoEditing} />;
       } else {
         const dirty = netDirty;
         body = (
@@ -439,7 +487,7 @@ function EditControls({ route }: { route: Route }) {
         body = <PageEditButtons controller={controller} onEnd={requestEnd} />;
       }
     } else if (serverMode === true) {
-      body = <StartEditButton href={hrefs.tableEdit(tableId)} />;
+      body = <StartEditButton href={hrefs.tableEdit(tableId)} locked={pageInfoEditing} />;
     }
   } else if (route.kind === "columns" || route.kind === "columnsEdit") {
     if (route.kind === "columnsEdit") {
@@ -543,8 +591,23 @@ function SaveButton({
   );
 }
 
-function StartEditButton({ href }: { href: string }) {
+/** locked = ページ情報の編集中（そちらを終えるまで、この画面の編集は始められない） */
+function StartEditButton({ href, locked = false }: { href: string; locked?: boolean }) {
   const { t } = useI18n();
+  if (locked) {
+    return (
+      <button
+        type="button"
+        className={styles.iconButton}
+        data-testid="session-toggle"
+        data-editing="false"
+        disabled
+        title={t("session.lockedByPageEdit")}
+      >
+        <PenIcon />
+      </button>
+    );
+  }
   return (
     <Link
       className={cx(styles.iconButton, styles.iconPrimary)}

@@ -48,8 +48,7 @@ export function BootstrapScreen() {
         {/* このワークスペースはまだ空、という状態。ここからも他のワークスペースへ移れる
             （移れないと、2つ目を作った直後に元へ戻る導線が URL しかなくなる） */}
         <h1 className={styles.bootstrapTitle}>
-          {workspaceName ?? t("app.title")}
-          <WorkspaceMenu />
+          <WorkspaceMenu title={workspaceName ?? t("app.title")} />
         </h1>
         <p>{t("bootstrap.lead")}</p>
         <div className={styles.bootstrapOptions}>

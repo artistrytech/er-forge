@@ -13,23 +13,9 @@
   flex-wrap: wrap;
 }
 
-/* タイトル（ワークスペース名）と切替 ▾ */
-.app-title-group {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-
+/* タイトル（＝ワークスペース切替ボタン）の文字サイズ。見た目はボタン側が継承する */
 .app-title {
-  font-weight: 700;
   font-size: 15px;
-  color: var(--text-strong);
-  text-decoration: none;
-  cursor: pointer;
-}
-
-.app-title:hover {
-  color: var(--accent);
 }
 
 .app-nav {
@@ -64,6 +50,16 @@
 
 .app-nav-link.active:hover {
   background: var(--ink);
+}
+
+/* 編集中はほかの画面へ移動できない（押せないことが見て分かるようにする） */
+.app-nav-link.disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.app-nav-link.disabled:hover {
+  background: none;
 }
 
 .app-nav-button kbd {

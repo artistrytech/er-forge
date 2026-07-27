@@ -5,23 +5,35 @@
   display: inline-flex;
 }
 
+/* ワークスペース名 + ▾ を1つのボタンにする（名前を押しても一覧が開く）。
+   文字サイズは置き場所（ヘッダ / ブートストラップ画面の見出し）から継承する */
 .workspace-button {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  padding: 0;
+  gap: 4px;
+  min-height: 30px;
+  padding: 4px 8px;
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   background: none;
   color: var(--text-muted);
+  font: inherit;
   cursor: pointer;
+}
+
+.workspace-title {
+  font-weight: 700;
+  color: var(--text-strong);
 }
 
 .workspace-button:hover,
 .workspace-button.open {
   background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.workspace-button:hover .workspace-title,
+.workspace-button.open .workspace-title {
   color: var(--accent);
 }
 

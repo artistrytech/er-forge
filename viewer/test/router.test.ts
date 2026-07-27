@@ -17,6 +17,16 @@ describe("parseHash (B-07 / 設計書 §4.4)", () => {
       tableId: "public.users",
     });
   });
+  // 編集中に左パネルからテーブルを選んでも編集を抜けないよう、編集ルートも
+  // フォーカス先を持てる（#/erd/<id>/edit/<tableId>）
+  it("#/erd/<id>/edit（フォーカスの有無）", () => {
+    expect(parseHash("#/erd/core/edit")).toEqual({ kind: "erdEdit", diagramId: "core" });
+    expect(parseHash("#/erd/core/edit/public.users")).toEqual({
+      kind: "erdEdit",
+      diagramId: "core",
+      tableId: "public.users",
+    });
+  });
   it("#/tables 系", () => {
     expect(parseHash("#/tables")).toEqual({ kind: "tables" });
     expect(parseHash("#/tables/public.users")).toEqual({
@@ -81,6 +91,11 @@ describe("ワークスペース接頭辞（#/w/<id>）", () => {
 
   it("往復する（ワークスペース込み）", () => {
     expect(parseHash(hrefs.erdEdit("core"))).toEqual({ kind: "erdEdit", diagramId: "core" });
+    expect(parseHash(hrefs.erdEdit("core", "public.注文"))).toEqual({
+      kind: "erdEdit",
+      diagramId: "core",
+      tableId: "public.注文",
+    });
     expect(parseHash(hrefs.introspect())).toEqual({ kind: "introspect" });
   });
 });

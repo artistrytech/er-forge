@@ -74,6 +74,15 @@ export interface AppState {
    * 「未配置」自体は index.tables[].diagrams が空という導出結果であって、フラグではない）。
    */
   recentTables: string[];
+  /**
+   * 左パネルのページ情報編集モード（ページの追加・改名・並び替え・削除）。
+   *
+   * これらは**即時にファイルへ書かれる**（ER図の配置編集のような「保存」を挟まない）ため、
+   * ER図の編集セッションとは別の導線に分ける。ER編集中は開始できず、逆にこのモード中は
+   * ER図・テーブルの編集を開始できない（どちらの意味で編集中なのかを曖昧にしない）。
+   * ER用・テーブル用の左パネルは2つ同時にマウントされるため、状態はここで共有する。
+   */
+  pageInfoEditing: boolean;
 
   setLang(lang: Lang): void;
   setNameDisplay(mode: NameDisplay): void;
@@ -88,6 +97,7 @@ export interface AppState {
   /** 一時通知。variant="error" は赤系で少し長く表示する（M-01） */
   addToast(text: string, variant?: "info" | "error"): void;
   setRecentTables(ids: string[]): void;
+  setPageInfoEditing(editing: boolean): void;
   setLastTableId(id: string | null): void;
   setLastDiagramId(id: string | null): void;
 }
@@ -184,6 +194,7 @@ export const useAppStore = create<AppState>((set) => ({
   currentDiagramId: null,
   toasts: [],
   recentTables: [],
+  pageInfoEditing: false,
   workspaces: [],
   workspaceId: null,
   lastWorkspaceId: readSession(LAST_WORKSPACE_KEY),
@@ -219,6 +230,7 @@ export const useAppStore = create<AppState>((set) => ({
   setNotice: (notice) => set({ notice }),
   setCurrentDiagramId: (currentDiagramId) => set({ currentDiagramId }),
   setRecentTables: (recentTables) => set({ recentTables }),
+  setPageInfoEditing: (pageInfoEditing) => set({ pageInfoEditing }),
   setLastTableId: (lastTableId) => {
     set((s) => {
       persistOrRemoveSession(scopedKey(LAST_TABLE_KEY, s.workspaceId), lastTableId);

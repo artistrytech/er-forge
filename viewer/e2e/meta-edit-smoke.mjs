@@ -100,6 +100,12 @@ async function main() {
     );
     check("edit form is enabled on the edit route (no lock)", true);
 
+    // 編集中は他画面へのナビを非活性にし（踏むと編集が終わってしまうため）、左パネルも畳む
+    check("table edit disables the other nav links",
+        (await page.locator('nav [data-disabled="true"]').count()) === 3);
+    check("table edit hides the left panel",
+        (await page.locator('[data-testid="panel-slot"]:not([data-hidden])').count()) === 0);
+
     await typeInto(page.locator(".form-grid input").first(), "セッション");
 
     await page.getByRole("button", { name: "+ 論理外部制約を追加" }).click();
@@ -197,6 +203,9 @@ async function main() {
     // ---- カラム論理名の一括編集（P-03） ----
     // 閲覧は #/columns、編集は #/columns/edit（ロックは無い。P-03 §2.4）
     await page.goto(`${url}#/w/default/columns/edit`);
+    await page.waitForSelector('[data-testid="save-button"]', { timeout: 15000 });
+    check("column edit disables the other nav links",
+        (await page.locator('nav [data-disabled="true"]').count()) === 3);
     // 全テーブルのロード完了で保存が有効化されるまで編集
     const rowInput = page
       .locator("tr", { has: page.locator("td", { hasText: "session_token" }) })

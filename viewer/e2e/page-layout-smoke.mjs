@@ -202,13 +202,33 @@ async function main() {
     await page.locator('[data-testid="unplaced-tray"] [data-testid="tray-item"]').first()
         .dragTo(page.locator(".react-flow__pane"), { targetPosition: { x: 200, y: 500 } });
     await page.waitForSelector('.react-flow__node[data-id="public.user_sessions"]', { timeout: 10000 });
+    // ドロップした時点で未配置ではなくなる（index.js は保存後にしか更新されないが、
+    // 一覧は保存前の配置（view）も見る）
+    const trayGoneBeforeSave = await page
+        .waitForSelector('[data-testid="unplaced-tray"]', { state: "detached", timeout: 5000 })
+        .then(() => true, () => false);
+    check("K-12: a dragged table leaves the unplaced list before saving", trayGoneBeforeSave);
     await waitSaved(page);
     const dropped = nodesInFile(dir, "users")["public.user_sessions"];
     check("I-04: dropping a tray item onto the canvas places it",
         dropped !== undefined && dropped[0] % 8 === 0 && dropped[1] % 8 === 0);
 
     // ---- 4. I-01: ページの追加 ----
-    await page.click('[data-testid="page-add"]');
+    // ページ情報（追加・改名・並び替え・削除）は即時反映のため、ER図の配置編集とは
+    // 別モードに分けてある。ER編集中は入れない（相互排他）
+    check("page info editing is locked while editing the diagram",
+        await page.locator(V + '[data-testid="page-info-toggle"]').isDisabled());
+    check("page management is hidden outside the page-info mode",
+        (await page.locator(V + '[data-testid="page-add"]').count()) === 0);
+    // ER図の編集を終えてからページ情報の編集へ入る
+    await page.click('[data-testid="session-toggle"][data-editing="true"]');
+    await page.waitForSelector('[data-testid="session-toggle"][data-editing="false"]', { timeout: 5000 });
+    await page.click(V + '[data-testid="page-info-toggle"]');
+    await page.waitForSelector(V + '[data-testid="page-info-toggle"][data-editing="true"]', { timeout: 5000 });
+    check("diagram editing cannot start while editing page info",
+        await page.locator('[data-testid="session-toggle"]').isDisabled());
+
+    await page.click(V + '[data-testid="page-add"]');
     await page.locator('[data-testid="page-id"]').pressSequentially("billing");
     await page.locator('[data-testid="page-title"]').pressSequentially("課金");
     await page.click('[data-testid="page-create"]');
@@ -222,9 +242,22 @@ async function main() {
     check("I-01: every table is now unplaced-free but the tray stays empty",
         (await page.locator('[data-testid="unplaced-tray"]').count()) === 0);
 
-    // 新規ページ作成後は閲覧ルートに着地する。配置するには編集ルートへ入る
+    // 新規ページ作成後は閲覧ルートに着地する。配置するにはページ情報の編集を終えて編集ルートへ
+    await page.click(V + '[data-testid="page-info-toggle"]');
+    await page.waitForSelector(V + '[data-testid="page-info-toggle"][data-editing="false"]', { timeout: 5000 });
     await page.click('[data-testid="session-toggle"]');
     await page.waitForSelector('[data-testid="session-toggle"][data-editing="true"]', { timeout: 5000 });
+
+    // 編集中は共通ヘッダのほかのナビが押せない（踏むと編集ルートを離れて編集が終わるため）
+    check("diagram editing disables the other nav links",
+        (await page.locator('nav [data-disabled="true"]').count()) === 3);
+    // ページを選んでも編集ルートのまま（編集が終わらない）
+    await page.click(V + '[data-testid="lane-pages"]');
+    await page.click(V + '[data-testid="page-row"] button');
+    await page.waitForFunction(() => location.hash.endsWith("/edit"), null, { timeout: 5000 });
+    check("selecting a page keeps the edit route", true);
+    await page.goto(`${url}#/w/default/erd/billing/edit`);
+    await page.waitForSelector('[data-testid="erd-edit-toolbar"]', { timeout: 10000 });
 
     // ---- 4b. I-04 / §5.9: 別ページに配置済みのテーブルを、この空ページへ配置する ----
     // users ページにあるテーブルを billing にも足す（移動ではなく複数ページ配置）
@@ -266,9 +299,14 @@ async function main() {
     check("I-04: no double placement", Object.keys(nodesInFile(dir, "billing")).length === billingCount);
 
     // ---- 5. I-03: 改名 → manifest とページファイルの両方に反映される ----
-    // ページ管理は「ページ」レーンで行う（4b で「全て」に切り替えているため戻す）
+    // ページ管理は「ページ」レーンのページ情報編集モードで行う
+    // （4b で「全て」に切り替え、ER図の編集中でもあるため、どちらも戻す）
     await page.click(V + '[data-testid="lane-pages"]');
-    await page.click('[data-testid="page-rename-billing"]');
+    await page.click('[data-testid="session-toggle"][data-editing="true"]');
+    await page.waitForSelector('[data-testid="session-toggle"][data-editing="false"]', { timeout: 5000 });
+    await page.click(V + '[data-testid="page-info-toggle"]');
+    await page.waitForSelector(V + '[data-testid="page-rename-billing"]', { timeout: 5000 });
+    await page.click(V + '[data-testid="page-rename-billing"]');
     await page.locator('[data-testid="page-rename-input"]').fill("");
     await page.locator('[data-testid="page-rename-input"]').pressSequentially("課金ドメイン");
     await page.click('[data-testid="page-rename-save"]');
@@ -280,13 +318,13 @@ async function main() {
     // ---- 6. I-03: 並び替え（billing は末尾 → 1つ上へ） ----
     const orderBefore = manifestText(dir).indexOf('id: "billing"');
     await page
-        .locator('[data-testid="page-row"]:has([data-testid="page-delete-billing"]) button[title="上へ"]')
+        .locator(V + '[data-testid="page-row"]:has([data-testid="page-delete-billing"]) button[title="上へ"]')
         .click();
     check("I-03: reordering moves the page up in manifest.js",
         await waitFile(() => manifestText(dir).indexOf('id: "billing"') < orderBefore));
 
     // ---- 7. I-02: 削除（スキーマ情報には影響しない） ----
-    await page.click('[data-testid="page-delete-billing"]');
+    await page.click(V + '[data-testid="page-delete-billing"]');
     await page.click('[data-testid="page-delete-confirm"]');
     check("I-02: page file is deleted",
         await waitFile(() => !existsSync(join(dir, "workspace-default", "data", "diagrams", "billing.js"))));
@@ -310,7 +348,8 @@ async function main() {
     check("static mode: auto layout is disabled",
         await staticPage.locator('[data-testid="auto-layout"]').isDisabled());
     check("static mode: page management is not offered",
-        (await staticPage.locator('[data-testid="page-add"]').count()) === 0);
+        (await staticPage.locator('[data-testid="page-add"]').count()) === 0
+        && (await staticPage.locator('[data-testid="page-info-toggle"]').count()) === 0);
 
     await browser.close();
     browser = null;

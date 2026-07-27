@@ -90,6 +90,12 @@ async function main() {
   // 閲覧中は「編集開始」（ペン）が出る。バッジ表示は廃止
   check("start-edit shown when viewing", await page.locator('[data-testid="session-toggle"][data-editing="false"]').isVisible());
   check("minimap renders nodes", (await page.locator(".react-flow__minimap-node").count()) === 3);
+  // ER図上でノードを選ぶと、左パネルの一覧の選択も追随する（一覧 → キャンバスの逆方向）
+  await page.click('[data-testid="erd-node"] >> nth=0');
+  check(
+    "selecting a node on the canvas selects the row in the left panel",
+    (await page.locator('[data-testid="lp-item"][data-active="true"]').count()) === 1,
+  );
 
   // 2) ページ切替（B-01）: 左パネル「ページ」レーンの行で billing へ
   //（レーン刷新でページ行は <a> ではなくボタンになっている）
