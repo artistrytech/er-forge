@@ -274,19 +274,20 @@
   align-items: center;
 }
 
-/* 指定色（P-13）。行の背景を ER図のノードと同じ色にする。
-   **色は背景だけで表す**（左端は選択の表示に使うため、色のバーは出さない）。 */
+/* 指定色（P-13）。行の背景を ER図のノードと同じ色にし、左端に細いバーを出す。 */
 .lp-item[data-color] .lp-item-btn,
 .lp-item[data-color] .lp-item-linklike {
   color: var(--c-text);
   background: var(--c-surface);
+  box-shadow: inset 3px 0 0 0 var(--c-border);
 }
 
-/* 選択中は左端のバーと太字で示す。**背景は塗らない** —
-   濃色で塗ると指定色を潰してしまい、色と選択のどちらも読めなくなるため。 */
+/* 選択中は左端のバーを**同じ色のまま太くし**、テーブル名を太字にする。**背景は塗らない** —
+   濃色で塗ると指定色を潰してしまい、色と選択のどちらも読めなくなるため。
+   色が無い行にはバーが無いので、そのときだけアクセント色で出す。 */
 .lp-item.active .lp-item-btn,
 .lp-item.active .lp-item-linklike {
-  box-shadow: inset 4px 0 0 0 var(--accent);
+  box-shadow: inset 6px 0 0 0 var(--c-border, var(--accent));
 }
 
 .lp-item.active .lp-item-name {
@@ -294,6 +295,7 @@
 }
 
 .lp-item-btn {
+  margin-top: 5px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -304,7 +306,6 @@
   padding: 8px 10px;
   border: none;
   background: none;
-  border-radius: 8px;
   cursor: pointer;
   color: inherit;
   font: inherit;
