@@ -504,7 +504,6 @@ a {
 .form-grid input,
 .form-grid textarea,
 .edit-form .data-table input,
-.constraint-row input,
 .columns-table input {
   width: 100%;
   box-sizing: border-box;
@@ -533,32 +532,6 @@ a {
   border-top: 1px solid var(--border);
 }
 
-.constraint-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 8px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  margin-bottom: 6px;
-}
-
-.constraint-row.has-error {
-  border-color: var(--error);
-}
-
-.constraint-row .constraint-name {
-  width: 240px;
-}
-
-.constraint-row .constraint-notes {
-  flex: 1;
-  min-width: 160px;
-}
-
-.constraint-row select,
-.column-picker select,
 .columns-toolbar select,
 .edit-form .data-table select {
   padding: 7px 10px;
@@ -567,38 +540,6 @@ a {
   background: var(--panel);
   color: inherit;
   font-size: 12.5px;
-}
-
-.constraint-arrow {
-  color: var(--text-muted);
-}
-
-.column-picker {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px;
-}
-
-.column-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  background: var(--accent-soft);
-  color: var(--accent);
-  border-radius: 10px;
-  padding: 1px 4px 1px 8px;
-  font-size: 12px;
-}
-
-.column-chip button {
-  border: none;
-  background: none;
-  color: inherit;
-  cursor: pointer;
-  font-size: 13px;
-  padding: 0 4px;
-  line-height: 1;
 }
 
 button.button-link {

@@ -108,11 +108,42 @@ async function main() {
 
     await typeInto(page.locator(".form-grid input").first(), "セッション");
 
-    await page.getByRole("button", { name: "+ 論理外部制約を追加" }).click();
-    const row = page.locator(".constraint-row").last();
-    await row.locator("select").nth(0).selectOption("user_id"); // 参照元カラム
-    await row.locator("select").nth(1).selectOption("public.user_profiles"); // 参照先テーブル
-    await row.locator("select").nth(2).selectOption("id"); // 参照先カラム
+    // 論理外部制約はダイアログで作る（カラムの対応は1行 = 1組の縦並び）
+    await page.getByTestId("add-logical-fk").click();
+    await page.waitForSelector('[data-testid="fk-ref-table"]', { timeout: 5000 });
+    // 参照先・対応が揃うまでは確定させない（保存時に初めて怒られない）
+    check("the constraint dialog blocks submit until it is complete",
+        await page.getByTestId("constraint-submit").isDisabled());
+    await page.getByTestId("fk-ref-table").selectOption("public.user_profiles");
+    await page.getByTestId("fk-column-0").selectOption("user_id");
+    // 参照先テーブルのスキーマは選択後に読み込まれる（読み込み完了まで選択肢は出ない）
+    await page.waitForFunction(
+      () => {
+        const s = document.querySelector('[data-testid="fk-ref-column-0"]');
+        return s !== null && !s.disabled && s.options.length > 1;
+      },
+      null,
+      { timeout: 15000 },
+    );
+    await page.getByTestId("fk-ref-column-0").selectOption("id");
+    await page.getByTestId("constraint-submit").click();
+    check("the constraint is listed after the dialog is confirmed",
+        (await page.getByTestId("logical-fk").count()) === 1);
+    // 複合キーは行が増える = 対応が縦に並ぶ。開き直しても対応が保たれることを確かめる
+    await page.getByTestId("logical-fk-edit").click();
+    await page.waitForSelector('[data-testid="fk-ref-table"]', { timeout: 5000 });
+    check("reopening the dialog restores the column mapping",
+        (await page.getByTestId("fk-column-0").inputValue()) === "user_id"
+        && (await page.getByTestId("fk-ref-column-0").inputValue()) === "id");
+    await page.getByTestId("add-pair-row").click();
+    // 行が増えるだけで対応の読み方は変わらない。片側だけ埋まった状態は確定させない
+    check("adding a pair grows the mapping vertically",
+        (await page.getByTestId("fk-column-1").count()) === 1
+        && (await page.getByTestId("constraint-submit").isDisabled()));
+    // 増やした対応は使わないので、確定せずに閉じる（1組のままにする）
+    await page.keyboard.press("Escape");
+    check("closing the dialog keeps the previous mapping",
+        (await page.getByTestId("logical-fk").count()) === 1);
 
     // 保存はヘッダの保存アイコンから（変更があると活性化する）。保存後も編集は継続する
     await page.waitForSelector('[data-testid="save-button"]:not([disabled])', { timeout: 15000 });

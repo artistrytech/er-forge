@@ -103,7 +103,7 @@ export function generateConstraintName(
   prefix: "luk" | "lfk",
   tableName: string,
   columns: string[],
-  taken: Set<string>,
+  taken: ReadonlySet<string>,
 ): string {
   const base = `${prefix}_${tableName}_${columns.join("_")}`.slice(0, 60);
   if (!taken.has(base)) return base;

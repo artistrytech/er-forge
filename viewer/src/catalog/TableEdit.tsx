@@ -17,17 +17,22 @@ import {
   buildDraft,
   draftToMeta,
   errorsAt,
+  generateConstraintName,
   validateDraft,
-  newUid,
   type DraftColumnMeta,
-  type DraftLogicalFk,
-  type DraftLogicalUnique,
   type FieldError,
   type MetaDraft,
 } from "../model/metaDraft";
 import { colorAttr } from "../model/colors";
 import { useAppStore } from "../model/store";
 import type { CardEnd, Table } from "../model/types";
+import {
+  ConstraintList,
+  ConstraintRow,
+  FkDetail,
+  LogicalFkDialog,
+  LogicalUniqueDialog,
+} from "./ConstraintDialog";
 import { ColorSelect } from "../ui/ColorSelect";
 import { Dialog } from "../ui/Dialog";
 import { Link } from "../ui/Link";
@@ -61,12 +66,15 @@ export function TableEdit({ tableId }: { tableId: string }) {
   const [serverIssues, setServerIssues] = useState<ServerIssue[]>([]);
   const [saving, setSaving] = useState(false);
   const [conflict, setConflict] = useState(false);
+  /** 論理制約の作成・編集ダイアログ（uid=null は新規追加。P-06 / P-07） */
+  const [editing, setEditing] = useState<{ kind: "unique" | "fk"; uid: number | null } | null>(null);
 
   // committed の読み込み: ファイルを読み直してから baseHash を取る（§8.4 の読み込み時点ハッシュ）
   const reload = useCallback(async () => {
     setCommitted(null);
     setDraft(null);
     setLoadFailed(false);
+    setEditing(null);
     invalidateTable(tableId);
     const table = await loadTable(tableId);
     if (!table) {
@@ -235,6 +243,30 @@ export function TableEdit({ tableId }: { tableId: string }) {
           },
     );
 
+  // 制約名の自動生成は保存時に行われる（draftToMeta）。一覧とダイアログでは同じ規則で
+  // 予定名を先に見せる。「使用済み」は自分以外の名前（自分の名前で連番が付かないように）
+  const takenNames = (kind: "unique" | "fk", selfUid: number | null): Set<string> => {
+    const rows = kind === "unique" ? draft.logicalUniques : draft.logicalForeignKeys;
+    return new Set(
+      rows
+        .filter((r) => r.uid !== selfUid)
+        .map((r) => r.name.trim())
+        .filter((n) => n !== ""),
+    );
+  };
+  const autoNameOf = (prefix: "luk" | "lfk", uid: number, columns: string[]): string =>
+    generateConstraintName(
+      prefix,
+      table.name,
+      columns,
+      takenNames(prefix === "luk" ? "unique" : "fk", uid),
+    );
+  /** ダイアログの確定: 既存 uid なら差し替え、無ければ末尾に追加する */
+  const upsert = <T extends { uid: number }>(rows: T[], next: T): T[] =>
+    rows.some((x) => x.uid === next.uid)
+      ? rows.map((x) => (x.uid === next.uid ? next : x))
+      : [...rows, next];
+
   return (
     <div className="catalog-page table-edit">
       <div className="catalog-header">
@@ -380,70 +412,59 @@ export function TableEdit({ tableId }: { tableId: string }) {
         <h3>{t("tableEdit.sectionLogical")}</h3>
         <p className="muted form-hint">ⓘ {t("tableEdit.logicalHint")}</p>
 
+        {/* 一覧は要約に徹し、作成・編集はダイアログで行う（複合キーの対応を読めるように） */}
         <h4>{t("table.logicalUniques")}</h4>
-        {draft.logicalUniques.map((u, i) => (
-          <LogicalUniqueRow
-            key={u.uid}
-            row={u}
-            table={table}
-            errors={errorsAt(allErrors, `meta.logicalUniques[${i}]`)}
-            onChange={(next) =>
-              update({
-                logicalUniques: draft.logicalUniques.map((x) => (x.uid === u.uid ? next : x)),
-              })
-            }
-            onRemove={() =>
-              update({ logicalUniques: draft.logicalUniques.filter((x) => x.uid !== u.uid) })
-            }
-          />
-        ))}
+        <ConstraintList empty={draft.logicalUniques.length === 0}>
+          {draft.logicalUniques.map((u, i) => (
+            <ConstraintRow
+              key={u.uid}
+              name={u.name}
+              autoName={autoNameOf("luk", u.uid, u.columns)}
+              detail={u.columns.length > 0 ? u.columns.join(", ") : t("tableEdit.noColumns")}
+              notes={u.notes}
+              hasError={errorsAt(allErrors, `meta.logicalUniques[${i}]`).length > 0}
+              testId="logical-unique"
+              onEdit={() => setEditing({ kind: "unique", uid: u.uid })}
+              onRemove={() =>
+                update({ logicalUniques: draft.logicalUniques.filter((x) => x.uid !== u.uid) })
+              }
+            />
+          ))}
+        </ConstraintList>
         <button
           type="button"
           className="button-link"
-          onClick={() =>
-            update({
-              logicalUniques: [
-                ...draft.logicalUniques,
-                { uid: newUid(), name: "", columns: [], notes: "" },
-              ],
-            })
-          }
+          data-testid="add-logical-unique"
+          onClick={() => setEditing({ kind: "unique", uid: null })}
         >
           {t("tableEdit.addLogicalUnique")}
         </button>
 
         <h4>{t("table.logicalForeignKeys")}</h4>
-        {draft.logicalForeignKeys.map((fk, i) => (
-          <LogicalFkRow
-            key={fk.uid}
-            row={fk}
-            table={table}
-            errors={errorsAt(allErrors, `meta.logicalForeignKeys[${i}]`)}
-            onChange={(next) =>
-              update({
-                logicalForeignKeys: draft.logicalForeignKeys.map((x) =>
-                  x.uid === fk.uid ? next : x,
-                ),
-              })
-            }
-            onRemove={() =>
-              update({
-                logicalForeignKeys: draft.logicalForeignKeys.filter((x) => x.uid !== fk.uid),
-              })
-            }
-          />
-        ))}
+        <ConstraintList empty={draft.logicalForeignKeys.length === 0}>
+          {draft.logicalForeignKeys.map((fk, i) => (
+            <ConstraintRow
+              key={fk.uid}
+              name={fk.name}
+              autoName={autoNameOf("lfk", fk.uid, fk.columns)}
+              detail={<FkDetail fk={fk} />}
+              notes={fk.notes}
+              hasError={errorsAt(allErrors, `meta.logicalForeignKeys[${i}]`).length > 0}
+              testId="logical-fk"
+              onEdit={() => setEditing({ kind: "fk", uid: fk.uid })}
+              onRemove={() =>
+                update({
+                  logicalForeignKeys: draft.logicalForeignKeys.filter((x) => x.uid !== fk.uid),
+                })
+              }
+            />
+          ))}
+        </ConstraintList>
         <button
           type="button"
           className="button-link"
-          onClick={() =>
-            update({
-              logicalForeignKeys: [
-                ...draft.logicalForeignKeys,
-                { uid: newUid(), name: "", columns: [], refTable: "", refColumns: [], notes: "" },
-              ],
-            })
-          }
+          data-testid="add-logical-fk"
+          onClick={() => setEditing({ kind: "fk", uid: null })}
         >
           {t("tableEdit.addLogicalFk")}
         </button>
@@ -451,6 +472,31 @@ export function TableEdit({ tableId }: { tableId: string }) {
         {/* ---- カーディナリティ（P-11） ---- */}
         <CardinalitySection table={table} draft={draft} onChange={update} />
       </fieldset>
+
+      {editing?.kind === "unique" && (
+        <LogicalUniqueDialog
+          table={table}
+          initial={draft.logicalUniques.find((x) => x.uid === editing.uid) ?? null}
+          taken={takenNames("unique", editing.uid)}
+          onClose={() => setEditing(null)}
+          onSubmit={(next) => {
+            update({ logicalUniques: upsert(draft.logicalUniques, next) });
+            setEditing(null);
+          }}
+        />
+      )}
+      {editing?.kind === "fk" && (
+        <LogicalFkDialog
+          table={table}
+          initial={draft.logicalForeignKeys.find((x) => x.uid === editing.uid) ?? null}
+          taken={takenNames("fk", editing.uid)}
+          onClose={() => setEditing(null)}
+          onSubmit={(next) => {
+            update({ logicalForeignKeys: upsert(draft.logicalForeignKeys, next) });
+            setEditing(null);
+          }}
+        />
+      )}
 
       {conflict && (
         <Dialog title={t("edit.conflict.title")} onClose={() => setConflict(false)}>
@@ -493,177 +539,6 @@ function ErrorText({ error }: { error: FieldError }) {
       {t(key)}
       {suffix}
     </>
-  );
-}
-
-function FieldErrorList({ errors }: { errors: { path: string }[] }) {
-  if (errors.length === 0) return null;
-  return <span className="field-error">⚠</span>;
-}
-
-/** カラムの順序つき選択（チップ + 追加セレクト）。複合キーの順序を保持する */
-function ColumnPicker({
-  selected,
-  candidates,
-  onChange,
-  addLabel,
-}: {
-  selected: string[];
-  candidates: string[];
-  onChange: (next: string[]) => void;
-  addLabel: string;
-}) {
-  const available = candidates.filter((c) => !selected.includes(c));
-  return (
-    <span className="column-picker">
-      {selected.map((c) => (
-        <span key={c} className="column-chip mono">
-          {c}
-          <button
-            type="button"
-            aria-label="remove"
-            onClick={() => onChange(selected.filter((x) => x !== c))}
-          >
-            ×
-          </button>
-        </span>
-      ))}
-      {available.length > 0 && (
-        <select value="" onChange={(e) => e.target.value !== "" && onChange([...selected, e.target.value])}>
-          <option value="">{addLabel}</option>
-          {available.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
-      )}
-    </span>
-  );
-}
-
-function LogicalUniqueRow({
-  row,
-  table,
-  errors,
-  onChange,
-  onRemove,
-}: {
-  row: DraftLogicalUnique;
-  table: Table;
-  errors: { path: string }[];
-  onChange: (next: DraftLogicalUnique) => void;
-  onRemove: () => void;
-}) {
-  const { t } = useI18n();
-  const columnNames = table.columns.map((c) => c.name);
-  return (
-    <div className={"constraint-row" + (errors.length > 0 ? " has-error" : "")}>
-      <input
-        type="text"
-        className="mono constraint-name"
-        placeholder={t("tableEdit.namePlaceholder")}
-        value={row.name}
-        onChange={(e) => onChange({ ...row, name: e.target.value })}
-      />
-      <ColumnPicker
-        selected={row.columns}
-        candidates={columnNames}
-        onChange={(columns) => onChange({ ...row, columns })}
-        addLabel={t("tableEdit.addColumn")}
-      />
-      <input
-        type="text"
-        className="constraint-notes"
-        placeholder={t("tableEdit.notes")}
-        value={row.notes}
-        onChange={(e) => onChange({ ...row, notes: e.target.value })}
-      />
-      <button type="button" className="button-link danger" onClick={onRemove}>
-        {t("tableEdit.remove")}
-      </button>
-      <FieldErrorList errors={errors} />
-    </div>
-  );
-}
-
-function LogicalFkRow({
-  row,
-  table,
-  errors,
-  onChange,
-  onRemove,
-}: {
-  row: DraftLogicalFk;
-  table: Table;
-  errors: { path: string }[];
-  onChange: (next: DraftLogicalFk) => void;
-  onRemove: () => void;
-}) {
-  const { t } = useI18n();
-  const index = useAppStore((s) => s.index);
-  const target = useAppStore((s) => (row.refTable !== "" ? s.tables[row.refTable] : undefined));
-  const columnNames = table.columns.map((c) => c.name);
-
-  // 参照先テーブルのスキーマをオンデマンドで読む（参照先カラムのドロップダウン用）
-  useEffect(() => {
-    if (row.refTable !== "" && row.refTable !== table.id) {
-      void loadTable(row.refTable);
-    }
-  }, [row.refTable, table.id]);
-  const targetColumns =
-    row.refTable === table.id
-      ? columnNames
-      : (target?.columns ?? []).map((c) => c.name);
-
-  return (
-    <div className={"constraint-row" + (errors.length > 0 ? " has-error" : "")}>
-      <input
-        type="text"
-        className="mono constraint-name"
-        placeholder={t("tableEdit.namePlaceholder")}
-        value={row.name}
-        onChange={(e) => onChange({ ...row, name: e.target.value })}
-      />
-      <ColumnPicker
-        selected={row.columns}
-        candidates={columnNames}
-        onChange={(columns) => onChange({ ...row, columns })}
-        addLabel={t("tableEdit.addColumn")}
-      />
-      <span className="constraint-arrow">→</span>
-      <select
-        className="mono"
-        value={row.refTable}
-        onChange={(e) => onChange({ ...row, refTable: e.target.value, refColumns: [] })}
-      >
-        <option value="">{t("tableEdit.refTable")}…</option>
-        {(index?.tables ?? []).map((it) => (
-          <option key={it.id} value={it.id}>
-            {it.id}
-          </option>
-        ))}
-      </select>
-      {row.refTable !== "" && (
-        <ColumnPicker
-          selected={row.refColumns}
-          candidates={targetColumns}
-          onChange={(refColumns) => onChange({ ...row, refColumns })}
-          addLabel={t("tableEdit.addColumn")}
-        />
-      )}
-      <input
-        type="text"
-        className="constraint-notes"
-        placeholder={t("tableEdit.notes")}
-        value={row.notes}
-        onChange={(e) => onChange({ ...row, notes: e.target.value })}
-      />
-      <button type="button" className="button-link danger" onClick={onRemove}>
-        {t("tableEdit.remove")}
-      </button>
-      <FieldErrorList errors={errors} />
-    </div>
   );
 }
 

@@ -1,0 +1,245 @@
+/* 論理制約の一覧行と、作成・編集ダイアログのスタイル（ConstraintDialog.tsx）。
+   共有プリミティブ（.dialog-actions / .form-hint / .mono / .muted / .field-error）は global に残す。 */
+
+/* ---- 一覧の1行（要約表示。変更は [編集] から） ---- */
+
+.list {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.empty {
+  margin: 0 0 8px;
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+
+.row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.row-error {
+  border-color: var(--error);
+}
+
+.row-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.row-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.row-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+/* 未入力の名前は「保存時にこうなる」予定でしかないので、確定した名前と区別する */
+.row-name-auto {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.row-auto-badge {
+  padding: 1px 6px;
+  border-radius: 9px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+.row-detail {
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+
+/* 要約の中のカラム対応（1組 = 1行。矢印の位置を揃える） */
+.detail-pair {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.row-notes {
+  color: var(--text-muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.row-actions {
+  flex: none;
+  display: flex;
+  gap: 6px;
+}
+
+/* ---- ダイアログの中身 ---- */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 12px 0;
+}
+
+.field-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.field-hint {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.error-text {
+  color: var(--error);
+}
+
+.input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 10px;
+  border: 1px solid var(--input-border);
+  border-radius: 7px;
+  background: var(--input-bg);
+  color: inherit;
+  font-size: 13px;
+}
+
+.input-error {
+  border-color: var(--error);
+}
+
+.select {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--input-border);
+  border-radius: 7px;
+  background: var(--panel);
+  color: inherit;
+  font-size: 12.5px;
+}
+
+.select-wide {
+  flex: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* ---- 縦に伸びる行（一意制約のカラム / 外部制約のカラム対応） ---- */
+
+.row-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+/* 対応表の見出し（どちら側のカラムを選んでいるのかを列で示す） */
+.pair-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-bottom: 2px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.pair-head-cell {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pair-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 複合キーの順序（上から n 番目の対応）を明示する */
+.pair-index {
+  flex: none;
+  width: 18px;
+  text-align: right;
+  color: var(--text-muted);
+  font-size: 11.5px;
+}
+
+.pair-arrow {
+  flex: none;
+  width: 14px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.remove-row {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-muted);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.remove-row:hover {
+  background: var(--error-bg);
+  color: var(--error);
+}
+
+/* 見出し行の右端を、行の × ボタンぶんだけ空ける */
+.remove-row-spacer {
+  flex: none;
+  width: 26px;
+}
+
+.add-row {
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 5px 10px;
+  border: 1px dashed var(--input-border);
+  border-radius: 7px;
+  background: none;
+  color: var(--accent);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.add-row:hover {
+  background: var(--accent-soft);
+  border-style: solid;
+}
+
+/* 確定できない理由（[確定] を押せない状態のまま置いておく） */
+.blocked-hint {
+  margin: 12px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
