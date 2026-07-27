@@ -275,19 +275,22 @@
 }
 
 /* 指定色（P-13）。行の背景を ER図のノードと同じ色にする。
-   選択中は濃色フィルが勝つ（後勝ち）が、左端のバーは残るので色の情報は失われない。 */
+   **色は背景だけで表す**（左端は選択の表示に使うため、色のバーは出さない）。 */
 .lp-item[data-color] .lp-item-btn,
 .lp-item[data-color] .lp-item-linklike {
   color: var(--c-text);
   background: var(--c-surface);
-  box-shadow: inset 3px 0 0 0 var(--c-border);
 }
 
-.lp-item.active,
+/* 選択中は左端のバーと太字で示す。**背景は塗らない** —
+   濃色で塗ると指定色を潰してしまい、色と選択のどちらも読めなくなるため。 */
 .lp-item.active .lp-item-btn,
 .lp-item.active .lp-item-linklike {
-  background: #111318;
-  color: #fff;
+  box-shadow: inset 4px 0 0 0 var(--accent);
+}
+
+.lp-item.active .lp-item-name {
+  font-weight: 700;
 }
 
 .lp-item-btn {
@@ -316,9 +319,7 @@
   background: var(--accent-soft);
 }
 
-.lp-item.active .lp-item-btn:hover {
-  background: #111318;
-}
+/* 選択中もホバーは通常どおり効かせる（選択のバーは box-shadow なので消えない） */
 
 .lp-item-name {
   overflow-wrap: anywhere;
