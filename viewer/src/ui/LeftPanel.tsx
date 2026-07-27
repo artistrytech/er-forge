@@ -21,6 +21,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useI18n } from "../i18n/useI18n";
 import { useCanvasStore } from "../canvas/canvasStore";
 import { TABLE_DND_TYPE } from "../canvas/ErdPage";
+import { colorAttr } from "../model/colors";
 import { useEditStore } from "../model/editStore";
 import { formatName, resolveIndexTableName, type NameDisplay } from "../model/logicalName";
 import { searchAll, type MatchMode } from "../model/search";
@@ -343,7 +344,12 @@ function PagesLane({
           </div>
           <ul className={styles.lpList}>
             {pageTables.map((it) => (
-              <li key={it.id} className={cx(styles.lpItem, it.id === activeTableId && styles.active)} data-testid="lp-item">
+              <li
+                key={it.id}
+                className={cx(styles.lpItem, it.id === activeTableId && styles.active)}
+                data-testid="lp-item"
+                data-color={colorAttr(it.color)}
+              >
                 <button type="button" className={styles.lpItemBtn} onClick={() => onSelect(it.id)}>
                   <span className={styles.lpItemName}>
                     {formatName(resolveIndexTableName(it), it.name, nameDisplay)}
@@ -573,7 +579,12 @@ function UnplacedTray({
       )}
       <ul className={styles.lpList}>
         {ordered.map((it) => (
-          <li key={it.id} className={cx(styles.trayRow, styles.lpItem, it.id === activeTableId && styles.active)} data-testid="lp-item">
+          <li
+            key={it.id}
+            className={cx(styles.trayRow, styles.lpItem, it.id === activeTableId && styles.active)}
+            data-testid="lp-item"
+            data-color={colorAttr(it.color)}
+          >
             {canPlace && (
               <input
                 type="checkbox"
@@ -739,7 +750,12 @@ function SearchLane({
             if (!it) return null;
             const label = formatName(resolveIndexTableName(it), it.name, nameDisplay);
             return (
-              <li key={hit.tableId} className={cx(styles.lpItem, hit.tableId === activeTableId && styles.active)} data-testid="lp-item">
+              <li
+                key={hit.tableId}
+                className={cx(styles.lpItem, hit.tableId === activeTableId && styles.active)}
+                data-testid="lp-item"
+                data-color={colorAttr(it.color)}
+              >
                 <button type="button" className={styles.lpItemBtn} onClick={() => onSelect(hit.tableId)}>
                   <span className={styles.lpItemName}>{label}</span>
                   {hit.columnHits.length > 0 && <span className={styles.lpHitcount}>{hit.columnHits.length}</span>}
@@ -788,7 +804,11 @@ function TableRow({
   const draggable = canPlace && !onPage;
   const label = formatName(resolveIndexTableName(it), it.name, nameDisplay);
   return (
-    <li className={cx(styles.lpItem, styles.sidebarTableRow, active && styles.active)} data-testid="lp-item">
+    <li
+      className={cx(styles.lpItem, styles.sidebarTableRow, active && styles.active)}
+      data-testid="lp-item"
+      data-color={colorAttr(it.color)}
+    >
       {/* 行全体を1つのボタンにする（ラベル以外を押しても反応するように）。DnD の起点も兼ねる */}
       <button
         type="button"

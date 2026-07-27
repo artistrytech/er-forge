@@ -17,5 +17,6 @@ ERD.table({
   meta: {
     displayName: "ユーザー情報",
     tags: ["auth"],
+    color: "blue",
   },
 });

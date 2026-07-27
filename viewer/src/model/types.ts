@@ -54,6 +54,8 @@ export const zIndexTable = z.looseObject({
   columns: z.number().optional(),
   pk: z.boolean().optional(),
   tags: z.array(z.string()).optional(),
+  /** meta.color（P-13）。ER図はこの索引だけでノードを描くため、色もここに載る */
+  color: z.string().optional(),
   diagrams: z.array(z.string()).optional(),
 });
 export type IndexTable = z.infer<typeof zIndexTable>;
@@ -75,6 +77,8 @@ export type Relation = z.infer<typeof zRelation>;
 export const zIndexData = z.looseObject({
   tables: z.array(zIndexTable).optional(),
   relations: z.array(zRelation).optional(),
+  /** ワークスペースで使用中のタグ（テーブル ∪ カラム）。タグ入力の候補に使う（P-12） */
+  tagsUsed: z.array(z.string()).optional(),
 });
 export type IndexData = z.infer<typeof zIndexData>;
 
@@ -150,6 +154,8 @@ export const zRelationMeta = z.looseObject({
 });
 export const zColumnMeta = z.looseObject({
   displayName: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+  color: z.string().optional(),
   notes: z.string().optional(),
 });
 export type ColumnMeta = z.infer<typeof zColumnMeta>;
@@ -157,6 +163,8 @@ export type ColumnMeta = z.infer<typeof zColumnMeta>;
 export const zTableMeta = z.looseObject({
   displayName: z.string().optional(),
   tags: z.array(z.string()).optional(),
+  /** 色（P-13）。タグとは独立した属性で、タグから導出はしない */
+  color: z.string().optional(),
   notes: z.string().optional(),
   columns: z.record(z.string(), zColumnMeta).optional(),
   logicalUniques: z.array(zLogicalUnique).optional(),

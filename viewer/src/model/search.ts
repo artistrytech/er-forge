@@ -70,7 +70,10 @@ export function searchAll(
       }
       for (const c of full.columns) {
         const logical = resolveColumnName(full, c.name, dict);
-        const notes = full.meta?.columns?.[c.name]?.notes;
+        const cm = full.meta?.columns?.[c.name];
+        const notes = cm?.notes;
+        // カラムタグ（P-12）は index.js に載らないため、ロード済みのテーブルでのみ当たる（F-04）
+        const tagHit = (cm?.tags ?? []).find((tag) => matchText(tag, q, mode));
         let matched: string | null = null;
         if (hit(c.name)) matched = c.name;
         else if (logical.source !== "physical" && hit(logical.name)) {
@@ -79,6 +82,8 @@ export function searchAll(
           matched = c.comment ?? null;
         } else if (hit(notes)) {
           matched = notes ?? null;
+        } else if (tagHit !== undefined) {
+          matched = tagHit;
         }
         if (matched !== null) {
           columnHits.push({ column: c.name, logicalName: logical.name, matched });

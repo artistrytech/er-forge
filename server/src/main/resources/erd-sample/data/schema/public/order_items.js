@@ -18,6 +18,7 @@ ERD.table({
   meta: {
     displayName: "注文アイテム",
     tags: ["order"],
+    color: "amber",
     logicalForeignKeys: [
       { name: "lfk_order_items_inventories", columns: ["product_id"], ref: { table: "public.inventories", columns: ["product_id"] }, notes: "在庫への論理参照（FK なし。在庫行が後から作られることがある）" },
     ],

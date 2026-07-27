@@ -15,5 +15,6 @@ ERD.table({
   meta: {
     displayName: "商品とタグのマッピング",
     tags: ["catalog"],
+    color: "green",
   },
 });

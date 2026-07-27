@@ -1,10 +1,13 @@
 /* テーブルノード（D-01）のスタイル。旧 global の .erd-node 系をここへ閉じ込めた。
    減光の .erd-dimmed はエッジ（RelationEdge）と共用のため global に残す。 */
 
+/* 指定色（P-13）は --c-* 経由で背景・枠線・文字色に効く（global.scss の [data-color]）。
+   色の指定が無い / 未知トークンのときは第2引数の既定値にフォールバックする。 */
 .erd-node {
   position: relative;
-  background: var(--panel);
-  border: 1.5px solid var(--edge);
+  color: var(--c-text, inherit);
+  background: var(--c-surface, var(--panel));
+  border: 1.5px solid var(--c-border, var(--edge));
   border-radius: 8px;
   padding: 8px 14px;
   min-width: 80px;
@@ -18,7 +21,9 @@
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
+/* 欠損は指定色より優先（警告を色で塗り潰さない）。宣言順が後なので後勝ちになる */
 .erd-node-missing {
+  color: var(--text);
   border-color: var(--warn);
   background: var(--warn-bg);
 }

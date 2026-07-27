@@ -1,6 +1,8 @@
 package erd.core.index;
 
+import erd.core.io.DataFilePrinter;
 import erd.core.model.Column;
+import erd.core.model.ColumnMeta;
 import erd.core.model.DiagramPage;
 import erd.core.model.ForeignKey;
 import erd.core.model.LogicalForeignKey;
@@ -44,8 +46,16 @@ public final class IndexGenerator {
         List<IndexModel.TableEntry> tableEntries = new ArrayList<>();
         List<IndexModel.RelationEntry> relationEntries = new ArrayList<>();
 
+        // 使用中タグ（テーブル ∪ カラム）。タグ入力の候補に使う（P-12）
+        Set<String> tagsUsed = new TreeSet<>(DataFilePrinter.CODEPOINT_ORDER);
+
         for (Table t : tables) {
             String displayName = t.meta().displayName();
+            String color = t.meta().color();
+            tagsUsed.addAll(t.meta().tags());
+            for (ColumnMeta cm : t.meta().columns().values()) {
+                tagsUsed.addAll(cm.tags());
+            }
             tableEntries.add(new IndexModel.TableEntry(
                     t.id(),
                     t.schema().name(),
@@ -54,6 +64,7 @@ public final class IndexGenerator {
                     t.schema().columns().size(),
                     !t.schema().primaryKey().isEmpty(),
                     t.meta().tags(),
+                    color == null || color.isEmpty() ? null : color,
                     List.copyOf(tableDiagrams.getOrDefault(t.id(), Set.of()))));
 
             for (ForeignKey fk : t.schema().foreignKeys()) {
@@ -68,7 +79,7 @@ public final class IndexGenerator {
 
         tableEntries.sort(Comparator.comparing(IndexModel.TableEntry::id));
         relationEntries.sort(Comparator.comparing(IndexModel.RelationEntry::id));
-        return new IndexModel(tableEntries, relationEntries);
+        return new IndexModel(tableEntries, relationEntries, List.copyOf(tagsUsed));
     }
 
     private IndexModel.RelationEntry relation(Table from, String kindPrefix, String constraintName,

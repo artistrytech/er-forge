@@ -39,8 +39,9 @@ class MigrationRunnerTest {
                 TableMeta m = t.meta();
                 List<String> tags = new ArrayList<>(m.tags());
                 if (!tags.contains("migrated")) tags.add("migrated");
-                tables.add(t.withMeta(new TableMeta(m.displayName(), tags, m.notes(), m.columns(),
-                        m.logicalUniques(), m.logicalForeignKeys(), m.relations(), m.unknown())));
+                tables.add(t.withMeta(new TableMeta(m.displayName(), tags, m.color(), m.notes(),
+                        m.columns(), m.logicalUniques(), m.logicalForeignKeys(), m.relations(),
+                        m.unknown())));
             }
             return new ProjectModel(model.manifest(), model.config(), model.dictionary(),
                     tables, model.diagrams());

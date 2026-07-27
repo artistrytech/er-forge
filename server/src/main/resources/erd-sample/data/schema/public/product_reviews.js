@@ -19,5 +19,6 @@ ERD.table({
   meta: {
     displayName: "商品レビュー",
     tags: ["catalog"],
+    color: "green",
   },
 });

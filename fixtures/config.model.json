@@ -4,5 +4,10 @@
     "public.tmp_*",
     "/^staging\\..*_bak$/"
   ],
+  "drivers": {
+    "mavenRepository": null,
+    "artifacts": [ ],
+    "empty": true
+  },
   "unknown": { }
 }

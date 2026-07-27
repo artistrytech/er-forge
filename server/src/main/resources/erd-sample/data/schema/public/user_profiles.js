@@ -17,6 +17,7 @@ ERD.table({
   meta: {
     displayName: "ユーザープロファイル",
     tags: ["auth"],
+    color: "blue",
     logicalUniques: [
       { name: "luk_user_profiles_user", columns: ["user_id"], notes: "1ユーザーにつきプロファイルは1件（アプリ側で担保）" },
     ],

@@ -16,8 +16,9 @@ ERD.table({
   meta: {
     displayName: "注文",
     tags: ["order"],
+    color: "amber",
     columns: {
-      status: { displayName: "注文ステータス", notes: "PENDING / PAID / SHIPPED / CANCELLED" },
+      status: { displayName: "注文ステータス", tags: ["enum"], notes: "PENDING / PAID / SHIPPED / CANCELLED" },
     },
   },
 });

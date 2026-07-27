@@ -88,8 +88,8 @@ dirty     : draft ≠ committed
 | machine-owned | `comment` | ✓ | **次回の逆生成で DB の値に上書きされる**旨を画面に明示する |
 | machine-owned | `dialect` | **✗** | 読み取り専用表示（INV-5） |
 | human-owned | `meta.displayName`（テーブル論理名） | ✓ | J-05 / P-01 |
-| human-owned | `meta.columns.<name>.displayName` / `.notes` | ✓ | J-05 / P-04 |
-| human-owned | `meta.tags` / `meta.notes` | ✓ | J-05 |
+| human-owned | `meta.columns.<name>.displayName` / `.tags` / `.color` / `.notes` | ✓ | J-05 / P-04 / P-12 / P-13 |
+| human-owned | `meta.tags` / `meta.color` / `meta.notes` | ✓ | J-05 / P-12 / P-13 |
 | human-owned | `meta.logicalUniques` / `meta.logicalForeignKeys` | ✓ | J-05 / P-06 / P-07 |
 
 > `comment`（DB のコメント）を編集可能にするのは、DB にコメントを入れられない現場のためである。ただし machine-owned であり**逆生成で上書きされる**。「DB のコメントに依存しない注記は `meta.notes` へ」という導線を UI に置く。

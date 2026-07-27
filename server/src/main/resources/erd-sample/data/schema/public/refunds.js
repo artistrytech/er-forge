@@ -16,5 +16,6 @@ ERD.table({
   meta: {
     displayName: "返金情報",
     tags: ["billing"],
+    color: "purple",
   },
 });

@@ -16,5 +16,6 @@ ERD.table({
   meta: {
     displayName: "支払履歴詳細",
     tags: ["billing"],
+    color: "purple",
   },
 });

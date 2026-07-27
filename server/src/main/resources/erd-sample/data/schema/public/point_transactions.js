@@ -17,6 +17,7 @@ ERD.table({
   meta: {
     displayName: "ポイント履歴",
     tags: ["point"],
+    color: "red",
     notes: "残高（points.balance）はこの履歴の集計と一致する運用",
     logicalForeignKeys: [
       { name: "lfk_point_transactions_points", columns: ["user_id"], ref: { table: "public.points", columns: ["user_id"] }, notes: "残高テーブルへの論理参照（履歴書き込みの性能上 FK は張っていない）" },

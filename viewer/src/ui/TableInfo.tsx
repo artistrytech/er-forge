@@ -4,6 +4,7 @@
  */
 import { useEffect, useMemo } from "react";
 import { useI18n } from "../i18n/useI18n";
+import { colorAttr } from "../model/colors";
 import { loadTable } from "../model/loader";
 import { formatName, resolveColumnName, resolveTableName } from "../model/logicalName";
 import { useAppStore } from "../model/store";
@@ -99,6 +100,7 @@ export function TableInfo({ tableId, onNavigate }: TableInfoProps) {
               <th>{t("table.colNullable")}</th>
               <th>{t("table.colDefault")}</th>
               <th>{t("table.colComment")}</th>
+              <th>{t("table.tags")}</th>
               <th>{t("table.colNotes")}</th>
             </tr>
           </thead>
@@ -107,7 +109,7 @@ export function TableInfo({ tableId, onNavigate }: TableInfoProps) {
               const logical = resolveColumnName(table, c.name, dictionary);
               const meta = table.meta?.columns?.[c.name];
               return (
-                <tr key={c.name}>
+                <tr key={c.name} className={styles.columnRow} data-color={colorAttr(meta?.color)}>
                   <td className="center">
                     {pk.has(c.name) && <span className={cx(styles.keyBadge, styles.keyPk)}>PK</span>}
                     {fkCols.has(c.name) && <span className={cx(styles.keyBadge, styles.keyFk)}>FK</span>}
@@ -131,6 +133,17 @@ export function TableInfo({ tableId, onNavigate }: TableInfoProps) {
                   <td className="center">{c.nullable === true ? t("common.yes") : t("common.no")}</td>
                   <td className="mono">{c.default !== undefined ? String(c.default) : ""}</td>
                   <td>{c.comment ?? ""}</td>
+                  <td>
+                    {(meta?.tags?.length ?? 0) > 0 && (
+                      <span className={styles.columnTags}>
+                        {meta?.tags?.map((tag) => (
+                          <span key={tag} className={styles.tag}>
+                            {tag}
+                          </span>
+                        ))}
+                      </span>
+                    )}
+                  </td>
                   <td>{meta?.notes ?? ""}</td>
                 </tr>
               );

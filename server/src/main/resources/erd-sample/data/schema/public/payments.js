@@ -18,5 +18,6 @@ ERD.table({
   meta: {
     displayName: "支払情報",
     tags: ["billing"],
+    color: "purple",
   },
 });

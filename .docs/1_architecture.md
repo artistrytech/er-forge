@@ -497,8 +497,8 @@ ERD.config({
 ```js
 ERD.index({
   tables: [
-    { id: "public.users",  name: "users",  schema: "public", displayName: "ユーザー", columns: 8,  tags: ["core", "auth"], diagrams: ["core"] },
-    { id: "public.orders", name: "orders", schema: "public", displayName: "注文",     columns: 12, tags: ["core"],         diagrams: ["core", "billing"] },
+    { id: "public.users",  name: "users",  schema: "public", displayName: "ユーザー", columns: 8,  tags: ["core", "auth"], color: "blue", diagrams: ["core"] },
+    { id: "public.orders", name: "orders", schema: "public", displayName: "注文",     columns: 12, tags: ["core"],                        diagrams: ["core", "billing"] },
   ],
   relations: [
     // ER図のエッジ描画に必要な最小情報。kind: "physical"（FK）/ "logical"（meta の論理外部制約）
@@ -509,6 +509,8 @@ ERD.index({
       from: "public.orders", to: "public.users", columns: [["user_id", "id"]],
       cardinality: { parent: "1..1", child: "1..N" }, explicit: ["child"] },
   ],
+  // このワークスペースで使われているタグ（テーブル ∪ カラム）。コードポイント順
+  tagsUsed: ["auth", "core", "廃止"],
 });
 ```
 
@@ -516,6 +518,8 @@ ERD.index({
 - `from` は**参照元**（FK を持つ側 = 子）、`to` は**参照先**（親）
 - `cardinality`: **解決後**の多重度（§5.7 のカーディナリティ）。ビューアは導出ロジックを持たず、この値をそのまま鳥の足記号にする
 - `explicit`: 人が `meta.relations` で明示設定した項目（導出値との区別。詳細ダイアログで「手動設定」と示すため）
+- `color`: `meta.color` の生の値（P-13）。**ER図のノードはこの索引だけで描くため、色を載せないと「詳細画面では色が付くのに ER図では付かない」ことになる。** カラムの色は載せない（カラムを描く画面は必ずスキーマファイルを読み込んでいる）
+- `tagsUsed`: 使用中タグの集合（P-12）。**全テーブルを読み込まなくてもタグ入力の候補を出せるようにするためだけに存在する。** カラムタグは索引に個別展開しないので、カラムタグによる検索はロード済みのテーブルにのみ当たる（F-04 の段階拡張）
 
 ### 5.6 `data/dictionary.js`（カラム論理名の横断辞書）
 
@@ -567,11 +571,13 @@ ERD.table({
   meta: {
     // ↓ human-owned。逆生成は読まず、書き換えない（displayName の初期値補完のみ例外。§5.8.2）
     displayName: "ユーザー",                    // テーブル論理名
-    tags: ["core", "auth"],
+    tags: ["core", "auth"],                   // 分類・検索用（P-12）。見た目には影響しない
+    color: "blue",                            // 指定色（P-13）。タグとは独立
     notes: "論理削除は deleted_at 運用",
     columns: {
-      // カラム単位の論理名（辞書より優先）と注記
-      org_id: { displayName: "所属組織ID", notes: "NULL は個人アカウント" },
+      // カラム単位の論理名（辞書より優先）・タグ・色・注記
+      org_id: { displayName: "所属組織ID", tags: ["pii"], notes: "NULL は個人アカウント" },
+      last_order_id: { tags: ["廃止"], color: "muted" },
     },
     logicalUniques: [
       // DB に制約は無いが、運用上一意であることが保証されている組
@@ -594,8 +600,24 @@ ERD.table({
 | 区分 | キー | 逆生成の挙動 |
 |---|---|---|
 | machine-owned | `name` `schema` `comment` `columns` `primaryKey` `uniques` `indexes` `foreignKeys` `dialect` | 上書きする |
-| human-owned | `meta.*`（`displayName` / `tags` / `notes` / `columns.*` / `logicalUniques` / `logicalForeignKeys` / `relations`） | **読まない・書かない**。ただし `displayName` が未設定の場合のみ、コメントから初期値を補完する（§5.8.2） |
+| human-owned | `meta.*`（`displayName` / `tags` / `color` / `notes` / `columns.*` / `logicalUniques` / `logicalForeignKeys` / `relations`） | **読まない・書かない**。ただし `displayName` が未設定の場合のみ、コメントから初期値を補完する（§5.8.2） |
 | 共有 | `id` | リネーム承認時のみ書き換える |
+
+#### タグと色（`meta.tags` / `meta.color`）
+
+**タグと色は独立した属性であり、タグから色を導出しない。** 「廃止」タグを付けても自動でグレーにはならず、グレーにしたければ `color: "muted"` も指定する。**意味はタグで、見た目は色で表す**という切り分けである。
+
+タグに色を割り当てる仕組み（タグ定義のレジストリ）を持たないことには理由がある。色をタグ経由にすると、(1) タグ定義を置くファイルが増え、**閲覧に必要な情報とサーバー専用の設定が混ざる**（`config.js` は静的モードでは読まないため、そこに置くと配布した静的 ZIP でだけ色が消える）、(2) 複数タグが付いたときの優先順位という決着しない設計問題を抱え込む、(3) タグの改名が全テーブルの一括書き換えになる。色を直接持たせれば、これらはすべて発生しない。
+
+| | 置き場所 | 索引 | 用途 |
+|---|---|---|---|
+| タグ | `meta.tags` / `meta.columns.<name>.tags` | 使用中の集合のみ（`tagsUsed`） | 分類・検索・絞り込み |
+| 色 | `meta.color` / `meta.columns.<name>.color` | テーブルの色のみ（`tables[].color`） | ER図ノード・一覧行・カラム行の着色 |
+
+- タグはテーブルとカラムで**同じ名前空間**（「廃止」はどちらにも付く）。**順序に意味は無い**が、人の書いた順は保つ
+- タグ名は空白・区切り文字（`,` `、`）を含めない。**空白でタグを確定する入力 UI に合わせた制約**である。前後空白・空要素・重複（大小無視）はサーバーが保存時に正規化し、それ以外の違反は 422 で拒否する
+- 色は**用意されたトークンのみ**（`gray` `red` `amber` `green` `blue` `purple` `muted`）。任意の hex を許さないのは、配色の一貫性と文字色とのコントラストを人の手で崩させないため。実際の配色はビューアのテーマが持つ
+- **テーブルの色はカラムに継承しない。** 未知のトークンはビューアが既定の外観で描画しつつ値は保持する（手で編集したファイルで描画が壊れないように）
 
 #### 論理制約（`meta.logicalUniques` / `meta.logicalForeignKeys`）
 
@@ -1052,7 +1074,7 @@ React Flow の標準機能（d3-zoom ベース）を使用する。
 
 | 要素 | 表現 |
 |---|---|
-| ノード | テーブル名（論理名 / 物理名 / 併記を切替可）のみ。**スキーマ名は表示しない**（単一スキーマ前提。§1.2）。タグ / 指定色でヘッダを着色 |
+| ノード | テーブル名（論理名 / 物理名 / 併記を切替可）のみ。**スキーマ名は表示しない**（単一スキーマ前提。§1.2）。`meta.color`（指定色）で背景・枠線を着色する（タグとは連動しない。§5.7）。**欠損の警告色と選択枠は指定色より優先**し、関連ハイライトの減光は不透明度で表す（表現の軸を分ける） |
 | 物理 FK エッジ | **実線**。鳥の足記号でカーディナリティを表示 |
 | 論理 FK エッジ（`meta.logicalForeignKeys`） | **破線**。凡例で物理 FK との違いを明示 |
 | 複合キー | 1本のエッジに集約（カラム対応はダブルクリックの詳細ダイアログで確認する） |

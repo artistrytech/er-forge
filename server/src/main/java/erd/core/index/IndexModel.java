@@ -5,10 +5,21 @@ import java.util.List;
 /**
  * data/index.js のモデル（派生ファイル。schema/** + diagrams/** からサーバーが必ず再生成する）。
  * ER図はこのファイルだけでノードとエッジを描く。
+ *
+ * <p>tagsUsed はワークスペース内で実際に使われているタグの集合（テーブルタグ ∪ カラムタグ）。
+ * 全テーブルを読み込まなくてもタグ入力の候補を出せるようにするために載せる（P-12）。
  */
-public record IndexModel(List<TableEntry> tables, List<RelationEntry> relations) {
+public record IndexModel(List<TableEntry> tables, List<RelationEntry> relations, List<String> tagsUsed) {
 
-    /** テーブルの軽量サマリ。displayName は meta.displayName の生の値（未設定なら null = 省略）。 */
+    public IndexModel {
+        tagsUsed = tagsUsed == null ? List.of() : List.copyOf(tagsUsed);
+    }
+
+    /**
+     * テーブルの軽量サマリ。displayName は meta.displayName の生の値（未設定なら null = 省略）。
+     * color も同様に meta.color の生の値。<b>ER図のノードはこのエントリだけで描くため、
+     * 色を載せないと「詳細画面では色が付くのに ER図では付かない」ことになる</b>（P-13）。
+     */
     public record TableEntry(
             String id,
             String name,
@@ -17,6 +28,7 @@ public record IndexModel(List<TableEntry> tables, List<RelationEntry> relations)
             int columns,
             boolean pk,
             List<String> tags,
+            String color,
             List<String> diagrams
     ) {}
 

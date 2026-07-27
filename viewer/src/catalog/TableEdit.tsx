@@ -19,16 +19,20 @@ import {
   errorsAt,
   validateDraft,
   newUid,
+  type DraftColumnMeta,
   type DraftLogicalFk,
   type DraftLogicalUnique,
   type FieldError,
   type MetaDraft,
 } from "../model/metaDraft";
+import { colorAttr } from "../model/colors";
 import { useAppStore } from "../model/store";
 import type { CardEnd, Table } from "../model/types";
+import { ColorSelect } from "../ui/ColorSelect";
 import { Dialog } from "../ui/Dialog";
 import { Link } from "../ui/Link";
 import { NotFound } from "../ui/NotFound";
+import { TagInput } from "../ui/TagInput";
 import { hrefs } from "../ui/router";
 
 interface ServerIssue {
@@ -36,6 +40,8 @@ interface ServerIssue {
   code: string;
   message: string;
 }
+
+const EMPTY_COLUMN_DRAFT: DraftColumnMeta = { displayName: "", tags: [], color: "", notes: "" };
 
 export function TableEdit({ tableId }: { tableId: string }) {
   const { t } = useI18n();
@@ -116,6 +122,17 @@ export function TableEdit({ tableId }: { tableId: string }) {
     () => new Set((index?.tables ?? []).map((it) => it.id)),
     [index],
   );
+
+  // タグ候補（P-12）: index.js の使用中タグ（全テーブル未ロードでも引ける）＋ 編集中に
+  // 追加したタグ。後者を混ぜるのは、テーブルに付けたタグをカラムでもすぐ選べるようにするため
+  const tagCandidates = useMemo(() => {
+    const all = new Set(index?.tagsUsed ?? []);
+    for (const tag of draft?.tags ?? []) all.add(tag);
+    for (const cm of Object.values(draft?.columns ?? {})) {
+      for (const tag of cm.tags) all.add(tag);
+    }
+    return [...all].sort((a, b) => a.localeCompare(b, "ja"));
+  }, [index, draft]);
 
   const save = useCallback(
     async (force: boolean) => {
@@ -201,7 +218,22 @@ export function TableEdit({ tableId }: { tableId: string }) {
   const table = committed.table;
   const allErrors: { path: string }[] = [...clientErrors, ...serverIssues];
 
-  const update = (patch: Partial<MetaDraft>) => setDraft({ ...draft, ...patch });
+  // 更新は必ず関数形式で行う。タグ入力は blur を少し遅らせて確定するため、
+  // 直前に別のフィールド（色など）を触ると、閉じ込めた draft で上書きして戻してしまう
+  const update = (patch: Partial<MetaDraft>) =>
+    setDraft((d) => (d === null ? d : { ...d, ...patch }));
+  const updateColumn = (name: string, patch: Partial<DraftColumnMeta>) =>
+    setDraft((d) =>
+      d === null
+        ? d
+        : {
+            ...d,
+            columns: {
+              ...d.columns,
+              [name]: { ...(d.columns[name] ?? EMPTY_COLUMN_DRAFT), ...patch },
+            },
+          },
+    );
 
   return (
     <div className="catalog-page table-edit">
@@ -241,7 +273,21 @@ export function TableEdit({ tableId }: { tableId: string }) {
             onChange={(e) => update({ displayName: e.target.value })}
           />
           <label>{t("tableEdit.tags")}</label>
-          <input type="text" value={draft.tags} onChange={(e) => update({ tags: e.target.value })} />
+          <TagInput
+            value={draft.tags}
+            candidates={tagCandidates}
+            disabled={!sessionReady || saving}
+            testId="table-tags"
+            onChange={(tags) => update({ tags })}
+          />
+          {/* 色はタグとは独立した指定（P-13）。タグから色は導出しない */}
+          <label>{t("tableEdit.color")}</label>
+          <ColorSelect
+            value={draft.color}
+            disabled={!sessionReady || saving}
+            testId="table-color"
+            onChange={(color) => update({ color })}
+          />
           <label>{t("tableEdit.notes")}</label>
           <textarea
             rows={2}
@@ -263,15 +309,22 @@ export function TableEdit({ tableId }: { tableId: string }) {
                 <th>{t("table.colName")}</th>
                 <th>{t("table.colType")}</th>
                 <th>{t("table.colLogicalName")}</th>
+                <th>{t("table.tags")}</th>
+                <th>{t("tableEdit.color")}</th>
                 <th>{t("table.colNotes")}</th>
               </tr>
             </thead>
             <tbody>
               {table.columns.map((c) => {
-                const cm = draft.columns[c.name] ?? { displayName: "", notes: "" };
+                const cm = draft.columns[c.name] ?? {
+                  displayName: "",
+                  tags: [],
+                  color: "",
+                  notes: "",
+                };
                 const dictValue = dictionary?.columns?.[c.name];
                 return (
-                  <tr key={c.name}>
+                  <tr key={c.name} data-color={colorAttr(cm.color)}>
                     <td className="mono">{c.name}</td>
                     <td className="mono muted">{c.type ?? c.logicalType ?? ""}</td>
                     <td>
@@ -283,14 +336,7 @@ export function TableEdit({ tableId }: { tableId: string }) {
                             ? t("tableEdit.dictValue", { value: dictValue })
                             : ""
                         }
-                        onChange={(e) =>
-                          update({
-                            columns: {
-                              ...draft.columns,
-                              [c.name]: { ...cm, displayName: e.target.value },
-                            },
-                          })
-                        }
+                        onChange={(e) => updateColumn(c.name, { displayName: e.target.value })}
                       />
                       {cm.displayName.trim() !== "" && dictValue !== undefined && (
                         <span className="badge badge-warn" title={t("tableEdit.dictValue", { value: dictValue })}>
@@ -299,17 +345,28 @@ export function TableEdit({ tableId }: { tableId: string }) {
                       )}
                     </td>
                     <td>
+                      <TagInput
+                        value={cm.tags}
+                        candidates={tagCandidates}
+                        disabled={!sessionReady || saving}
+                        compact
+                        testId={`column-tags-${c.name}`}
+                        onChange={(tags) => updateColumn(c.name, { tags })}
+                      />
+                    </td>
+                    <td>
+                      <ColorSelect
+                        value={cm.color}
+                        disabled={!sessionReady || saving}
+                        testId={`column-color-${c.name}`}
+                        onChange={(color) => updateColumn(c.name, { color })}
+                      />
+                    </td>
+                    <td>
                       <input
                         type="text"
                         value={cm.notes}
-                        onChange={(e) =>
-                          update({
-                            columns: {
-                              ...draft.columns,
-                              [c.name]: { ...cm, notes: e.target.value },
-                            },
-                          })
-                        }
+                        onChange={(e) => updateColumn(c.name, { notes: e.target.value })}
                       />
                     </td>
                   </tr>

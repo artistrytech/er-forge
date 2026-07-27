@@ -15,5 +15,6 @@ ERD.table({
   meta: {
     displayName: "ユーザーとロールの紐付け",
     tags: ["auth"],
+    color: "blue",
   },
 });

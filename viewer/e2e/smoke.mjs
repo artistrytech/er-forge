@@ -77,6 +77,15 @@ async function main() {
   check("logical edge is dashed class", (await page.locator('[data-testid="erd-edge"][data-kind="logical"]').count()) === 1);
   check("cardinality markers render", (await page.locator('[data-testid="card-marker"]').count()) >= 8);
   check("legend visible", await page.locator('[data-testid="erd-legend"]').isVisible());
+  // 指定色（P-13）は静的モードでも効く（index.js に載っているため）
+  check(
+    "the specified color reaches the node in static mode",
+    (await page.locator('[data-testid="erd-node"][data-color="blue"]').count()) === 1,
+  );
+  check(
+    "the table list row uses the same color",
+    (await page.locator('[data-testid="lp-item"][data-color="blue"]').count()) >= 1,
+  );
   check("mode badge shows static", await page.locator('[data-testid="mode-badge"][data-mode="static"]').isVisible());
   // 閲覧中は「編集開始」（ペン）が出る。バッジ表示は廃止
   check("start-edit shown when viewing", await page.locator('[data-testid="session-toggle"][data-editing="false"]').isVisible());

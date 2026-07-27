@@ -96,6 +96,7 @@
     "tags": [
       "core"
     ],
+    "color": null,
     "notes": null,
     "columns": { },
     "logicalUniques": [ ],

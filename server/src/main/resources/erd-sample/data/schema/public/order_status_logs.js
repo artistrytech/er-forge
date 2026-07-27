@@ -16,5 +16,6 @@ ERD.table({
   meta: {
     displayName: "注文ステータス履歴",
     tags: ["order"],
+    color: "amber",
   },
 });

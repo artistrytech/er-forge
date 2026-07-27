@@ -6,10 +6,15 @@
  * - 空文字は「未設定」= キー削除として meta から落とす（P 詳細設計 §1.1）
  * - meta の未知キー（前方互換）は変換時に引き継ぐ
  */
+import { normalizeTags } from "./metaRules";
 import type { CardEnd, Table, TableMeta } from "./types";
 
 export interface DraftColumnMeta {
   displayName: string;
+  /** タグ（P-12）。確定済みのタグのみを持つ（入力中の文字列は TagInput 側） */
+  tags: string[];
+  /** 色トークン（P-13）。"" は未設定。タグとは独立 */
+  color: string;
   notes: string;
 }
 
@@ -37,7 +42,9 @@ export interface DraftRelation {
 
 export interface MetaDraft {
   displayName: string;
-  tags: string;
+  tags: string[];
+  /** 色トークン（P-13）。"" は未設定 */
+  color: string;
   notes: string;
   columns: Record<string, DraftColumnMeta>;
   logicalUniques: DraftLogicalUnique[];
@@ -56,7 +63,12 @@ export function buildDraft(table: Table): MetaDraft {
   const columns: Record<string, DraftColumnMeta> = {};
   for (const c of table.columns) {
     const cm = meta?.columns?.[c.name];
-    columns[c.name] = { displayName: cm?.displayName ?? "", notes: cm?.notes ?? "" };
+    columns[c.name] = {
+      displayName: cm?.displayName ?? "",
+      tags: [...(cm?.tags ?? [])],
+      color: cm?.color ?? "",
+      notes: cm?.notes ?? "",
+    };
   }
   const relations: Record<string, DraftRelation> = {};
   for (const [key, rm] of Object.entries(meta?.relations ?? {})) {
@@ -64,7 +76,8 @@ export function buildDraft(table: Table): MetaDraft {
   }
   return {
     displayName: meta?.displayName ?? "",
-    tags: (meta?.tags ?? []).join(", "),
+    tags: [...(meta?.tags ?? [])],
+    color: meta?.color ?? "",
     notes: meta?.notes ?? "",
     columns,
     logicalUniques: (meta?.logicalUniques ?? []).map((u) => ({
@@ -114,6 +127,7 @@ export function draftToMeta(draft: MetaDraft, table: Table): TableMeta {
   const known = [
     "displayName",
     "tags",
+    "color",
     "notes",
     "columns",
     "logicalUniques",
@@ -127,23 +141,23 @@ export function draftToMeta(draft: MetaDraft, table: Table): TableMeta {
   const displayName = draft.displayName.trim();
   if (displayName !== "") meta["displayName"] = displayName;
 
-  const tags = [
-    ...new Set(
-      draft.tags
-        .split(/[,、]/)
-        .map((s) => s.trim())
-        .filter((s) => s !== ""),
-    ),
-  ];
+  // タグはサーバーと同じ規則で正規化してから送る（P-12）
+  const tags = normalizeTags(draft.tags);
   if (tags.length > 0) meta["tags"] = tags;
+
+  if (draft.color !== "") meta["color"] = draft.color;
 
   const notes = draft.notes.trim();
   if (notes !== "") meta["notes"] = notes;
 
-  const columns: Record<string, { displayName?: string; notes?: string }> = {};
+  type ColumnEntry = { displayName?: string; tags?: string[]; color?: string; notes?: string };
+  const columns: Record<string, ColumnEntry> = {};
   for (const [name, cm] of Object.entries(draft.columns)) {
-    const entry: { displayName?: string; notes?: string } = {};
+    const entry: ColumnEntry = {};
     if (cm.displayName.trim() !== "") entry.displayName = cm.displayName.trim();
+    const columnTags = normalizeTags(cm.tags);
+    if (columnTags.length > 0) entry.tags = columnTags;
+    if (cm.color !== "") entry.color = cm.color;
     if (cm.notes.trim() !== "") entry.notes = cm.notes.trim();
     if (Object.keys(entry).length > 0) columns[name] = entry;
   }

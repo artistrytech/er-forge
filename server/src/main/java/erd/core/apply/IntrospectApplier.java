@@ -191,13 +191,15 @@ public final class IntrospectApplier {
             for (Map.Entry<String, String> e : columnSeeds.entrySet()) {
                 ColumnMeta cm = columns.get(e.getKey());
                 if (cm != null && !isBlank(cm.displayName())) continue;   // 既存値は上書きしない
+                // 補完するのは論理名だけ。タグ・色・注記・未知キーはそのまま持ち越す（INV-1）
                 columns.put(e.getKey(), cm == null
-                        ? new ColumnMeta(e.getValue(), null, Map.of())
-                        : new ColumnMeta(e.getValue(), cm.notes(), cm.unknown()));
+                        ? new ColumnMeta(e.getValue(), List.of(), null, null, Map.of())
+                        : new ColumnMeta(e.getValue(), cm.tags(), cm.color(), cm.notes(), cm.unknown()));
                 seededColumns++;
             }
-            seeded.add(t.withMeta(new TableMeta(displayName, meta.tags(), meta.notes(), columns,
-                    meta.logicalUniques(), meta.logicalForeignKeys(), meta.relations(), meta.unknown())));
+            seeded.add(t.withMeta(new TableMeta(displayName, meta.tags(), meta.color(), meta.notes(),
+                    columns, meta.logicalUniques(), meta.logicalForeignKeys(), meta.relations(),
+                    meta.unknown())));
         }
         tables = seeded;
 
@@ -455,7 +457,7 @@ public final class IntrospectApplier {
                 .map(lfk -> new LogicalForeignKey(lfk.name(), renameColumns(lfk.columns(), colPairs),
                         lfk.ref(), lfk.notes()))
                 .toList();
-        return new TableMeta(meta.displayName(), meta.tags(), meta.notes(), columns,
+        return new TableMeta(meta.displayName(), meta.tags(), meta.color(), meta.notes(), columns,
                 uniques, fks, meta.relations(), meta.unknown());
     }
 
@@ -472,8 +474,8 @@ public final class IntrospectApplier {
                 .toList();
         Table out = t.withSchema(withForeignKeys(t.schema(), fks));
         TableMeta meta = out.meta();
-        return out.withMeta(new TableMeta(meta.displayName(), meta.tags(), meta.notes(), meta.columns(),
-                meta.logicalUniques(), lfks, meta.relations(), meta.unknown()));
+        return out.withMeta(new TableMeta(meta.displayName(), meta.tags(), meta.color(), meta.notes(),
+                meta.columns(), meta.logicalUniques(), lfks, meta.relations(), meta.unknown()));
     }
 
     private static Ref renameRef(Ref ref, Map<String, String> tableRenames,

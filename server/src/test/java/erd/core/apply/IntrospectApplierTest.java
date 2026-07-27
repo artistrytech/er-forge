@@ -125,7 +125,7 @@ class IntrospectApplierTest {
         // 人が積み上げた meta（タグ・注記）を持たせ、却下でそれが失われることを確認する
         Table orgTable = FixtureModels.organizationsTable();
         Table enriched = orgTable.withMeta(new erd.core.model.TableMeta("組織", List.of("core"),
-                "マスタ", Map.of(), List.of(), List.of(), Map.of(), Map.of()));
+                "amber", "マスタ", Map.of(), List.of(), List.of(), Map.of(), Map.of()));
         ProjectModel model = new ProjectModel(FixtureModels.manifest(),
                 erd.core.model.ProjectConfig.EMPTY, FixtureModels.dictionary(),
                 List.of(FixtureModels.usersTable(), FixtureModels.ordersTable(), enriched),
@@ -134,7 +134,8 @@ class IntrospectApplierTest {
         ApplyResult result = apply(model, raw, decisions);
 
         Table orgs = DiffFixtures.table(result.model(), "public.orgs");
-        assertTrue(orgs.meta().tags().isEmpty());     // タグ・注記は失われる（新規テーブル扱い）
+        assertTrue(orgs.meta().tags().isEmpty());     // タグ・色・注記は失われる（新規テーブル扱い）
+        assertEquals(null, orgs.meta().color());
         assertEquals(null, orgs.meta().notes());
         assertTrue(result.model().table("public.organizations").isEmpty());
 
@@ -184,9 +185,9 @@ class IntrospectApplierTest {
         // orders の displayName を消し、コメントから補完されることを確認する
         Table orders = FixtureModels.ordersTable();
         var meta = orders.meta();
-        Table noName = orders.withMeta(new erd.core.model.TableMeta(null, meta.tags(), meta.notes(),
-                meta.columns(), meta.logicalUniques(), meta.logicalForeignKeys(), meta.relations(),
-                meta.unknown()));
+        Table noName = orders.withMeta(new erd.core.model.TableMeta(null, meta.tags(), meta.color(),
+                meta.notes(), meta.columns(), meta.logicalUniques(), meta.logicalForeignKeys(),
+                meta.relations(), meta.unknown()));
         ProjectModel model = new ProjectModel(FixtureModels.manifest(),
                 erd.core.model.ProjectConfig.EMPTY, FixtureModels.dictionary(),
                 List.of(FixtureModels.usersTable(), noName, FixtureModels.organizationsTable()),

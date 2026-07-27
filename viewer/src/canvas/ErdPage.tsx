@@ -27,6 +27,7 @@ import { makeAdd, makeMove, makeRemove, snap, type Pos } from "../model/commands
 import { requestAutoLayout, useEditStore } from "../model/editStore";
 import { loadDiagram } from "../model/loader";
 import { formatName, resolveTableName } from "../model/logicalName";
+import { tokenColor } from "../model/colors";
 import { useAppStore } from "../model/store";
 import type { IndexTable, Relation } from "../model/types";
 import { Dialog } from "../ui/Dialog";
@@ -46,6 +47,12 @@ const PLACE_GAP = 120;
 export const TABLE_DND_TYPE = "application/x-erd-table";
 
 const isGhost = (id: string): boolean => id.startsWith(GHOST);
+
+/** MiniMap のノード色（D-03）。指定色が無いテーブルは MiniMap の既定色に任せる */
+function miniMapNodeColor(node: { data?: { color?: unknown } }): string {
+  const color = typeof node.data?.color === "string" ? node.data.color : undefined;
+  return tokenColor(color, "border") ?? "#e2e4e8";
+}
 
 /** 未配置テーブルはまだ描画されておらず実測サイズが無い。ラベル長から見積もる */
 function estimateSize(label: string): { w: number; h: number } {
@@ -146,7 +153,7 @@ function ErdCanvas({ diagramId, focusTableId }: ErdPageProps) {
         type: "table" as const,
         position: { x: layout.pos[0], y: layout.pos[1] },
         width: layout.w,
-        data: { primary, secondary, missing, notes },
+        data: { primary, secondary, missing, notes, color: it?.color },
         connectable: false,
       };
     });
@@ -487,7 +494,8 @@ function ErdCanvas({ diagramId, focusTableId }: ErdPageProps) {
       >
         <Background variant={BackgroundVariant.Dots} gap={16} />
         <Controls showInteractive={false} />
-        <MiniMap pannable zoomable />
+        {/* MiniMap も同じ指定色で塗る（全体像と本体で色が食い違わないように。D-03） */}
+        <MiniMap pannable zoomable nodeColor={miniMapNodeColor} />
         <Panel position="top-left" className={styles.erdLegend} data-testid="erd-legend">
           <span className={styles.erdLegendItem}>
             <svg width="34" height="10" aria-hidden="true">

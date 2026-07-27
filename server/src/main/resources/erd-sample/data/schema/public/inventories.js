@@ -15,6 +15,7 @@ ERD.table({
   meta: {
     displayName: "在庫管理",
     tags: ["catalog"],
+    color: "green",
     logicalUniques: [
       { name: "luk_inventories_product", columns: ["product_id"], notes: "商品ごとに在庫レコードは1件" },
     ],

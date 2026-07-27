@@ -14,9 +14,11 @@ ERD.table({
   ],
   meta: {
     displayName: "ボーナスポイントルール",
-    tags: ["point"],
+    tags: ["point", "廃止"],
+    color: "muted",
+    notes: "新規のポイント付与では使わない（point_campaigns へ移行済み）",
     columns: {
-      bonus_rate: { notes: "% 表記（例: 10.00）" },
+      bonus_rate: { tags: ["廃止"], color: "muted", notes: "% 表記（例: 10.00）" },
     },
   },
 });

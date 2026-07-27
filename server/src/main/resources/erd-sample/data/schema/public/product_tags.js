@@ -14,5 +14,6 @@ ERD.table({
   meta: {
     displayName: "商品タグ",
     tags: ["catalog", "master"],
+    color: "green",
   },
 });

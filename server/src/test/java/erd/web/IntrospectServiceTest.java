@@ -197,7 +197,7 @@ class IntrospectServiceTest {
             // 人が論理名・注記・タグを整備した状態にする
             ProjectModel model = store.read(dataDir).model();
             Table users = model.table("public.users").orElseThrow();
-            Table enriched = users.withMeta(new TableMeta("ユーザー", List.of("core"),
+            Table enriched = users.withMeta(new TableMeta("ユーザー", List.of("core"), "blue",
                     "論理削除は deleted_at 運用", Map.of(), List.of(), List.of(), Map.of(), Map.of()));
             List<Table> tables = model.tables().stream()
                     .map(t -> t.id().equals("public.users") ? enriched : t).toList();

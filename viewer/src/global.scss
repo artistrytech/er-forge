@@ -34,6 +34,48 @@
   --mono: ui-monospace, SFMono-Regular, "Cascadia Mono", Consolas, monospace;
 }
 
+/* ---- 色トークン（P-13） ----
+   テーブル / カラムに人が直接指定する色。タグとは独立しており、タグから導出はしない。
+   data-color を持つ要素へ --c-surface / --c-border / --c-text を流し込み、
+   それをどう使うか（背景・枠線・文字色）は各コンポーネントが決める。
+   未知のトークンはどのルールにも当たらず、変数が未定義のまま既定の外観へフォールバックする。
+   muted は「廃止」などのグレーアウト用（文字色まで落とす唯一のトークン）。 */
+[data-color="gray"] {
+  --c-surface: #eceef1;
+  --c-border: #9aa1ad;
+  --c-text: #414855;
+}
+[data-color="red"] {
+  --c-surface: #fdeaea;
+  --c-border: #dc6a6a;
+  --c-text: #9b1c1c;
+}
+[data-color="amber"] {
+  --c-surface: #fdf1db;
+  --c-border: #d9a441;
+  --c-text: #8a4b0a;
+}
+[data-color="green"] {
+  --c-surface: #e6f5ec;
+  --c-border: #57a97a;
+  --c-text: #14603a;
+}
+[data-color="blue"] {
+  --c-surface: #e9f0fd;
+  --c-border: #5b87e0;
+  --c-text: #1a3f8f;
+}
+[data-color="purple"] {
+  --c-surface: #f2eafb;
+  --c-border: #9a72d9;
+  --c-text: #5b21b6;
+}
+[data-color="muted"] {
+  --c-surface: #f2f3f5;
+  --c-border: #cdd1d7;
+  --c-text: #9096a0;
+}
+
 * {
   box-sizing: border-box;
 }

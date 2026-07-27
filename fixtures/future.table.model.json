@@ -30,6 +30,7 @@
   "meta": {
     "displayName": "未来",
     "tags": [ ],
+    "color": null,
     "notes": null,
     "columns": { },
     "logicalUniques": [ ],

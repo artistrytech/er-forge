@@ -105,11 +105,26 @@
       "core",
       "auth"
     ],
+    "color": "blue",
     "notes": "論理削除は deleted_at 運用",
     "columns": {
       "org_id": {
         "displayName": "所属組織ID",
+        "tags": [
+          "pii"
+        ],
+        "color": null,
         "notes": "NULL は個人アカウント",
+        "unknown": { },
+        "empty": false
+      },
+      "last_order_id": {
+        "displayName": null,
+        "tags": [
+          "廃止"
+        ],
+        "color": "muted",
+        "notes": null,
         "unknown": { },
         "empty": false
       }

@@ -16,5 +16,6 @@ ERD.table({
   meta: {
     displayName: "注文キャンセル情報",
     tags: ["order"],
+    color: "amber",
   },
 });

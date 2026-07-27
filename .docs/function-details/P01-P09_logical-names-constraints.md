@@ -232,7 +232,10 @@ meta: {
 | `meta.logicalUniques` の変更 | **必要** | `relations[].toOne`（カーディナリティ）が変わる |
 | `meta.displayName`（テーブル論理名） | **必要** | `index.tables[].displayName` が変わる |
 | `meta.columns.*.displayName`（カラム論理名） | 不要 | `index` にカラム情報はない |
-| `meta.tags` / `meta.notes` | **必要**（tags のみ） | `index.tables[].tags` が変わる |
+| `meta.tags` / `meta.notes` | **必要**（tags のみ） | `index.tables[].tags` と `tagsUsed` が変わる |
+| `meta.color`（指定色。P-13） | **必要** | `index.tables[].color` が変わる（ER図はこれだけでノードを描く） |
+| `meta.columns.*.tags`（カラムタグ。P-12） | **必要** | `tagsUsed` が変わる（カラムタグ自体は索引に展開しない） |
+| `meta.columns.*.color` | 不要 | `index` にカラムの色は載せない |
 | `dictionary.js` の変更 | **不要** | 辞書はビューアが直接読む |
 
 > サーバーは `PUT /tables/:id` の後、**無条件に `index.js` を再生成する**方針とする（何が変わったかを判定して条件分岐すると、必ず漏れる）。生成コストは小さい。

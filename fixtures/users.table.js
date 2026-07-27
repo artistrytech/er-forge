@@ -23,9 +23,11 @@ ERD.table({
   meta: {
     displayName: "ユーザー",
     tags: ["core", "auth"],
+    color: "blue",
     notes: "論理削除は deleted_at 運用",
     columns: {
-      org_id: { displayName: "所属組織ID", notes: "NULL は個人アカウント" },
+      org_id: { displayName: "所属組織ID", tags: ["pii"], notes: "NULL は個人アカウント" },
+      last_order_id: { tags: ["廃止"], color: "muted" },
     },
     logicalUniques: [
       { name: "luk_users_org_email", columns: ["org_id", "email"], notes: "組織内でメールは重複しない（アプリ側で担保）" },

@@ -14,5 +14,6 @@ ERD.table({
   meta: {
     displayName: "支払方法マスタ",
     tags: ["billing", "master"],
+    color: "purple",
   },
 });

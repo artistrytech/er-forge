@@ -6,6 +6,7 @@
 import { memo } from "react";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import { cx } from "../lib/cx";
+import { colorAttr } from "../model/colors";
 import { useCanvasStore } from "./canvasStore";
 import styles from "./TableNode.module.scss";
 
@@ -18,6 +19,8 @@ export interface TableNodeData extends Record<string, unknown> {
   missing?: boolean;
   /** meta.notes があるテーブル（D-04 簡易対応: ホバーで表示） */
   notes?: string;
+  /** 指定色（P-13）。未知トークンは colorAttr が落とし、既定の外観になる */
+  color?: string;
   /** 自動レイアウトのプレビュー中に「現在の配置」を薄く重ねるゴースト（H-07 §7.2） */
   ghost?: boolean;
 }
@@ -44,6 +47,8 @@ export const TableNode = memo(function TableNode({ id, data }: NodeProps<TableNo
       className={cls}
       title={data.notes}
       data-testid="erd-node"
+      // 欠損（警告色）・選択枠は指定色より上のレイヤ。CSS の後勝ちで担保する（D-03）
+      data-color={colorAttr(data.color)}
       data-ghost={data.ghost === true ? "true" : undefined}
     >
       <Handle type="target" position={Position.Top} className={styles.erdHandle} isConnectable={false} />

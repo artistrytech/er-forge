@@ -79,7 +79,7 @@ class CardinalityTest {
 
         // user_id に論理一意制約を追加（1ユーザー1注文の業務ルール）
         TableMeta m = orders.meta();
-        TableMeta withLu = new TableMeta(m.displayName(), m.tags(), m.notes(), m.columns(),
+        TableMeta withLu = new TableMeta(m.displayName(), m.tags(), m.color(), m.notes(), m.columns(),
                 List.of(new LogicalUnique("luk_orders_user", List.of("user_id"), "1ユーザー1注文")),
                 m.logicalForeignKeys(), m.relations(), m.unknown());
         IndexModel after = generator.generate(

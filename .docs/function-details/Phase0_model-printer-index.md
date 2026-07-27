@@ -47,9 +47,10 @@ record TableSchema(
 /** 人が書く情報。逆生成は読まない・書かない（唯一の例外は K-14 の論理名初期値補完） */
 record TableMeta(
     String displayName,                          // テーブル論理名
-    List<String> tags,
+    List<String> tags,                           // 分類・検索用（P-12）
+    String color,                                // 指定色（P-13）。タグとは独立
     String notes,
-    Map<String, ColumnMeta> columns,             // カラム論理名・注記
+    Map<String, ColumnMeta> columns,             // カラム論理名・タグ・色・注記
     List<LogicalUnique> logicalUniques,
     List<LogicalForeignKey> logicalForeignKeys,
     Map<String, RelationMeta> relations          // カーディナリティ等（§5）
@@ -191,10 +192,11 @@ ERD.table({
 | Column | `name` `type` `logicalType` `nullable` `default` `autoIncrement` `generated` `comment` |
 | ForeignKey | `name` `columns` `ref` `onDelete` `onUpdate` |
 | Ref | `table` `columns` |
-| `meta` | `displayName` `tags` `notes` `columns` `logicalUniques` `logicalForeignKeys` `relations` |
+| `meta` | `displayName` `tags` `color` `notes` `columns` `logicalUniques` `logicalForeignKeys` `relations` |
+| `meta.columns.<name>` | `displayName` `tags` `color` `notes` |
 | `ERD.diagram` | `id` `title` `order` `nodes` `edges` |
 | `ERD.manifest` | `schemaVersion` `generatedAt` `source` `config` `dictionary` `tables` `diagrams` |
-| `ERD.index` | `tables` `relations` |
+| `ERD.index` | `tables` `relations` `tagsUsed` |
 | `ERD.config` | `ignoreTables` |
 | `ERD.dictionary` | `columns` |
 
@@ -240,9 +242,11 @@ ERD.table({
   meta: {
     displayName: "ユーザー",
     tags: ["core", "auth"],
+    color: "blue",
     notes: "論理削除は deleted_at 運用",
     columns: {
-      org_id: { displayName: "所属組織ID", notes: "NULL は個人アカウント" },
+      org_id: { displayName: "所属組織ID", tags: ["pii"], notes: "NULL は個人アカウント" },
+      last_order_id: { tags: ["廃止"], color: "muted" },
     },
     relations: {
       "fk:users_org_id_fkey": { child: "1..N", notes: "組織には必ず1人以上の利用者がいる" },
@@ -307,11 +311,13 @@ JsonMapper.builder()
 
 ```js
 { id: "public.users", name: "users", displayName: "ユーザー", columns: 8, pk: true,
-  tags: ["core", "auth"], diagrams: ["core"] }
+  tags: ["core", "auth"], color: "blue", diagrams: ["core"] }
 ```
 
 - `displayName` は **`meta.displayName` の生の値**（未設定なら省略）。**物理名へのフォールバックはビューア側の解決関数で行う**（P 詳細設計 §1.1）。ここで解決済みの値を入れると、「論理名が設定されているか」が区別できなくなり、未整備ハイライト（O-07）が作れない。
 - `diagrams` は、そのテーブルを含むページID の昇順。空配列なら**省略する**（＝未配置。K-12 の導出元）。
+- `color` は **`meta.color` の生の値**（未設定なら省略。P-13）。**ER図はこの索引だけでノードを描くため、ここに載せないと ER図だけ色が付かない。** カラムの色・カラムのタグは載せない（カラムを描く画面は必ずスキーマファイルを読み込んでいる）。
+- ファイル末尾の `tagsUsed` は、使用中タグ（テーブル ∪ カラム）のコードポイント順の集合。タグ入力の候補用（P-12）。
 
 ### 4.3 `relations[]`（エッジ）
 

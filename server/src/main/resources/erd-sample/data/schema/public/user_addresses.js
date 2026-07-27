@@ -19,5 +19,6 @@ ERD.table({
   meta: {
     displayName: "ユーザー住所",
     tags: ["auth"],
+    color: "blue",
   },
 });

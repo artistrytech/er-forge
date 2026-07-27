@@ -13,5 +13,6 @@ ERD.table({
   meta: {
     displayName: "ポイントキャンペーン",
     tags: ["point", "master"],
+    color: "red",
   },
 });

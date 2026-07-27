@@ -33,6 +33,24 @@
   margin-right: 6px;
 }
 
+/* カラムの指定色（P-13）。行の背景を ER図のノード・一覧行と同じ色で塗る。
+   色はタグとは独立で、タグが無くても色だけを付けられる。 */
+.column-row[data-color] {
+  color: var(--c-text);
+  background: var(--c-surface);
+}
+
+.column-row[data-color] td:first-child {
+  box-shadow: inset 3px 0 0 0 var(--c-border);
+}
+
+/* カラムのタグ（P-12）。テーブルのタグと同じ見た目にする */
+.column-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
 /* カラム表の PK / FK 標識（モック 2a） */
 .key-badge {
   display: inline-block;

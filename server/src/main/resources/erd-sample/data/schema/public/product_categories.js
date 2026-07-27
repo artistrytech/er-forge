@@ -14,5 +14,6 @@ ERD.table({
   meta: {
     displayName: "商品カテゴリ",
     tags: ["catalog", "master"],
+    color: "green",
   },
 });

@@ -262,6 +262,7 @@ public final class DataFileParser {
 
         String displayName = o.text("displayName");
         List<String> tags = o.textArray("tags");
+        String color = o.text("color");
         String notes = o.text("notes");
 
         Map<String, ColumnMeta> columns = new LinkedHashMap<>();
@@ -269,7 +270,8 @@ public final class DataFileParser {
         if (columnsNode != null) {
             columnsNode.fields().forEachRemaining(e -> {
                 Obj cm = new Obj(asObject(e.getValue(), "meta.columns." + e.getKey()));
-                columns.put(e.getKey(), new ColumnMeta(cm.text("displayName"), cm.text("notes"), cm.rest()));
+                columns.put(e.getKey(), new ColumnMeta(cm.text("displayName"), cm.textArray("tags"),
+                        cm.text("color"), cm.text("notes"), cm.rest()));
             });
         }
 
@@ -296,8 +298,8 @@ public final class DataFileParser {
             });
         }
 
-        return new TableMeta(displayName, tags, notes, columns, logicalUniques, logicalForeignKeys,
-                relations, o.rest());
+        return new TableMeta(displayName, tags, color, notes, columns, logicalUniques,
+                logicalForeignKeys, relations, o.rest());
     }
 
     private Ref readRef(JsonNode node) {

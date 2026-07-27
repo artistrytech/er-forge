@@ -240,6 +240,66 @@ class TableServiceTest {
         assertFalse(ok.writtenFiles().containsKey("schema/public/orders.js"));
     }
 
+    // P-12: タグは保存前に正規化される（前後空白・空要素・重複を落とす。重複は大小無視）
+    @Test
+    void tagsAreNormalizedOnSave() throws Exception {
+        String meta = """
+                {
+                  "tags": ["  core ", "", "Core", "廃止"],
+                  "columns": { "code": { "tags": ["legacy", "legacy"] } }
+                }
+                """;
+        var outcome = put("public.orders", ordersJson(meta), hashOf("schema/public/orders.js"));
+
+        assertInstanceOf(TableService.Ok.class, outcome);
+        Table saved = parser.parseTable(
+                Files.readString(dataDir.resolve("schema/public/orders.js"), StandardCharsets.UTF_8)).value();
+        assertEquals(List.of("core", "廃止"), saved.meta().tags());
+        assertEquals(List.of("legacy"), saved.meta().columns().get("code").tags());
+    }
+
+    // P-12: 区切り文字・空白を含むタグ、長すぎるタグはエラー（黙って1件のタグにしない）
+    @Test
+    void invalidTagIsError() throws Exception {
+        var outcome = put("public.orders", ordersJson("""
+                { "tags": ["core, auth"] }
+                """), hashOf("schema/public/orders.js"));
+
+        assertInstanceOf(TableService.Invalid.class, outcome);
+        var errors = ((TableService.Invalid) outcome).errors();
+        assertEquals("meta.tags[0]", errors.get(0).path());
+        assertEquals("TAG_WHITESPACE", errors.get(0).code());
+    }
+
+    // P-13: 色は既知トークンのみ。任意の hex は受け付けない
+    @Test
+    void unknownColorIsError() throws Exception {
+        var outcome = put("public.orders", ordersJson("""
+                { "color": "#ff0000" }
+                """), hashOf("schema/public/orders.js"));
+
+        assertInstanceOf(TableService.Invalid.class, outcome);
+        var errors = ((TableService.Invalid) outcome).errors();
+        assertEquals("meta.color", errors.get(0).path());
+        assertEquals("UNKNOWN_COLOR", errors.get(0).code());
+    }
+
+    // P-13: 色は index.js にも載る（ER図はテーブルファイルを読まずにノードを描くため）
+    @Test
+    void colorIsWrittenToIndex() throws Exception {
+        String meta = """
+                { "color": "muted", "columns": { "code": { "color": "red" } } }
+                """;
+        var outcome = put("public.orders", ordersJson(meta), hashOf("schema/public/orders.js"));
+
+        assertInstanceOf(TableService.Ok.class, outcome);
+        String index = Files.readString(dataDir.resolve("index.js"), StandardCharsets.UTF_8);
+        assertTrue(index.contains("id: \"public.orders\""));
+        assertTrue(index.contains("color: \"muted\""));
+        // カラムの色は index には載せない（カラムを描く画面は必ずテーブルを読み込んでいる）
+        assertFalse(index.contains("\"red\""));
+    }
+
     @Test
     void unknownTableIsNotFound() throws Exception {
         assertInstanceOf(TableService.NotFound.class,

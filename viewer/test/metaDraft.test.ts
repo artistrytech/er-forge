@@ -44,17 +44,32 @@ describe("buildDraft / draftToMeta", () => {
   it("空文字は「未設定」= キー削除（P §1.1）", () => {
     const draft = buildDraft(users);
     draft.displayName = "  ";
-    draft.columns["org_id"] = { displayName: "", notes: "" };
+    draft.columns["org_id"] = { displayName: "", tags: [], color: "", notes: "" };
     const meta = draftToMeta(draft, users) as Record<string, unknown>;
     expect(meta["displayName"]).toBeUndefined();
     expect(meta["columns"]).toBeUndefined();
   });
 
-  it("タグはカンマ / 読点区切りでトリム・重複排除される", () => {
+  it("タグは正規化される（前後空白・空要素・大小無視の重複を落とす。P-12）", () => {
     const draft = buildDraft(users);
-    draft.tags = " core, auth 、core ,";
+    draft.tags = [" core ", "auth", "Core", "", "廃止"];
     const meta = draftToMeta(draft, users) as Record<string, unknown>;
-    expect(meta["tags"]).toEqual(["core", "auth"]);
+    expect(meta["tags"]).toEqual(["core", "auth", "廃止"]);
+  });
+
+  it("色とカラムのタグ・色が保存される。未設定はキーごと落ちる（P-12 / P-13）", () => {
+    const draft = buildDraft(users);
+    draft.color = "muted";
+    draft.columns["org_id"] = {
+      displayName: "",
+      tags: ["pii"],
+      color: "red",
+      notes: "",
+    };
+    draft.columns["email"] = { displayName: "", tags: [], color: "", notes: "" };
+    const meta = draftToMeta(draft, users) as Record<string, unknown>;
+    expect(meta["color"]).toBe("muted");
+    expect(meta["columns"]).toEqual({ org_id: { tags: ["pii"], color: "red" } });
   });
 
   it("制約名が空なら自動生成され、テーブル内で一意になる", () => {

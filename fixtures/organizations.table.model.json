@@ -39,6 +39,7 @@
   "meta": {
     "displayName": "組織",
     "tags": [ ],
+    "color": null,
     "notes": null,
     "columns": { },
     "logicalUniques": [ ],

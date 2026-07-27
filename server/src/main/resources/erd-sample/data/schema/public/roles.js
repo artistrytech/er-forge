@@ -14,5 +14,6 @@ ERD.table({
   meta: {
     displayName: "ロール（権限）",
     tags: ["auth", "master"],
+    color: "blue",
   },
 });

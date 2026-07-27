@@ -1,0 +1,37 @@
+/* 色の選択（P-13）。トークンの実配色は global.scss の [data-color] が持つ。 */
+
+.color-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.swatch {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1.5px solid var(--c-border, var(--input-border));
+  background: var(--c-surface, var(--panel));
+  cursor: pointer;
+}
+
+.swatch:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.swatch.selected {
+  box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--accent);
+}
+
+/* 「色なし」。斜線で塗りが無いことを示す */
+.none {
+  background: linear-gradient(
+    to top right,
+    transparent calc(50% - 1px),
+    var(--input-border) calc(50% - 1px),
+    var(--input-border) calc(50% + 1px),
+    transparent calc(50% + 1px)
+  );
+}

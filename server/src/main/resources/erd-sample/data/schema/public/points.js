@@ -15,6 +15,7 @@ ERD.table({
   meta: {
     displayName: "ポイント残高",
     tags: ["point"],
+    color: "red",
     logicalUniques: [
       { name: "luk_points_user", columns: ["user_id"], notes: "ユーザーごとに残高レコードは1件" },
     ],

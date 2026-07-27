@@ -203,6 +203,10 @@ public final class GenerateSampleData {
         List<String> masters = List.of("roles", "product_categories", "product_tags",
                 "payment_methods", "point_campaigns");
 
+        // 色はタグとは独立に人が選ぶもの（P-13）。ここでは業務ドメインごとに塗り分けた状態を再現する
+        Map<String, String> domainColor = Map.of("auth", "blue", "catalog", "green",
+                "order", "amber", "billing", "purple", "point", "red");
+
         for (int i = 0; i < tables.size(); i++) {
             Table t = tables.get(i);
             String name = t.schema().name();
@@ -210,6 +214,7 @@ public final class GenerateSampleData {
             List<String> tags = new ArrayList<>();
             if (domainTag.containsKey(name)) tags.add(domainTag.get(name));
             if (masters.contains(name)) tags.add("master");
+            String color = domainColor.get(domainTag.get(name));
 
             // 論理名の初期値は DB コメントの1行目（§5.8.2 の補完後の状態）
             String displayName = t.schema().comment();
@@ -245,14 +250,20 @@ public final class GenerateSampleData {
                 case "shipments" -> relations.put("fk:shipments_order_id_fkey",
                         new RelationMeta(null, "0..1", "注文につき出荷は最大1回（分割出荷はしない）", Map.of()));
                 case "orders" -> columnMeta.put("status", new ColumnMeta("注文ステータス",
-                        "PENDING / PAID / SHIPPED / CANCELLED", Map.of()));
-                case "point_bonus_rules" -> columnMeta.put("bonus_rate",
-                        new ColumnMeta(null, "% 表記（例: 10.00）", Map.of()));
+                        List.of("enum"), null, "PENDING / PAID / SHIPPED / CANCELLED", Map.of()));
+                // 廃止したテーブル / カラムをグレーアウトした状態（タグで意味を、色で見た目を表す）
+                case "point_bonus_rules" -> {
+                    tags.add("廃止");
+                    color = "muted";
+                    notes = "新規のポイント付与では使わない（point_campaigns へ移行済み）";
+                    columnMeta.put("bonus_rate", new ColumnMeta(null, List.of("廃止"), "muted",
+                            "% 表記（例: 10.00）", Map.of()));
+                }
                 default -> { }
             }
 
             tables.set(i, new Table(t.id(), t.schema(),
-                    new TableMeta(displayName, tags, notes, columnMeta,
+                    new TableMeta(displayName, tags, color, notes, columnMeta,
                             logicalUniques, logicalFks, relations, Map.of()),
                     Map.of()));
         }

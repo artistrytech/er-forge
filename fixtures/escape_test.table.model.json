@@ -50,16 +50,21 @@
   "meta": {
     "displayName": null,
     "tags": [ ],
+    "color": null,
     "notes": "1行目\n2行目\tタブ \"引用\" \\バックスラッシュ LINE SEPARATOR  PARAGRAPH SEPARATOR ",
     "columns": {
       "default": {
         "displayName": "既定値",
+        "tags": [ ],
+        "color": null,
         "notes": "1行目\n2行目\tタブ \"引用\" \\バックスラッシュ LINE SEPARATOR  PARAGRAPH SEPARATOR ",
         "unknown": { },
         "empty": false
       },
       "class": {
         "displayName": "区分",
+        "tags": [ ],
+        "color": null,
         "notes": null,
         "unknown": { },
         "empty": false

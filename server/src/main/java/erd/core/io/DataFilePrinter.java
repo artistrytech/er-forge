@@ -116,6 +116,9 @@ public final class DataFilePrinter {
         if (!m.tags().isEmpty()) {
             out.line("tags: " + strArray(m.tags()) + ",");
         }
+        if (notEmpty(m.color())) {
+            out.line("color: " + JsText.quote(m.color()) + ",");
+        }
         if (notEmpty(m.notes())) {
             out.line("notes: " + JsText.quote(m.notes()) + ",");
         }
@@ -136,6 +139,8 @@ public final class DataFilePrinter {
                 if (block == null) block = out.openBlock("columns: {");
                 Pairs p = new Pairs();
                 if (notEmpty(cm.displayName())) p.add("displayName", JsText.quote(cm.displayName()));
+                if (!cm.tags().isEmpty()) p.add("tags", strArray(cm.tags()));
+                if (notEmpty(cm.color())) p.add("color", JsText.quote(cm.color()));
                 if (notEmpty(cm.notes())) p.add("notes", JsText.quote(cm.notes()));
                 addUnknownInline(p, cm.unknown());
                 out.line(JsText.key(name) + ": " + p.inline() + ",");
@@ -411,6 +416,7 @@ public final class DataFilePrinter {
                         p.add("columns", String.valueOf(t.columns()));
                         p.add("pk", String.valueOf(t.pk()));
                         if (!t.tags().isEmpty()) p.add("tags", strArray(t.tags()));
+                        if (notEmpty(t.color())) p.add("color", JsText.quote(t.color()));
                         if (!t.diagrams().isEmpty()) p.add("diagrams", strArray(t.diagrams()));
                         out.line(p.inline() + ",");
                     });
@@ -437,6 +443,9 @@ public final class DataFilePrinter {
                         out.line(p.inline() + ",");
                     });
             out.close("],");
+        }
+        if (!ix.tagsUsed().isEmpty()) {
+            out.line("tagsUsed: " + strArray(ix.tagsUsed()) + ",");
         }
         out.close("});");
         return out.result();

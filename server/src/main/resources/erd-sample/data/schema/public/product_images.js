@@ -15,5 +15,6 @@ ERD.table({
   meta: {
     displayName: "商品画像",
     tags: ["catalog"],
+    color: "green",
   },
 });

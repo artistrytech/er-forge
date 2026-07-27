@@ -5,12 +5,16 @@ import erd.core.io.DataFileException;
 import erd.core.io.DataFileParser;
 import erd.core.io.DataFilePrinter;
 import erd.core.io.ProjectStore;
+import erd.core.model.ColorToken;
 import erd.core.model.Column;
+import erd.core.model.ColumnMeta;
 import erd.core.model.ForeignKey;
 import erd.core.model.IndexDef;
 import erd.core.model.LogicalForeignKey;
 import erd.core.model.LogicalUnique;
+import erd.core.model.MetaRules;
 import erd.core.model.Table;
+import erd.core.model.TableMeta;
 import erd.core.model.UniqueConstraint;
 
 import java.io.IOException;
@@ -105,6 +109,8 @@ public final class TableService {
         } catch (DataFileException e) {
             return new Invalid(List.of(new Issue("table", "PARSE", e.getMessage())), List.of());
         }
+        // タグ・色は保存前に正規化する（trim / 空要素・重複の除去）。検証は validate で行う
+        incoming = normalizeMeta(incoming);
 
         Table existing = parser.parseTable(new String(current, StandardCharsets.UTF_8)).value();
 
@@ -150,6 +156,21 @@ public final class TableService {
         return new Ok(newHash, written, warnings);
     }
 
+    // ------------------------------------------------------- 正規化（P-12 / P-13）
+
+    /** meta のタグ・色を正規化した Table を返す（{@link MetaRules}）。それ以外は触らない。 */
+    private static Table normalizeMeta(Table table) {
+        TableMeta m = table.meta();
+        Map<String, ColumnMeta> columns = new LinkedHashMap<>();
+        m.columns().forEach((name, cm) -> columns.put(name, new ColumnMeta(
+                cm.displayName(), MetaRules.normalizeTags(cm.tags()),
+                MetaRules.normalizeColor(cm.color()), cm.notes(), cm.unknown())));
+        return table.withMeta(new TableMeta(
+                m.displayName(), MetaRules.normalizeTags(m.tags()), MetaRules.normalizeColor(m.color()),
+                m.notes(), columns, m.logicalUniques(), m.logicalForeignKeys(), m.relations(),
+                m.unknown()));
+    }
+
     // ----------------------------------------------------- バリデーション（P-08）
 
     private void validate(Table table, Map<String, Table> byId,
@@ -158,6 +179,14 @@ public final class TableService {
         for (Column c : table.schema().columns()) {
             ownColumns.put(c.name(), c);
         }
+
+        // V-9: タグ・色（P-12 / P-13）。正規化後の値を検証する
+        validateTags("meta.tags", table.meta().tags(), errors);
+        validateColor("meta.color", table.meta().color(), errors);
+        table.meta().columns().forEach((name, cm) -> {
+            validateTags("meta.columns." + name + ".tags", cm.tags(), errors);
+            validateColor("meta.columns." + name + ".color", cm.color(), errors);
+        });
 
         // V-1: 制約名の重複（論理一意制約・論理外部制約それぞれの名前空間内。
         // 物理 FK との同名は許す — エッジID は種別プレフィックスで衝突しない。P §4.4 / T-6）
@@ -277,6 +306,31 @@ public final class TableService {
                                 + to.name() + " (" + to.logicalType().jsonName() + ")"));
             }
         }
+    }
+
+    /** タグ（P-12）: 区切り文字・空白の混入と長さ・個数。値は正規化済みである前提。 */
+    private static void validateTags(String path, List<String> tags, List<Issue> errors) {
+        if (tags.size() > MetaRules.MAX_TAGS) {
+            errors.add(new Issue(path, "TOO_MANY",
+                    "at most " + MetaRules.MAX_TAGS + " tags are allowed (" + tags.size() + ")"));
+        }
+        for (int i = 0; i < tags.size(); i++) {
+            String code = MetaRules.tagError(tags.get(i));
+            if (code == null) continue;
+            errors.add(new Issue(path + "[" + i + "]", code, switch (code) {
+                case "TAG_WHITESPACE" -> "a tag must not contain whitespace: " + tags.get(i);
+                case "TAG_SEPARATOR" -> "a tag must not contain , or 、: " + tags.get(i);
+                default -> "a tag must be at most " + MetaRules.MAX_TAG_LENGTH + " characters: "
+                        + tags.get(i);
+            }));
+        }
+    }
+
+    /** 色（P-13）: 既知のトークンのみ受け付ける。任意の hex は許さない（{@link ColorToken}）。 */
+    private static void validateColor(String path, String color, List<Issue> errors) {
+        if (color == null || ColorToken.isKnown(color)) return;
+        errors.add(new Issue(path, "UNKNOWN_COLOR",
+                "unknown color: " + color + " (expected one of " + String.join(", ", ColorToken.ALL) + ")"));
     }
 
     /** meta.relations（P-11）: キーの形式と値域を検証する。存在しない制約への言及は警告。 */

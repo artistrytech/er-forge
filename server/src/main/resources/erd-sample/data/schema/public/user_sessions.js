@@ -20,5 +20,6 @@ ERD.table({
   meta: {
     displayName: "ユーザーログインセッション",
     tags: ["auth"],
+    color: "blue",
   },
 });

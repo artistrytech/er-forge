@@ -274,6 +274,15 @@
   align-items: center;
 }
 
+/* 指定色（P-13）。行の背景を ER図のノードと同じ色にする。
+   選択中は濃色フィルが勝つ（後勝ち）が、左端のバーは残るので色の情報は失われない。 */
+.lp-item[data-color] .lp-item-btn,
+.lp-item[data-color] .lp-item-linklike {
+  color: var(--c-text);
+  background: var(--c-surface);
+  box-shadow: inset 3px 0 0 0 var(--c-border);
+}
+
 .lp-item.active,
 .lp-item.active .lp-item-btn,
 .lp-item.active .lp-item-linklike {
@@ -299,6 +308,11 @@
 }
 
 .lp-item-btn:hover {
+  background: var(--accent-soft);
+}
+
+/* 色付きの行にもホバーを効かせる（上の [data-color] 指定より詳細度を上げる） */
+.lp-item[data-color] .lp-item-btn:hover {
   background: var(--accent-soft);
 }
 

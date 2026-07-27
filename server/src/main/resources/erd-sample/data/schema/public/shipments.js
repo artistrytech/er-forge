@@ -16,6 +16,7 @@ ERD.table({
   meta: {
     displayName: "出荷情報",
     tags: ["order"],
+    color: "amber",
     relations: {
       "fk:shipments_order_id_fkey": { child: "0..1", notes: "注文につき出荷は最大1回（分割出荷はしない）" },
     },

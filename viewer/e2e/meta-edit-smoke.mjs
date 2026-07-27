@@ -133,6 +133,51 @@ async function main() {
       indexText.includes("public.user_sessions#lfk:lfk_user_sessions_user_id"),
     );
 
+    // ---- タグ（P-12）と色（P-13）: 空白で確定、色はタグとは独立に指定する ----
+    const tagInput = page.getByTestId("table-tags");
+    // サンプルの user_sessions には既に "auth" が付いている（chip 1件が初期状態）
+    const chipCount = () => page.getByTestId("tag-chip").count();
+    check("existing tags are shown as chips", (await chipCount()) === 1);
+
+    await tagInput.click();
+    // 半角スペースで "core" が確定し、"廃止" は未確定のまま入力欄に残る
+    await tagInput.pressSequentially("core 廃止");
+    await page.waitForFunction(
+      () => document.querySelectorAll('[data-testid="tag-chip"]').length === 2,
+      null,
+      { timeout: 5000 },
+    );
+    check("a space confirms the tag as a chip", true);
+
+    // 色を選ぶ操作でタグ入力から抜ける → 未確定の "廃止" は暗黙確定される
+    await page.getByTestId("table-color").getByTestId("color-muted").click();
+    await page.waitForFunction(
+      () => document.querySelectorAll('[data-testid="tag-chip"]').length === 3,
+      null,
+      { timeout: 5000 },
+    );
+    check("the pending text is committed on blur", true);
+
+    await page.waitForSelector('[data-testid="save-button"]:not([disabled])', { timeout: 15000 });
+    await page.getByTestId("save-button").click();
+    await page.waitForSelector('[data-testid="save-button"][data-status="saved"]', { timeout: 15000 });
+
+    const taggedText = readFileSync(
+      join(dir, "workspace-default", "data", "schema", "public", "user_sessions.js"),
+      "utf-8",
+    );
+    check("tags and color are saved independently", taggedText.includes('tags: ["auth", "core", "廃止"]')
+      && taggedText.includes('color: "muted"'));
+    const indexAfterColor = readFileSync(join(dir, "workspace-default", "data", "index.js"), "utf-8");
+    const sessionsEntry = indexAfterColor
+      .split("\n")
+      .find((line) => line.includes('id: "public.user_sessions"'));
+    check(
+      "index.js carries the color (the canvas draws nodes from index.js alone)",
+      sessionsEntry !== undefined && sessionsEntry.includes('color: "muted"'),
+    );
+    check("index.js lists the tags in use (autocomplete source)", indexAfterColor.includes("tagsUsed:"));
+
     // ---- ER図に破線エッジが増える（Phase4 の完了条件） ----
     await page.goto(`${url}#/w/default/erd/users`);
     await page.waitForSelector(".react-flow__node", { timeout: 15000 });
@@ -142,6 +187,12 @@ async function main() {
       { timeout: 15000 },
     );
     check("a dashed edge appears on the diagram", true);
+
+    // 指定色はノードに反映される（D-03）。左パネルの行も同じ色になる
+    const coloredNodes = await page.locator('[data-testid="erd-node"][data-color="muted"]').count();
+    check("the node is painted with the specified color", coloredNodes === 1);
+    const coloredRows = await page.locator('[data-testid="lp-item"][data-color="muted"]').count();
+    check("the table list row uses the same color as the node", coloredRows >= 1);
 
     // ---- カラム論理名の一括編集（P-03） ----
     // 閲覧は #/columns、編集は #/columns/edit（ロックは無い。P-03 §2.4）

@@ -56,11 +56,18 @@ public final class FixtureModels {
                 List.of(new ForeignKey("users_org_id_fkey", List.of("org_id"),
                         new Ref("public.organizations", List.of("id")), "set null", null)),
                 Map.of());
+        // カラムのタグ・色（P-12 / P-13）を含める。タグと色は独立に付けられる
+        Map<String, ColumnMeta> userColumnMeta = new LinkedHashMap<>();
+        userColumnMeta.put("org_id",
+                new ColumnMeta("所属組織ID", List.of("pii"), null, "NULL は個人アカウント", Map.of()));
+        userColumnMeta.put("last_order_id",
+                new ColumnMeta(null, List.of("廃止"), "muted", null, Map.of()));
         TableMeta meta = new TableMeta(
                 "ユーザー",
                 List.of("core", "auth"),
+                "blue",
                 "論理削除は deleted_at 運用",
-                Map.of("org_id", new ColumnMeta("所属組織ID", "NULL は個人アカウント")),
+                userColumnMeta,
                 List.of(new LogicalUnique("luk_users_org_email", List.of("org_id", "email"),
                         "組織内でメールは重複しない（アプリ側で担保）")),
                 List.of(new LogicalForeignKey("lfk_users_last_order", List.of("last_order_id"),
@@ -88,7 +95,7 @@ public final class FixtureModels {
                         new Ref("public.users", List.of("id")), null, null)),
                 Map.of());
         TableMeta meta = new TableMeta(
-                "注文", List.of("core"), null, Map.of(), List.of(),
+                "注文", List.of("core"), null, null, Map.of(), List.of(),
                 List.of(new LogicalForeignKey("lfk_orders_legacy", List.of("code"),
                         new Ref("public.legacy_orders", List.of("code")), "旧システムの注文（アーカイブ済み）")),
                 Map.of(), Map.of());
@@ -104,7 +111,8 @@ public final class FixtureModels {
                 List.of("id"),
                 List.of(), List.of(), List.of(), Map.of());
         return new Table("public.organizations", schema,
-                new TableMeta("組織", List.of(), null, Map.of(), List.of(), List.of(), Map.of(), Map.of()));
+                new TableMeta("組織", List.of(), null, null, Map.of(), List.of(), List.of(),
+                        Map.of(), Map.of()));
     }
 
     /** エスケープと予約語キーの網羅（T-5 / T-6）。notes に U+2028 / U+2029 / 改行 / タブ / 引用符を含む。 */
@@ -123,7 +131,7 @@ public final class FixtureModels {
         Map<String, ColumnMeta> columnMeta = new LinkedHashMap<>();
         columnMeta.put("default", new ColumnMeta("既定値", notes));
         columnMeta.put("class", new ColumnMeta("区分", null));
-        TableMeta meta = new TableMeta(null, List.of(), notes, columnMeta,
+        TableMeta meta = new TableMeta(null, List.of(), null, notes, columnMeta,
                 List.of(), List.of(), Map.of(), Map.of());
         return new Table("public.escape_test", schema, meta);
     }
@@ -148,7 +156,7 @@ public final class FixtureModels {
                 List.of(new Column("id", "int4", LogicalType.INT, false, null, false, false, null, columnUnknown)),
                 List.of("id"),
                 List.of(), List.of(), List.of(), Map.of());
-        TableMeta meta = new TableMeta("未来", List.of(), null, Map.of(), List.of(), List.of(),
+        TableMeta meta = new TableMeta("未来", List.of(), null, null, Map.of(), List.of(), List.of(),
                 Map.of(), metaUnknown);
         return new Table("public.future", schema, meta, tableUnknown);
     }
