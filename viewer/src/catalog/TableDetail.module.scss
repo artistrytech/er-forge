@@ -2,6 +2,7 @@
    .notice-banner）や .button-link / .mono / .muted は global の共有プリミティブに残す。 */
 
 .fab-new-table {
+  display: none; // 実装未定なので非表示
   position: fixed;
   right: 28px;
   bottom: 24px;
