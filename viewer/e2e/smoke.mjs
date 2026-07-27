@@ -128,6 +128,30 @@ async function main() {
   await page.waitForSelector('[data-testid="erd-node"]');
   check("navigates back to diagram with focus", page.url().includes("#/w/default/erd/"));
 
+  // 5b) 制約は種類ごとの見出しで平坦に並び、1件 = 1枠。外部キーは被参照と同じ形
+  //（相手テーブル + カラム対応）で見せ、制約名などは虫眼鏡のリレーション詳細に寄せる
+  await page.goto("file:///" + DIST + "#/w/default/tables/public.users");
+  await page.waitForSelector('[data-testid="fk-list"]');
+  check(
+    "foreign keys show the referenced table with the column mapping",
+    (await page.locator('[data-testid="fk-list"] a[href="#/w/default/tables/public.organizations"]').count()) === 1 &&
+      (await page.locator('[data-testid="fk-list"]').textContent()).includes("org_id → id"),
+  );
+  check(
+    "the physical constraint name is not shown in the list",
+    !(await page.locator('[data-testid="fk-list"]').textContent()).includes("users_org_id_fkey"),
+  );
+  const relDetail = page.locator('[data-testid="relation-detail"]');
+  // 参照（物理FK・論理外部制約）と被参照の3件すべてに詳細ボタンが出る
+  check("relation detail is offered for references and back-references", (await relDetail.count()) === 3);
+  await relDetail.first().click();
+  await page.waitForSelector(".dialog");
+  check(
+    "relation detail dialog opens from the table detail",
+    (await page.locator(".dialog").textContent()).includes("users_org_id_fkey"),
+  );
+  await page.keyboard.press("Escape");
+
   // 6) テーブル画面（O-01。一覧と詳細を統合。左パネル「全て」レーンで一覧＋絞り込み）
   await page.click('a[href="#/w/default/tables"]');
   // 素の #/tables は先頭テーブルへ振り替わる（回答E: 未選択状態は作らない）

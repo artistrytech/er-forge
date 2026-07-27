@@ -70,33 +70,6 @@
   color: var(--accent);
 }
 
-/* 制約は白カード（モック 2a） */
-.constraint-list {
-  display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: 10px 16px;
-  margin: 0;
-  padding: 16px 20px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  box-shadow: var(--shadow-card);
-}
-
-.constraint-list dt {
-  font-weight: 600;
-  white-space: nowrap;
-  color: var(--text-strong);
-}
-
-.constraint-list dd {
-  margin: 0;
-}
-
-.constraint-list.logical dt {
-  color: var(--edge-logical);
-}
-
 .note-inline {
   margin-left: 8px;
   color: var(--text-muted);
@@ -104,18 +77,8 @@
   font-size: 12px;
 }
 
-.page-list {
-  margin: 4px 0;
-  padding-left: 0;
-  list-style: none;
-}
-
-.page-list li {
-  margin-bottom: 4px;
-}
-
-/* 被参照は枠付きチップの折り返し（モック 2a） */
-.reference-list {
+/* 制約・被参照はすべて「1件 = 1枠」で区切る（モック 2a の被参照チップに揃えた） */
+.item-list {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -124,7 +87,7 @@
   list-style: none;
 }
 
-.reference-list li {
+.item {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -135,14 +98,46 @@
   font-size: 12.5px;
 }
 
+/* 論理制約は ER図の破線と同じ意味づけで、枠線も破線にする */
+.item-logical {
+  border-style: dashed;
+}
+
+/* 制約名など、読むのに要らないが同定には要る情報は控えめに添える */
+.item-name {
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 11.5px;
+}
+
 /* チップ内の種別バッジは塗りのグレーピル。.badge は global 共有のため :global で狙う */
-.reference-list :global(.badge) {
+.item :global(.badge) {
   margin: 0;
   border: none;
   background: var(--divider);
   color: var(--text-muted);
   padding: 2px 6px;
   border-radius: 5px;
+}
+
+/* リレーション詳細（虫眼鏡）。行の中では控えめに、ホバーで前に出す */
+.detail-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.detail-button:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
 .dialect-pre {

@@ -152,91 +152,93 @@ export function TableInfo({ tableId, onNavigate }: TableInfoProps) {
         </table>
       </div>
 
-      <h3>{t("table.constraints")}</h3>
-      <dl className={styles.constraintList}>
-        {(table.primaryKey?.length ?? 0) > 0 && (
-          <>
-            <dt>{t("table.primaryKey")}</dt>
-            <dd className="mono">{table.primaryKey?.join(", ")}</dd>
-          </>
-        )}
-        {(table.uniques?.length ?? 0) > 0 && (
-          <>
-            <dt>{t("table.uniques")}</dt>
-            <dd>
-              {table.uniques?.map((u, i) => (
-                <div key={u.name ?? i} className="mono">
-                  {u.name !== undefined && `${u.name} `}({u.columns.join(", ")})
-                </div>
-              ))}
-            </dd>
-          </>
-        )}
-        {(table.indexes?.length ?? 0) > 0 && (
-          <>
-            <dt>{t("table.indexes")}</dt>
-            <dd>
-              {table.indexes?.map((ix, i) => (
-                <div key={ix.name ?? i} className="mono">
-                  {ix.name !== undefined && `${ix.name} `}({ix.columns.join(", ")})
-                  {ix.unique === true && <span className="badge">unique</span>}
-                </div>
-              ))}
-            </dd>
-          </>
-        )}
-        {(table.foreignKeys?.length ?? 0) > 0 && (
-          <>
-            <dt>{t("table.foreignKeys")}</dt>
-            <dd>
-              {table.foreignKeys?.map((fk, i) => (
-                <div key={fk.name ?? i} className="mono">
-                  {fk.name !== undefined && `${fk.name} `}({fk.columns.join(", ")}) →{" "}
-                  <TableLink tableId={fk.ref.table} onNavigate={onNavigate} />(
-                  {(fk.ref.columns ?? []).join(", ")})
-                  {fk.onDelete !== undefined && <span className="badge">on delete {fk.onDelete}</span>}
-                  {fk.onUpdate !== undefined && <span className="badge">on update {fk.onUpdate}</span>}
-                </div>
-              ))}
-            </dd>
-          </>
-        )}
-      </dl>
-
-      {((table.meta?.logicalUniques?.length ?? 0) > 0 ||
-        (table.meta?.logicalForeignKeys?.length ?? 0) > 0) && (
+      {/* 制約は種類ごとに見出しを立て、1件 = 1枠で区切る（「制約」の下に種類を入れ子に
+          していたが、階層を深くしても読みやすくならないため平坦に並べる） */}
+      {(table.primaryKey?.length ?? 0) > 0 && (
         <>
-          <h3>{t("table.logicalConstraints")}</h3>
-          <dl className={cx(styles.constraintList, styles.logical)}>
-            {(table.meta?.logicalUniques?.length ?? 0) > 0 && (
-              <>
-                <dt>{t("table.logicalUniques")}</dt>
-                <dd>
-                  {table.meta?.logicalUniques?.map((u, i) => (
-                    <div key={u.name ?? i} className="mono">
-                      {u.name !== undefined && `${u.name} `}({u.columns.join(", ")})
-                      {u.notes !== undefined && <span className={styles.noteInline}>{u.notes}</span>}
-                    </div>
-                  ))}
-                </dd>
-              </>
-            )}
-            {(table.meta?.logicalForeignKeys?.length ?? 0) > 0 && (
-              <>
-                <dt>{t("table.logicalForeignKeys")}</dt>
-                <dd>
-                  {table.meta?.logicalForeignKeys?.map((fk, i) => (
-                    <div key={fk.name ?? i} className="mono">
-                      {fk.name !== undefined && `${fk.name} `}({fk.columns.join(", ")}) →{" "}
-                      <TableLink tableId={fk.ref.table} onNavigate={onNavigate} />(
-                      {(fk.ref.columns ?? []).join(", ")})
-                      {fk.notes !== undefined && <span className={styles.noteInline}>{fk.notes}</span>}
-                    </div>
-                  ))}
-                </dd>
-              </>
-            )}
-          </dl>
+          <h3>{t("table.primaryKey")}</h3>
+          <ul className={styles.itemList}>
+            <li className={styles.item}>
+              <span className="mono">{table.primaryKey?.join(", ")}</span>
+            </li>
+          </ul>
+        </>
+      )}
+
+      {(table.uniques?.length ?? 0) > 0 && (
+        <>
+          <h3>{t("table.uniques")}</h3>
+          <ul className={styles.itemList}>
+            {table.uniques?.map((u, i) => (
+              <li key={u.name ?? i} className={styles.item}>
+                <span className="mono">{u.columns.join(", ")}</span>
+                {u.name !== undefined && <span className={styles.itemName}>{u.name}</span>}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      {(table.indexes?.length ?? 0) > 0 && (
+        <>
+          <h3>{t("table.indexes")}</h3>
+          <ul className={styles.itemList}>
+            {table.indexes?.map((ix, i) => (
+              <li key={ix.name ?? i} className={styles.item}>
+                <span className="mono">{ix.columns.join(", ")}</span>
+                {ix.unique === true && <span className="badge">unique</span>}
+                {ix.name !== undefined && <span className={styles.itemName}>{ix.name}</span>}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      {/* 外部キーは被参照と同じ形（相手テーブル + カラム対応）で見せる。
+          制約名などの詳細は虫眼鏡から開くリレーション詳細に寄せる */}
+      {(table.foreignKeys?.length ?? 0) > 0 && (
+        <>
+          <h3>{t("table.foreignKeys")}</h3>
+          <ul className={styles.itemList} data-testid="fk-list">
+            {table.foreignKeys?.map((fk, i) => (
+              <li key={fk.name ?? i} className={styles.item}>
+                <TableLink tableId={fk.ref.table} onNavigate={onNavigate} />
+                <span className="mono muted">({pairsText(fk.columns, fk.ref.columns)})</span>
+                <RelationDetailButton relationId={edgeIdOf(table.id, "fk", fk.name)} />
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      {(table.meta?.logicalUniques?.length ?? 0) > 0 && (
+        <>
+          <h3>{t("table.logicalUniques")}</h3>
+          <ul className={styles.itemList}>
+            {table.meta?.logicalUniques?.map((u, i) => (
+              <li key={u.name ?? i} className={cx(styles.item, styles.itemLogical)}>
+                <span className="mono">{u.columns.join(", ")}</span>
+                {u.name !== undefined && <span className={styles.itemName}>{u.name}</span>}
+                {u.notes !== undefined && <span className={styles.noteInline}>{u.notes}</span>}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      {(table.meta?.logicalForeignKeys?.length ?? 0) > 0 && (
+        <>
+          <h3>{t("table.logicalForeignKeys")}</h3>
+          <ul className={styles.itemList} data-testid="lfk-list">
+            {table.meta?.logicalForeignKeys?.map((fk, i) => (
+              <li key={fk.name ?? i} className={cx(styles.item, styles.itemLogical)}>
+                <TableLink tableId={fk.ref.table} onNavigate={onNavigate} />
+                <span className="mono muted">({pairsText(fk.columns, fk.ref.columns)})</span>
+                {fk.notes !== undefined && <span className={styles.noteInline}>{fk.notes}</span>}
+                <RelationDetailButton relationId={edgeIdOf(table.id, "lfk", fk.name)} />
+              </li>
+            ))}
+          </ul>
         </>
       )}
 
@@ -244,14 +246,15 @@ export function TableInfo({ tableId, onNavigate }: TableInfoProps) {
       {referencedBy.length === 0 ? (
         <p className="muted">{t("table.noReferences")}</p>
       ) : (
-        <ul className={styles.referenceList}>
+        <ul className={styles.itemList}>
           {referencedBy.map((r) => (
-            <li key={r.id}>
+            <li key={r.id} className={cx(styles.item, r.kind === "logical" && styles.itemLogical)}>
               <RelationKindBadge relation={r} />
-              <TableLink tableId={r.from} onNavigate={onNavigate} />{" "}
+              <TableLink tableId={r.from} onNavigate={onNavigate} />
               <span className="mono muted">
                 ({(r.columns ?? []).map(([from, to]) => `${from} → ${to}`).join(", ")})
               </span>
+              <RelationDetailButton relationId={r.id} />
             </li>
           ))}
         </ul>
@@ -266,6 +269,50 @@ export function TableInfo({ tableId, onNavigate }: TableInfoProps) {
         </>
       )}
     </div>
+  );
+}
+
+/** 「(自カラム → 相手カラム, …)」。被参照の表示と同じ読み方に揃える */
+function pairsText(columns: string[], refColumns: string[] | undefined): string {
+  return columns.map((c, i) => `${c} → ${refColumns?.[i] ?? "?"}`).join(", ");
+}
+
+/** 制約からエッジID（`<テーブルID>#<種別>:<制約名>`）を作る。名前が無ければリレーションを引けない */
+function edgeIdOf(tableId: string, kind: "fk" | "lfk", name: string | undefined): string | null {
+  return name === undefined ? null : `${tableId}#${kind}:${name}`;
+}
+
+/**
+ * リレーション詳細（E-10 のダイアログ）を開く虫眼鏡。参照・被参照のどちらからも同じものを開く。
+ * index.relations に無いもの（名前の無い制約など）には出さない（開いても「存在しません」になるため）。
+ */
+function RelationDetailButton({ relationId }: { relationId: string | null }) {
+  const { t } = useI18n();
+  const index = useAppStore((s) => s.index);
+  const openDialog = useAppStore((s) => s.openDialog);
+  const exists =
+    relationId !== null && (index?.relations ?? []).some((r) => r.id === relationId);
+  if (!exists || relationId === null) return null;
+  return (
+    <button
+      type="button"
+      className={styles.detailButton}
+      data-testid="relation-detail"
+      title={t("relation.title")}
+      aria-label={t("relation.title")}
+      onClick={() => openDialog({ type: "relation", id: relationId })}
+    >
+      <SearchIcon />
+    </button>
+  );
+}
+
+function SearchIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <circle cx="11" cy="11" r="7" />
+      <line x1="21" y1="21" x2="16.5" y2="16.5" />
+    </svg>
   );
 }
 
@@ -293,11 +340,12 @@ function PagesSection({ table, onNavigate }: { table: Table; onNavigate?: () => 
       {diagramIds.length === 0 ? (
         <p className="muted">{t("table.unplacedNote")}</p>
       ) : (
-        <ul className={styles.pageList} data-testid="page-list">
+        // 制約・被参照と同じ「1件 = 1枠」で横に並べる
+        <ul className={styles.itemList} data-testid="page-list">
           {diagramIds.map((id) => {
             const ref = manifest?.diagrams?.find((d) => d.id === id);
             return (
-              <li key={id}>
+              <li key={id} className={styles.item}>
                 <Link href={hrefs.erd(id, table.id)} onClick={onNavigate}>
                   {ref?.title ?? id}
                 </Link>

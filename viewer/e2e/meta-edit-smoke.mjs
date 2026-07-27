@@ -114,6 +114,17 @@ async function main() {
     // 参照先・対応が揃うまでは確定させない（保存時に初めて怒られない）
     check("the constraint dialog blocks submit until it is complete",
         await page.getByTestId("constraint-submit").isDisabled());
+    // 参照先は名称（論理名・物理名）で絞り込める。候補は畳まない一覧で見える
+    const refOptions = () => page.locator('[data-testid="fk-ref-table"] option').count();
+    const allTables = await refOptions();
+    await page.getByTestId("fk-ref-filter").pressSequentially("プロファ");
+    await page.waitForFunction(
+      () => document.querySelectorAll('[data-testid="fk-ref-table"] option').length === 1,
+      null,
+      { timeout: 5000 },
+    );
+    check("the referenced table can be filtered by name", allTables > 1);
+    // 絞り込んだ候補からそのまま選べる
     await page.getByTestId("fk-ref-table").selectOption("public.user_profiles");
     await page.getByTestId("fk-column-0").selectOption("user_id");
     // 参照先テーブルのスキーマは選択後に読み込まれる（読み込み完了まで選択肢は出ない）

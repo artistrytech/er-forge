@@ -18,8 +18,9 @@ import {
   type DraftLogicalFk,
   type DraftLogicalUnique,
 } from "../model/metaDraft";
+import { formatName, resolveIndexTableName } from "../model/logicalName";
 import { useAppStore } from "../model/store";
-import type { Table } from "../model/types";
+import type { IndexTable, Table } from "../model/types";
 import { Button } from "../ui/Button";
 import { Dialog } from "../ui/Dialog";
 import { cx } from "../lib/cx";
@@ -358,9 +359,11 @@ export function LogicalFkDialog({
 }) {
   const { t } = useI18n();
   const index = useAppStore((s) => s.index);
+  const nameDisplay = useAppStore((s) => s.nameDisplay);
   const [name, setName] = useState(initial?.name ?? "");
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const [refTable, setRefTable] = useState(initial?.refTable ?? "");
+  const [filter, setFilter] = useState("");
   // 既存データは両側の本数がずれている可能性がある（手書きのファイル）。長い方に合わせて
   // 組にし、欠けた側は未選択として見せる（ダイアログ上で必ず埋めさせる）
   const [pairs, setPairs] = useState<PairRow[]>(() => {
@@ -376,6 +379,18 @@ export function LogicalFkDialog({
   });
 
   const columnNames = table.columns.map((c) => c.name);
+  const tableLabel = (it: IndexTable): string =>
+    formatName(resolveIndexTableName(it), it.name, nameDisplay);
+  // 名称（論理名・物理名・ID）での絞り込み。選択中のものは常に残す
+  const refCandidates = (index?.tables ?? []).filter((it) => {
+    const q = filter.trim().toLowerCase();
+    if (q === "" || it.id === refTable) return true;
+    return (
+      it.id.toLowerCase().includes(q) ||
+      it.name.toLowerCase().includes(q) ||
+      resolveIndexTableName(it).name.toLowerCase().includes(q)
+    );
+  });
   // 参照先テーブルのスキーマはオンデマンドで読む（参照先カラムの選択肢に要る）
   const target = useAppStore((s) => (refTable !== "" ? s.tables[refTable] : undefined));
   useEffect(() => {
@@ -416,11 +431,26 @@ export function LogicalFkDialog({
         testId="constraint-name"
       />
 
-      <label className={styles.field}>
-        <span className={styles.fieldLabel}>{t("tableEdit.refTable")}</span>
+      <div className={styles.field}>
+        <span className={styles.fieldLabel}>
+          {t("tableEdit.refTable")}
+          <span className={styles.fieldCount}>{t("catalog.count", { n: refCandidates.length })}</span>
+        </span>
+        {/* テーブルが増えると選択肢が長くなるため、名称（論理名・物理名）で絞れるようにする。
+            候補は畳まない一覧で出す（畳んだままだと、絞り込んだ結果が開くまで見えない）。
+            選択済みのテーブルは絞り込みから外れても候補に残す（選択が消えないように） */}
+        <input
+          type="search"
+          className={styles.input}
+          data-testid="fk-ref-filter"
+          placeholder={t("tableEdit.refTableFilter")}
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+        />
         <select
-          className={cx("mono", styles.select, styles.selectWide)}
+          className={cx(styles.select, styles.selectWide, styles.refList)}
           data-testid="fk-ref-table"
+          size={6}
           value={refTable}
           // 参照先が変わると参照先カラムは意味を失う（自カラム側の対応は残す）
           onChange={(e) => {
@@ -428,15 +458,17 @@ export function LogicalFkDialog({
             setPairs((ps) => ps.map((p) => ({ ...p, refColumn: "" })));
           }}
         >
-          <option value="">{t("tableEdit.refTable")}…</option>
-          {(index?.tables ?? []).map((it) => (
+          {refCandidates.map((it) => (
             <option key={it.id} value={it.id}>
-              {it.id}
+              {tableLabel(it)}
               {it.id === table.id ? ` (${t("tableEdit.selfRef")})` : ""}
             </option>
           ))}
         </select>
-      </label>
+        {refCandidates.length === 0 && (
+          <span className={styles.fieldHint}>{t("tableEdit.refTableNoMatch")}</span>
+        )}
+      </div>
 
       {/* カラムの対応は1行 = 1組。複合キーでも縦に伸びるだけで、対応が読み取れる */}
       <div className={styles.field}>
