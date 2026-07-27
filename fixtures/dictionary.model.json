@@ -1,11 +1,62 @@
 {
   "columns": {
-    "id": "ID",
-    "created_at": "作成日時",
-    "updated_at": "更新日時",
-    "org_id": "組織ID",
-    "email": "メールアドレス",
-    "default": "既定値"
+    "id": {
+      "displayName": "ID",
+      "tags": [ ],
+      "color": null,
+      "unknown": { },
+      "empty": false
+    },
+    "created_at": {
+      "displayName": "作成日時",
+      "tags": [
+        "監査"
+      ],
+      "color": "muted",
+      "unknown": { },
+      "empty": false
+    },
+    "updated_at": {
+      "displayName": "更新日時",
+      "tags": [
+        "監査"
+      ],
+      "color": "muted",
+      "unknown": { },
+      "empty": false
+    },
+    "org_id": {
+      "displayName": "組織ID",
+      "tags": [ ],
+      "color": null,
+      "unknown": { },
+      "empty": false
+    },
+    "email": {
+      "displayName": "メールアドレス",
+      "tags": [
+        "pii"
+      ],
+      "color": "amber",
+      "unknown": { },
+      "empty": false
+    },
+    "default": {
+      "displayName": "既定値",
+      "tags": [ ],
+      "color": null,
+      "unknown": { },
+      "empty": false
+    },
+    "deleted_at": {
+      "displayName": null,
+      "tags": [
+        "廃止"
+      ],
+      "color": "muted",
+      "unknown": { },
+      "empty": false
+    }
   },
   "unknown": { }
 }

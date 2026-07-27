@@ -55,7 +55,11 @@ describe("fixtures をビューアのスキーマで読める", () => {
   it("dictionary.js（予約語キー default を含む）", () => {
     const r = zDictionary.safeParse(runFixture("dictionary.js"));
     expect(r.success).toBe(true);
-    if (r.success) expect(r.data.columns?.["default"]).toBe("既定値");
+    if (r.success) {
+      expect(r.data.columns?.["default"]).toEqual({ displayName: "既定値" });
+      // 論理名が無くタグ・色だけのエントリも読める（P-12 / P-13）
+      expect(r.data.columns?.["deleted_at"]).toEqual({ tags: ["廃止"], color: "muted" });
+    }
   });
   it.each(["users.table.js", "orders.table.js", "organizations.table.js", "escape_test.table.js", "future.table.js"])(
     "%s",

@@ -439,8 +439,8 @@ public final class WebServer {
         } else if (outcome instanceof TableService.Invalid invalid) {
             ctx.status(422).json(Map.of(
                     "code", "VALIDATION",
-                    "errors", invalid.errors().stream().map(TableService.Issue::toMap).toList(),
-                    "warnings", invalid.warnings().stream().map(TableService.Issue::toMap).toList()));
+                    "errors", invalid.errors().stream().map(Issue::toMap).toList(),
+                    "warnings", invalid.warnings().stream().map(Issue::toMap).toList()));
         } else if (outcome instanceof TableService.Ok ok) {
             Revisions revisions = revisions(ctx);
             String revision = revisions.next();
@@ -448,7 +448,7 @@ public final class WebServer {
             ctx.json(Map.of(
                     "revision", revision,
                     "newHash", ok.newHash(),
-                    "warnings", ok.warnings().stream().map(TableService.Issue::toMap).toList()));
+                    "warnings", ok.warnings().stream().map(Issue::toMap).toList()));
         }
     }
 
@@ -466,8 +466,12 @@ public final class WebServer {
         DictionaryService.Outcome outcome = dictionary.put(dataDir, body);
         if (outcome instanceof DictionaryService.Stale stale) {
             ctx.status(409).json(Map.of("code", "STALE", "currentHash", stale.currentHash()));
+        } else if (outcome instanceof DictionaryService.BadRequest bad) {
+            ctx.status(400).json(Map.of("error", bad.message()));
         } else if (outcome instanceof DictionaryService.Invalid invalid) {
-            ctx.status(400).json(Map.of("error", invalid.message()));
+            ctx.status(422).json(Map.of(
+                    "code", "VALIDATION",
+                    "errors", invalid.errors().stream().map(Issue::toMap).toList()));
         } else if (outcome instanceof DictionaryService.Ok ok) {
             Revisions revisions = revisions(ctx);
             String revision = revisions.next();

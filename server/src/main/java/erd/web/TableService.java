@@ -5,7 +5,6 @@ import erd.core.io.DataFileException;
 import erd.core.io.DataFileParser;
 import erd.core.io.DataFilePrinter;
 import erd.core.io.ProjectStore;
-import erd.core.model.ColorToken;
 import erd.core.model.Column;
 import erd.core.model.ColumnMeta;
 import erd.core.model.ForeignKey;
@@ -46,13 +45,6 @@ public final class TableService {
     private final DataFileParser parser = new DataFileParser();
     private final DataFilePrinter printer = new DataFilePrinter();
     private final ProjectStore store = new ProjectStore();
-
-    /** フィールド単位のエラー / 警告（§7 の 422 レスポンス形式）。 */
-    public record Issue(String path, String code, String message) {
-        Map<String, String> toMap() {
-            return Map.of("path", path, "code", code, "message", message);
-        }
-    }
 
     public sealed interface Outcome permits Ok, Stale, NotFound, Invalid {}
 
@@ -181,11 +173,11 @@ public final class TableService {
         }
 
         // V-9: タグ・色（P-12 / P-13）。正規化後の値を検証する
-        validateTags("meta.tags", table.meta().tags(), errors);
-        validateColor("meta.color", table.meta().color(), errors);
+        Issue.validateTags("meta.tags", table.meta().tags(), errors);
+        Issue.validateColor("meta.color", table.meta().color(), errors);
         table.meta().columns().forEach((name, cm) -> {
-            validateTags("meta.columns." + name + ".tags", cm.tags(), errors);
-            validateColor("meta.columns." + name + ".color", cm.color(), errors);
+            Issue.validateTags("meta.columns." + name + ".tags", cm.tags(), errors);
+            Issue.validateColor("meta.columns." + name + ".color", cm.color(), errors);
         });
 
         // V-1: 制約名の重複（論理一意制約・論理外部制約それぞれの名前空間内。
@@ -306,31 +298,6 @@ public final class TableService {
                                 + to.name() + " (" + to.logicalType().jsonName() + ")"));
             }
         }
-    }
-
-    /** タグ（P-12）: 区切り文字・空白の混入と長さ・個数。値は正規化済みである前提。 */
-    private static void validateTags(String path, List<String> tags, List<Issue> errors) {
-        if (tags.size() > MetaRules.MAX_TAGS) {
-            errors.add(new Issue(path, "TOO_MANY",
-                    "at most " + MetaRules.MAX_TAGS + " tags are allowed (" + tags.size() + ")"));
-        }
-        for (int i = 0; i < tags.size(); i++) {
-            String code = MetaRules.tagError(tags.get(i));
-            if (code == null) continue;
-            errors.add(new Issue(path + "[" + i + "]", code, switch (code) {
-                case "TAG_WHITESPACE" -> "a tag must not contain whitespace: " + tags.get(i);
-                case "TAG_SEPARATOR" -> "a tag must not contain , or 、: " + tags.get(i);
-                default -> "a tag must be at most " + MetaRules.MAX_TAG_LENGTH + " characters: "
-                        + tags.get(i);
-            }));
-        }
-    }
-
-    /** 色（P-13）: 既知のトークンのみ受け付ける。任意の hex は許さない（{@link ColorToken}）。 */
-    private static void validateColor(String path, String color, List<Issue> errors) {
-        if (color == null || ColorToken.isKnown(color)) return;
-        errors.add(new Issue(path, "UNKNOWN_COLOR",
-                "unknown color: " + color + " (expected one of " + String.join(", ", ColorToken.ALL) + ")"));
     }
 
     /** meta.relations（P-11）: キーの形式と値域を検証する。存在しない制約への言及は警告。 */

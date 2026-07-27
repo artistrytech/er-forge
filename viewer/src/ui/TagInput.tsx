@@ -23,6 +23,12 @@ interface TagInputProps {
   disabled?: boolean;
   /** 一覧の行内など、狭い場所で使うとき */
   compact?: boolean;
+  /**
+   * チップを折り返さず1行に収める（溢れは横スクロール）。
+   * **行高を固定した一覧（仮想化）で使う。** 折り返すと行の高さがタグの数で変わり、
+   * ウィンドウイングの位置計算が崩れる。
+   */
+  nowrap?: boolean;
   testId?: string;
 }
 
@@ -34,6 +40,7 @@ export function TagInput({
   candidates,
   disabled,
   compact,
+  nowrap,
   testId,
 }: TagInputProps) {
   const { t } = useI18n();
@@ -174,7 +181,7 @@ export function TagInput({
     <div className={cx(styles.tagInput, compact && styles.compact, disabled && styles.disabled)}>
       <div
         ref={fieldRef}
-        className={styles.field}
+        className={cx(styles.field, nowrap === true && styles.nowrap)}
         onMouseDown={(e) => {
           // チップの隙間を押しても入力欄にフォーカスする
           if (e.target === e.currentTarget) inputRef.current?.focus();
@@ -205,7 +212,10 @@ export function TagInput({
           className={styles.entry}
           value={text}
           disabled={disabled}
-          placeholder={value.length === 0 ? t("tagInput.placeholder") : ""}
+          // 一覧（nowrap）では触るまで出さない。数百行に同じ案内文が並ぶと文字の壁になる
+          placeholder={
+            value.length === 0 && (nowrap !== true || focused) ? t("tagInput.placeholder") : ""
+          }
           data-testid={testId}
           aria-label={t("table.tags")}
           onChange={(e) => {

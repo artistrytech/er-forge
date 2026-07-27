@@ -84,8 +84,24 @@ export type IndexData = z.infer<typeof zIndexData>;
 
 // ---- dictionary.js ----
 
+/**
+ * 辞書の1エントリ = 同名カラム全体に効く共通設定（P-03 / P-12 / P-13）。
+ * テーブル個別（meta.columns）との合わせ方は属性ごとに違う（logicalName.ts）。
+ */
+export const zDictionaryColumn = z.looseObject({
+  displayName: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+  color: z.string().optional(),
+});
+export type DictionaryColumn = z.infer<typeof zDictionaryColumn>;
+
+/** 手で書いた辞書のための短縮形（`物理名: "論理名"`）も読む。以降はオブジェクトに揃える */
+const zDictionaryEntry = z
+  .union([z.string(), zDictionaryColumn])
+  .transform((v): DictionaryColumn => (typeof v === "string" ? { displayName: v } : v));
+
 export const zDictionary = z.looseObject({
-  columns: z.record(z.string(), z.string()).optional(),
+  columns: z.record(z.string(), zDictionaryEntry).optional(),
 });
 export type Dictionary = z.infer<typeof zDictionary>;
 

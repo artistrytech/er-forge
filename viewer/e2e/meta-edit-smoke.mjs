@@ -197,8 +197,10 @@ async function main() {
     );
     check("a space confirms the tag as a chip", true);
 
-    // 色を選ぶ操作でタグ入力から抜ける → 未確定の "廃止" は暗黙確定される
-    await page.getByTestId("table-color").getByTestId("color-muted").click();
+    // 色を選ぶ操作でタグ入力から抜ける → 未確定の "廃止" は暗黙確定される。
+    // 色はトリガーを押してポップアップから選ぶ（候補は body 直下に出る）
+    await page.getByTestId("table-color-trigger").click();
+    await page.getByTestId("color-muted").click();
     await page.waitForFunction(
       () => document.querySelectorAll('[data-testid="tag-chip"]').length === 3,
       null,
@@ -242,17 +244,43 @@ async function main() {
     const coloredRows = await page.locator('[data-testid="lp-item"][data-color="muted"]').count();
     check("the table list row uses the same color as the node", coloredRows >= 1);
 
-    // ---- カラム論理名の一括編集（P-03） ----
+    // ---- カラム辞書（P-03） ----
     // 閲覧は #/columns、編集は #/columns/edit（ロックは無い。P-03 §2.4）
     await page.goto(`${url}#/w/default/columns/edit`);
     await page.waitForSelector('[data-testid="save-button"]', { timeout: 15000 });
     check("column edit disables the other nav links",
         (await page.locator('nav [data-disabled="true"]').count()) === 3);
-    // 全テーブルのロード完了で保存が有効化されるまで編集
-    const rowInput = page
-      .locator("tr", { has: page.locator("td", { hasText: "session_token" }) })
-      .locator("input");
-    await typeInto(rowInput, "セッショントークン");
+    // 一覧は仮想化されている（見えている行しか DOM に無い）。目的の行は絞り込みで出す
+    await page.waitForSelector('[data-testid="columns-row"]', { timeout: 15000 });
+    const rendered = await page.locator('[data-testid="columns-row"]').count();
+    const rowCount = await page
+      .locator(".columns-page .muted")
+      .first()
+      .textContent();
+    check(
+      "the list is virtualized (fewer rows in the DOM than in the dictionary)",
+      rendered < Number.parseInt(rowCount ?? "0", 10),
+    );
+    // 行高が仮想化の前提（ROW_HEIGHT = 44px）と一致していること。ここがずれると
+    // スクロール位置と描画がじわじわ食い違う
+    const heights = await page
+      .locator('[data-testid="columns-row"]')
+      .evaluateAll((rows) => rows.map((r) => Math.round(r.getBoundingClientRect().height)));
+    check("every row matches the fixed row height", heights.every((h) => h === 44));
+
+    await typeInto(page.locator(".catalog-filter"), "session_token");
+    await page.waitForFunction(
+      () => document.querySelectorAll('[data-testid="columns-row"]').length === 1,
+      null,
+      { timeout: 5000 },
+    );
+
+    // 論理名・タグ・色をすべて行内で編集する（P-03）
+    await typeInto(page.getByTestId("display-name-session_token"), "セッショントークン");
+    await typeInto(page.getByTestId("tags-session_token"), "認証 ");
+    await page.getByTestId("color-cell-session_token-trigger").click();
+    await page.getByTestId("color-blue").click();
+
     // 保存はヘッダの保存アイコン。全テーブルのロード完了で活性化するまで待ってから押す
     await page.waitForSelector('[data-testid="save-button"]:not([disabled])', { timeout: 20000 });
     await page.getByTestId("save-button").click();
@@ -264,6 +292,40 @@ async function main() {
     );
     const dictText = readFileSync(join(dir, "workspace-default", "data", "dictionary.js"), "utf-8");
     check("dictionary.js is updated by bulk edit", dictText.includes("セッショントークン"));
+    check(
+      "the shared tag and color are saved into the dictionary entry",
+      /session_token: \{ displayName: "セッショントークン", tags: \["認証"\], color: "blue" \}/.test(
+        dictText,
+      ),
+    );
+
+    // 🔍 は内訳（出現テーブル・個別設定）を見るためのもの。編集中はテーブルへ遷移させない
+    await page.getByTestId("detail-session_token").click();
+    await page.waitForSelector('[data-testid="detail-occurrences"]', { timeout: 15000 });
+    check(
+      "the detail dialog lists the tables holding the column",
+      (await page.locator('[data-testid="detail-occurrences"] li').count()) >= 1,
+    );
+    check(
+      "table links are inert while editing",
+      (await page.locator('[data-testid="detail-occurrences"] a').count()) === 0,
+    );
+    await page.keyboard.press("Escape");
+
+    // 共通タグ・共通色はテーブル詳細のカラム行に出る（出どころは区別しない。P-12 / P-13）
+    await page.goto(`${url}#/w/default/tables/public.user_sessions`);
+    await page.waitForSelector(".data-table tbody tr", { timeout: 15000 });
+    const sharedTagRow = page.locator("tr", {
+      has: page.locator("td", { hasText: "session_token" }),
+    });
+    check(
+      "the table detail shows the shared tag on the column row",
+      (await sharedTagRow.getByText("認証").count()) > 0,
+    );
+    check(
+      "the shared color paints the column row",
+      (await page.locator('tr[data-color="blue"]').count()) > 0,
+    );
 
     await page.close();
   } catch (e) {

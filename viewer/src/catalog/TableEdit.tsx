@@ -23,7 +23,7 @@ import {
   type FieldError,
   type MetaDraft,
 } from "../model/metaDraft";
-import { colorAttr } from "../model/colors";
+import { colorAttr, isColorToken } from "../model/colors";
 import { useAppStore } from "../model/store";
 import type { CardEnd, Table } from "../model/types";
 import {
@@ -131,16 +131,20 @@ export function TableEdit({ tableId }: { tableId: string }) {
     [index],
   );
 
-  // タグ候補（P-12）: index.js の使用中タグ（全テーブル未ロードでも引ける）＋ 編集中に
-  // 追加したタグ。後者を混ぜるのは、テーブルに付けたタグをカラムでもすぐ選べるようにするため
+  // タグ候補（P-12）: index.js の使用中タグ（全テーブル未ロードでも引ける）＋ カラム辞書の
+  // 共通タグ（index には載らない。P §4.3）＋ 編集中に追加したタグ。
+  // 最後のを混ぜるのは、テーブルに付けたタグをカラムでもすぐ選べるようにするため
   const tagCandidates = useMemo(() => {
     const all = new Set(index?.tagsUsed ?? []);
+    for (const entry of Object.values(dictionary?.columns ?? {})) {
+      for (const tag of entry.tags ?? []) all.add(tag);
+    }
     for (const tag of draft?.tags ?? []) all.add(tag);
     for (const cm of Object.values(draft?.columns ?? {})) {
       for (const tag of cm.tags) all.add(tag);
     }
     return [...all].sort((a, b) => a.localeCompare(b, "ja"));
-  }, [index, draft]);
+  }, [index, dictionary, draft]);
 
   const save = useCallback(
     async (force: boolean) => {
@@ -354,9 +358,13 @@ export function TableEdit({ tableId }: { tableId: string }) {
                   color: "",
                   notes: "",
                 };
-                const dictValue = dictionary?.columns?.[c.name];
+                const dictEntry = dictionary?.columns?.[c.name];
+                const dictValue = dictEntry?.displayName;
+                // 共通設定（カラム辞書）の値。タグは消せない・色は上書きできる、を見せる
+                const commonTags = dictEntry?.tags ?? [];
+                const dictColor = dictEntry?.color ?? "";
                 return (
-                  <tr key={c.name} data-color={colorAttr(cm.color)}>
+                  <tr key={c.name} data-color={colorAttr(cm.color !== "" ? cm.color : dictColor)}>
                     <td className="mono">{c.name}</td>
                     <td className="mono muted">{c.type ?? c.logicalType ?? ""}</td>
                     <td>
@@ -377,6 +385,18 @@ export function TableEdit({ tableId }: { tableId: string }) {
                       )}
                     </td>
                     <td>
+                      {/* 共通タグは readonly。ここで消せてしまうと「一律に付ける」が成立しない
+                          （個別に消す手段は将来の課題。P-12） */}
+                      {commonTags.map((tag) => (
+                        <span
+                          key={tag}
+                          className="badge badge-dict"
+                          title={t("tableEdit.commonTag")}
+                          data-testid={`column-common-tag-${c.name}`}
+                        >
+                          {tag}
+                        </span>
+                      ))}
                       <TagInput
                         value={cm.tags}
                         candidates={tagCandidates}
@@ -393,6 +413,11 @@ export function TableEdit({ tableId }: { tableId: string }) {
                         testId={`column-color-${c.name}`}
                         onChange={(color) => updateColumn(c.name, { color })}
                       />
+                      {cm.color === "" && isColorToken(dictColor) && (
+                        <span className="badge badge-dict" title={t("tableEdit.commonColor")}>
+                          {t(`color.${dictColor}` as const)}
+                        </span>
+                      )}
                     </td>
                     <td>
                       <input

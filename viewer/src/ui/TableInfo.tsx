@@ -6,7 +6,13 @@ import { useEffect, useMemo } from "react";
 import { useI18n } from "../i18n/useI18n";
 import { colorAttr } from "../model/colors";
 import { loadTable } from "../model/loader";
-import { formatName, resolveColumnName, resolveTableName } from "../model/logicalName";
+import {
+  formatName,
+  resolveColumnColor,
+  resolveColumnName,
+  resolveColumnTags,
+  resolveTableName,
+} from "../model/logicalName";
 import { useAppStore, type ConstraintKind } from "../model/store";
 import { parseEdgeId, type Relation, type Table } from "../model/types";
 import { cx } from "../lib/cx";
@@ -108,8 +114,11 @@ export function TableInfo({ tableId, onNavigate }: TableInfoProps) {
             {table.columns.map((c) => {
               const logical = resolveColumnName(table, c.name, dictionary);
               const meta = table.meta?.columns?.[c.name];
+              // 色は個別 → 辞書、タグは辞書 ∪ 個別。表示では出どころを区別しない（P-12 / P-13）
+              const color = resolveColumnColor(table, c.name, dictionary).color;
+              const tags = resolveColumnTags(table, c.name, dictionary).tags;
               return (
-                <tr key={c.name} className={styles.columnRow} data-color={colorAttr(meta?.color)}>
+                <tr key={c.name} className={styles.columnRow} data-color={colorAttr(color)}>
                   <td className="center">
                     {pk.has(c.name) && <span className={cx(styles.keyBadge, styles.keyPk)}>PK</span>}
                     {fkCols.has(c.name) && <span className={cx(styles.keyBadge, styles.keyFk)}>FK</span>}
@@ -134,9 +143,9 @@ export function TableInfo({ tableId, onNavigate }: TableInfoProps) {
                   <td className="mono">{c.default !== undefined ? String(c.default) : ""}</td>
                   <td>{c.comment ?? ""}</td>
                   <td>
-                    {(meta?.tags?.length ?? 0) > 0 && (
+                    {tags.length > 0 && (
                       <span className={styles.columnTags}>
-                        {meta?.tags?.map((tag) => (
+                        {tags.map((tag) => (
                           <span key={tag} className={styles.tag}>
                             {tag}
                           </span>

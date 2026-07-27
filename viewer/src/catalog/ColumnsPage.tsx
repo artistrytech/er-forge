@@ -1,23 +1,43 @@
 /**
- * カラム論理名の一括編集画面（P-03）。
+ * カラム辞書の画面（P-03）。同名カラムに効く共通設定（論理名・タグ・色）を1箇所で編める。
  *
  * 閲覧ルート `#/columns` と編集ルート `#/columns/edit` を分ける（§2.4）。
  * 閲覧ルートでは辞書を読み取り表示し、[編集開始] で編集ルートへ遷移して初めて編集できる。
  * 静的モードでは閲覧のみ（[編集開始] を出さない）。編集ロックは無い（H-11 廃止）。
  * 全体を1回の PUT で置換し、保存後は閲覧モード（#/columns）へ戻る。
  * 全テーブルのロード完了までは編集は可能だが保存は待たせる（§2.5）。
+ *
+ * 論理名・タグ・色はすべて**行内で編集する**（数百行を上から順に埋める作業がこの画面の
+ * 主目的で、1件ずつダイアログを開かせると仕事にならない）。そのため一覧は**仮想化**し、
+ * 見えている行だけを描く（lib/virtualRows.ts）。**行の高さは固定**で、タグは折り返さない。
+ * [🔍] のダイアログは出現テーブル・個別設定の内訳を見るためのもの。
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../i18n/useI18n";
 import { apiGet, apiPut, wpath } from "../model/api";
-import { aggregateColumns, parseTsvPairs } from "../model/columnDictionary";
+import {
+  aggregateColumns,
+  applyPastedRow,
+  draftsOf,
+  EMPTY_DRAFT,
+  isEmptyDraft,
+  parseTsvRows,
+  type DictionaryDraft,
+} from "../model/columnDictionary";
+import { colorAttr } from "../model/colors";
 import { rememberOwnRevision } from "../model/editStore";
 import { usePageEditStore } from "../model/pageEditStore";
 import { reloadDictionary } from "../model/loader";
 import { matchText, type MatchMode } from "../model/search";
 import { totalTableCount, useAppStore } from "../model/store";
+import { cx } from "../lib/cx";
+import { renderPlan, ROW_HEIGHT, useVisibleRange } from "../lib/virtualRows";
+import { ColorSelect } from "../ui/ColorSelect";
 import { Dialog } from "../ui/Dialog";
+import { TagInput } from "../ui/TagInput";
 import { hrefs, type ColumnMatch } from "../ui/router";
+import { ColumnDetailDialog } from "./ColumnDetailDialog";
+import styles from "./ColumnsPage.module.scss";
 
 type Filter = "all" | "unset" | "overridden" | "orphan";
 
@@ -36,6 +56,7 @@ export function ColumnsPage({
   const { t } = useI18n();
   const tables = useAppStore((s) => s.tables);
   const dictionary = useAppStore((s) => s.dictionary);
+  const index = useAppStore((s) => s.index);
   const loaded = useAppStore((s) => s.loadedTableCount);
   const failed = useAppStore((s) => s.failedTableCount);
   const total = useAppStore((s) => totalTableCount(s));
@@ -46,7 +67,7 @@ export function ColumnsPage({
 
   const allLoaded = loaded + failed >= total;
 
-  const [draft, setDraft] = useState<Record<string, string>>({});
+  const [draft, setDraft] = useState<Record<string, DictionaryDraft>>({});
   const [baseHash, setBaseHash] = useState<string | null>(null);
   const [dirtyKeys, setDirtyKeys] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState<Filter>("all");
@@ -56,11 +77,15 @@ export function ColumnsPage({
   const [conflict, setConflict] = useState(false);
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pasteText, setPasteText] = useState("");
+  const [detail, setDetail] = useState<string | null>(null);
+  /** 入力中の行。仮想化で unmount させないよう、範囲外でも描き続ける */
+  const [activeRow, setActiveRow] = useState<string | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   // 辞書の初期値と baseHash。辞書が外部変更されたら未編集キーのみ追随する
   useEffect(() => {
     setDraft((prev) => {
-      const next: Record<string, string> = { ...(dictionary?.columns ?? {}) };
+      const next = draftsOf(dictionary);
       for (const key of dirtyKeys) {
         if (prev[key] !== undefined) next[key] = prev[key];
         else delete next[key];
@@ -92,23 +117,48 @@ export function ColumnsPage({
   }, [focusColumn, focusMatch]);
 
   const rows = useMemo(
-    () => aggregateColumns(Object.values(tables), dictionary?.columns ?? {}),
+    () => aggregateColumns(Object.values(tables), dictionary),
     [tables, dictionary],
   );
 
   const visible = useMemo(() => {
     const q = search.trim();
     return rows.filter((r) => {
-      const value = draft[r.name] ?? "";
-      if (filter === "unset" && value !== "") return false;
+      const value = draft[r.name] ?? EMPTY_DRAFT;
+      if (filter === "unset" && value.displayName !== "") return false;
       if (filter === "overridden" && r.overrides.length === 0) return false;
       if (filter === "orphan" && r.occurrences > 0) return false;
-      if (q !== "" && !matchText(r.name, q, matchMode) && !matchText(value, q, matchMode)) {
-        return false;
+      if (q !== "") {
+        const hit =
+          matchText(r.name, q, matchMode) ||
+          matchText(value.displayName, q, matchMode) ||
+          value.tags.some((tag) => matchText(tag, q, matchMode));
+        if (!hit) return false;
       }
       return true;
     });
   }, [rows, draft, filter, search, matchMode]);
+
+  // 絞り込みが変わると行が入れ替わる。前の位置に留まると「行が無い場所」を見ることになる
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: 0 });
+  }, [filter, search, matchMode]);
+
+  const range = useVisibleRange(scrollRef, visible.length);
+  const plan = useMemo(() => {
+    const pinned = activeRow === null ? -1 : visible.findIndex((r) => r.name === activeRow);
+    return renderPlan(range, visible.length, pinned < 0 ? undefined : pinned);
+  }, [range, visible, activeRow]);
+
+  // タグ候補（P-12）: index.js の使用中タグ（テーブル・カラム個別のもの）＋ 辞書の共通タグ。
+  // 辞書のタグは index.js に載せない（載せると辞書保存のたびに index 再生成が要る。P §4.3）
+  const tagCandidates = useMemo(() => {
+    const all = new Set(index?.tagsUsed ?? []);
+    for (const d of Object.values(draft)) {
+      for (const tag of d.tags) all.add(tag);
+    }
+    return [...all].sort((a, b) => a.localeCompare(b, "ja"));
+  }, [index, draft]);
 
   const dirty = dirtyKeys.size > 0;
 
@@ -133,22 +183,22 @@ export function ColumnsPage({
     return () => setController(null);
   }, [canEdit, dirty, saving, allLoaded, baseHash, setController]);
 
-  const setValue = (name: string, value: string) => {
-    setDraft((d) => ({ ...d, [name]: value }));
+  const update = (name: string, patch: Partial<DictionaryDraft>) => {
+    setDraft((d) => ({ ...d, [name]: { ...(d[name] ?? EMPTY_DRAFT), ...patch } }));
     setDirtyKeys((keys) => new Set(keys).add(name));
   };
 
   const applyPaste = () => {
-    const pairs = parseTsvPairs(pasteText);
+    const pasted = parseTsvRows(pasteText);
     const known = new Set(rows.map((r) => r.name));
     let applied = 0;
     setDraft((d) => {
       const next = { ...d };
       const nextDirty = new Set(dirtyKeys);
-      for (const [name, value] of pairs) {
-        if (!known.has(name)) continue;
-        next[name] = value;
-        nextDirty.add(name);
+      for (const row of pasted) {
+        if (!known.has(row.name)) continue;
+        next[row.name] = applyPastedRow(next[row.name] ?? EMPTY_DRAFT, row);
+        nextDirty.add(row.name);
         applied += 1;
       }
       setDirtyKeys(nextDirty);
@@ -161,9 +211,11 @@ export function ColumnsPage({
 
   const save = async (force: boolean) => {
     if (saving || baseHash === null) return;
-    const columns: Record<string, string> = {};
+    const columns: Record<string, DictionaryDraft> = {};
     for (const [name, value] of Object.entries(draft)) {
-      if (value.trim() !== "") columns[name] = value.trim();
+      // 全フィールドが空のエントリは送らない（= 辞書から削除する。P §1.1）
+      if (isEmptyDraft(value)) continue;
+      columns[name] = { ...value, displayName: value.displayName.trim() };
     }
     setSaving(true);
     try {
@@ -178,6 +230,15 @@ export function ColumnsPage({
         // 保存後も編集は継続する（ER図・テーブル編集と同じ）
       } else if (res.status === 409) {
         setConflict(true);
+      } else if (res.status === 422) {
+        // タグ・色の検証エラー（P-12 / P-13）。どのカラムかが分かるよう path をそのまま出す
+        const body = JSON.parse(res.body) as { errors?: { path: string; message: string }[] };
+        const first = body.errors?.[0];
+        addToast(
+          first === undefined
+            ? `${t("save.failed")} (HTTP 422)`
+            : `${t("save.failed")}: ${first.path} — ${first.message}`,
+        );
       } else {
         addToast(`${t("save.failed")} (HTTP ${res.status})`);
       }
@@ -204,7 +265,7 @@ export function ColumnsPage({
   }, [canEdit]);
 
   const discard = () => {
-    setDraft({ ...(dictionary?.columns ?? {}) });
+    setDraft(draftsOf(dictionary));
     setDirtyKeys(new Set());
   };
 
@@ -218,8 +279,10 @@ export function ColumnsPage({
     discard();
   };
 
+  const detailRow = detail === null ? undefined : rows.find((r) => r.name === detail);
+
   return (
-    <div className="catalog-page columns-page">
+    <div className={cx("catalog-page", "columns-page", styles.page)}>
       <div className="catalog-header">
         <h2>{t("columnsPage.title")}</h2>
         <span className="muted">{t("columnsPage.count", { n: rows.length })}</span>
@@ -286,54 +349,116 @@ export function ColumnsPage({
         )}
       </div>
 
-      <div className="table-scroll">
+      {/* 仮想化のビューポート。行は固定高（ROW_HEIGHT）で、範囲外はスペーサー行で埋める */}
+      <div className={cx("table-scroll", styles.scroll)} ref={scrollRef} data-testid="columns-scroll">
         <table className="data-table columns-table">
-          <thead>
+          <thead className={styles.head}>
             <tr>
-              <th>{t("columnsPage.colName")}</th>
+              <th className={styles.nameCell}>{t("columnsPage.colName")}</th>
               <th>{t("columnsPage.colLogical")}</th>
-              <th className="right">{t("columnsPage.colOccurrences")}</th>
-              <th className="right">{t("columnsPage.colOverrides")}</th>
+              <th>{t("table.tags")}</th>
+              <th className={styles.colorCell}>{t("tableEdit.color")}</th>
+              <th className={styles.detailCell} />
             </tr>
           </thead>
           <tbody>
-            {visible.map((r) => {
-              const value = draft[r.name] ?? "";
+            {plan.map((item, i) => {
+              if (item.kind === "spacer") {
+                // key は plan 内の位置（前後2つしか無く、行の入れ替わりでも安定する）
+                return (
+                  <tr key={`spacer-${i}`} aria-hidden="true">
+                    <td colSpan={5} style={{ height: item.rows * ROW_HEIGHT, padding: 0 }} />
+                  </tr>
+                );
+              }
+              const r = visible[item.index]!;
+              const value = draft[r.name] ?? EMPTY_DRAFT;
               return (
-                <tr key={r.name} className={dirtyKeys.has(r.name) ? "row-dirty" : ""}>
-                  <td className="mono">{r.name}</td>
+                <tr
+                  key={r.name}
+                  className={cx(styles.row, dirtyKeys.has(r.name) && "row-dirty")}
+                  data-testid="columns-row"
+                  // 入力中の行を掴んでおく（仮想化で消えると入力・IME 変換が飛ぶ）
+                  onFocus={() => setActiveRow(r.name)}
+                >
+                  <td className={cx("mono", styles.nameCell)}>
+                    {r.name}
+                    {/* 孤立エントリ（どのテーブルにも無い）だけは一覧に警告を残す。
+                        理由の説明は詳細ダイアログで出す */}
+                    {r.occurrences === 0 && (
+                      <button
+                        type="button"
+                        className={styles.orphanBadge}
+                        title={t("columnsPage.orphan")}
+                        aria-label={t("columnsPage.orphan")}
+                        data-testid={`orphan-${r.name}`}
+                        onClick={() => setDetail(r.name)}
+                      >
+                        ⚠
+                      </button>
+                    )}
+                  </td>
                   <td>
                     {canEdit ? (
                       <input
                         type="text"
-                        value={value}
+                        value={value.displayName}
                         placeholder={`（${t("table.notSet")}）`}
-                        onChange={(e) => setValue(r.name, e.target.value)}
+                        data-testid={`display-name-${r.name}`}
+                        onChange={(e) => update(r.name, { displayName: e.target.value })}
                       />
                     ) : (
-                      <span className={value === "" ? "muted" : ""}>
-                        {value === "" ? `（${t("table.notSet")}）` : value}
+                      <span className={value.displayName === "" ? "muted" : ""}>
+                        {value.displayName === "" ? `（${t("table.notSet")}）` : value.displayName}
                       </span>
                     )}
                   </td>
-                  <td className="right" title={r.occurrenceTables.join(", ")}>
-                    {r.occurrences}
-                    {r.occurrences === 0 && (
-                      <span className="badge badge-warn" title={t("columnsPage.orphan")}>
-                        ⚠
-                      </span>
+                  <td className={styles.tagCell}>
+                    {canEdit ? (
+                      <TagInput
+                        value={value.tags}
+                        candidates={tagCandidates}
+                        compact
+                        nowrap
+                        testId={`tags-${r.name}`}
+                        onChange={(tags) => update(r.name, { tags })}
+                      />
+                    ) : (
+                      value.tags.map((tag) => (
+                        <span key={tag} className={styles.tag}>
+                          {tag}
+                        </span>
+                      ))
                     )}
                   </td>
-                  <td
-                    className="right"
-                    title={
-                      r.overrides.length > 0
-                        ? t("columnsPage.overriddenBy", { list: r.overrides.join(", ") })
-                        : ""
-                    }
-                  >
-                    {r.overrides.length}
-                    {r.overrides.length > 0 && <span className="badge badge-warn">⚠</span>}
+                  <td className={styles.colorCell}>
+                    {canEdit ? (
+                      <ColorSelect
+                        value={value.color}
+                        testId={`color-cell-${r.name}`}
+                        onChange={(color) => update(r.name, { color })}
+                      />
+                    ) : (
+                      value.color !== "" && (
+                        <span
+                          className={styles.swatch}
+                          data-color={colorAttr(value.color)}
+                          title={value.color}
+                        />
+                      )
+                    )}
+                  </td>
+                  <td className={styles.detailCell}>
+                    <button
+                      type="button"
+                      className={styles.detailButton}
+                      title={t("columnsPage.detail.open")}
+                      aria-label={t("columnsPage.detail.open")}
+                      data-testid={`detail-${r.name}`}
+                      onClick={() => setDetail(r.name)}
+                    >
+                      🔍
+                    </button>
                   </td>
                 </tr>
               );
@@ -341,6 +466,17 @@ export function ColumnsPage({
           </tbody>
         </table>
       </div>
+
+      {detailRow !== undefined && (
+        <ColumnDetailDialog
+          row={detailRow}
+          draft={draft[detailRow.name] ?? EMPTY_DRAFT}
+          canEdit={canEdit}
+          tagCandidates={tagCandidates}
+          onChange={(patch) => update(detailRow.name, patch)}
+          onClose={() => setDetail(null)}
+        />
+      )}
 
       {pasteOpen && (
         <Dialog title={t("columnsPage.paste")} onClose={() => setPasteOpen(false)}>
@@ -350,7 +486,7 @@ export function ColumnsPage({
             rows={12}
             value={pasteText}
             onChange={(e) => setPasteText(e.target.value)}
-            placeholder={"created_at\t作成日時\nupdated_at\t更新日時"}
+            placeholder={"created_at\t作成日時\t監査\tmuted\nupdated_at\t更新日時"}
           />
           <div className="dialog-actions">
             <button type="button" onClick={() => setPasteOpen(false)}>

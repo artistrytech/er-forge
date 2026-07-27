@@ -5,6 +5,7 @@ import erd.core.index.IndexModel;
 import erd.core.model.Column;
 import erd.core.model.DiagramPage;
 import erd.core.model.Dictionary;
+import erd.core.model.DictionaryColumn;
 import erd.core.model.DriverConfig;
 import erd.core.model.EdgeLayout;
 import erd.core.model.ForeignKey;
@@ -388,10 +389,20 @@ public final class DataFilePrinter {
         Out out = new Out();
         out.open("ERD.dictionary({");
         if (!d.columns().isEmpty()) {
-            out.open("columns: {");
-            d.columns().keySet().stream().sorted(CODEPOINT_ORDER).forEach(name ->
-                    out.line(JsText.key(name) + ": " + JsText.quote(d.columns().get(name)) + ","));
-            out.close("},");
+            // 全フィールドが空のエントリは出さない。ブロックは中身が1件でも出てから開く
+            Out.Block block = null;
+            for (String name : d.columns().keySet().stream().sorted(CODEPOINT_ORDER).toList()) {
+                DictionaryColumn c = d.columns().get(name);
+                if (c.isEmpty()) continue;
+                if (block == null) block = out.openBlock("columns: {");
+                Pairs p = new Pairs();
+                if (notEmpty(c.displayName())) p.add("displayName", JsText.quote(c.displayName()));
+                if (!c.tags().isEmpty()) p.add("tags", strArray(c.tags()));
+                if (notEmpty(c.color())) p.add("color", JsText.quote(c.color()));
+                addUnknownInline(p, c.unknown());
+                out.line(JsText.key(name) + ": " + p.inline() + ",");
+            }
+            if (block != null) out.close("},");
         }
         emitUnknown(out, d.unknown());
         out.close("});");

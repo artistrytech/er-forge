@@ -199,7 +199,7 @@ public final class SchemaDiff {
         for (Column c : neu.columns()) {
             List<DiffItem> seeds = new ArrayList<>();
             String seed = seedName(c.comment());
-            if (seed != null && model.dictionary().columns().get(c.name()) == null) {
+            if (seed != null && model.dictionary().displayNameOf(c.name()) == null) {
                 seeds.add(new DiffItem("table:" + id + "/column:" + c.name() + "/displayName",
                         "displayName", "added", c.name(), null, null, seed,
                         true, List.of(), List.of(), List.of(), List.of()));
@@ -386,7 +386,7 @@ public final class SchemaDiff {
         if (seed == null) return List.of();
         var cm = old.meta().columns().get(c.name());
         if (cm != null && !isBlank(cm.displayName())) return List.of();
-        if (model.dictionary().columns().get(c.name()) != null) return List.of();
+        if (model.dictionary().displayNameOf(c.name()) != null) return List.of();
         return List.of(new DiffItem(tid + "/column:" + c.name() + "/displayName", "displayName",
                 "added", c.name(), null, null, seed, true,
                 List.of(), List.of(), List.of(), List.of()));

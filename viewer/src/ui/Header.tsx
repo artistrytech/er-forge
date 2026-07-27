@@ -1,7 +1,7 @@
 /**
  * ヘッダ（A-02 / A-03 / L-04 / P-05）。
  * 右側は「設定（歯車）」「動作モード（アイコン）」と、画面に応じた編集操作（保存・編集開始/終了）で構成する。
- * 編集操作は ER図（editStore）・テーブル編集 / カラム論理名編集（pageEditStore のコントローラ）を
+ * 編集操作は ER図（editStore）・テーブル編集 / カラム辞書の編集（pageEditStore のコントローラ）を
  * ひとつのヘッダ UI に集約する。個別画面はフォームだけを持ち、保存・終了はここから行う。
  */
 import { useEffect, useRef, useState } from "react";
@@ -415,7 +415,7 @@ function ModeIndicator({ serverMode }: { serverMode: boolean | null }) {
 /**
  * 画面に応じた編集操作を1か所に集約する。
  * - ER図（editStore）: 閲覧なら [編集開始]、編集中なら [保存]（サーバー）/[エクスポート]（静的）＋[編集終了]
- * - テーブル編集 / カラム論理名編集（pageEditStore コントローラ）: [保存]＋[編集終了]、閲覧なら [編集開始]
+ * - テーブル編集 / カラム辞書の編集（pageEditStore コントローラ）: [保存]＋[編集終了]、閲覧なら [編集開始]
  * 未保存があるまま [編集終了] を押したときだけ確認ダイアログを出す（他の遷移・リロードは対象外）。
  */
 function EditControls({ route }: { route: Route }) {

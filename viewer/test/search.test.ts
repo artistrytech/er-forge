@@ -20,7 +20,9 @@ const usersTable = {
   meta: { columns: { email: { displayName: "メール" } } },
 } as unknown as Table;
 
-const dict: Dictionary = { columns: { created_at: "作成日時" } };
+const dict: Dictionary = {
+  columns: { created_at: { displayName: "作成日時", tags: ["監査"] } },
+};
 
 describe("searchAll (F-01 / F-04)", () => {
   it("テーブル論理名でヒットする", () => {

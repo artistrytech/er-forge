@@ -9,6 +9,7 @@ import erd.core.model.Column;
 import erd.core.model.ColumnMeta;
 import erd.core.model.DiagramPage;
 import erd.core.model.Dictionary;
+import erd.core.model.DictionaryColumn;
 import erd.core.model.EdgeLayout;
 import erd.core.model.ForeignKey;
 import erd.core.model.IndexDef;
@@ -193,13 +194,15 @@ public final class FixtureModels {
     }
 
     public static Dictionary dictionary() {
-        Map<String, String> columns = new LinkedHashMap<>();
-        columns.put("id", "ID");
-        columns.put("created_at", "作成日時");
-        columns.put("updated_at", "更新日時");
-        columns.put("org_id", "組織ID");
-        columns.put("email", "メールアドレス");
-        columns.put("default", "既定値");
+        Map<String, DictionaryColumn> columns = new LinkedHashMap<>();
+        columns.put("id", new DictionaryColumn("ID"));
+        columns.put("created_at", new DictionaryColumn("作成日時", List.of("監査"), "muted", Map.of()));
+        columns.put("updated_at", new DictionaryColumn("更新日時", List.of("監査"), "muted", Map.of()));
+        columns.put("org_id", new DictionaryColumn("組織ID"));
+        columns.put("email", new DictionaryColumn("メールアドレス", List.of("pii"), "amber", Map.of()));
+        columns.put("default", new DictionaryColumn("既定値"));
+        // 論理名が無くタグ・色だけのエントリ。全フィールドが空でない限り残る
+        columns.put("deleted_at", new DictionaryColumn(null, List.of("廃止"), "muted", Map.of()));
         return new Dictionary(columns, Map.of());
     }
 

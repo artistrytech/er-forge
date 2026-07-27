@@ -3,7 +3,7 @@
  * テーブル名・論理名・タグは index.js の範囲で常に検索でき、
  * カラム名・カラム論理名・コメントはロード済みのテーブルに対して段階的に拡張される。
  */
-import { resolveColumnName, resolveIndexTableName } from "./logicalName";
+import { resolveColumnName, resolveColumnTags, resolveIndexTableName } from "./logicalName";
 import type { Dictionary, IndexData, Table } from "./types";
 
 /** 一致条件。router.ts の ColumnMatch と構造的に同一（層をまたぐ import を避けるため個別定義） */
@@ -72,8 +72,12 @@ export function searchAll(
         const logical = resolveColumnName(full, c.name, dict);
         const cm = full.meta?.columns?.[c.name];
         const notes = cm?.notes;
-        // カラムタグ（P-12）は index.js に載らないため、ロード済みのテーブルでのみ当たる（F-04）
-        const tagHit = (cm?.tags ?? []).find((tag) => matchText(tag, q, mode));
+        // カラムタグ（P-12）は index.js に載らないため、ロード済みのテーブルでのみ当たる（F-04）。
+        // 共通タグ（カラム辞書）は全テーブルに効くが、ここでも「ロード済みのテーブルの
+        // カラムヒット」として扱う。索引だけで判定すると1タグで全テーブルが並んでしまう
+        const tagHit = resolveColumnTags(full, c.name, dict).tags.find((tag) =>
+          matchText(tag, q, mode),
+        );
         let matched: string | null = null;
         if (hit(c.name)) matched = c.name;
         else if (logical.source !== "physical" && hit(logical.name)) {

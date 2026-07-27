@@ -198,7 +198,7 @@ ERD.table({
 | `ERD.manifest` | `schemaVersion` `generatedAt` `source` `config` `dictionary` `tables` `diagrams` |
 | `ERD.index` | `tables` `relations` `tagsUsed` |
 | `ERD.config` | `ignoreTables` |
-| `ERD.dictionary` | `columns` |
+| `ERD.dictionary` | `columns`（値は `displayName` `tags` `color` を持つオブジェクト） |
 
 ### 2.8 配列とマップの順序（INV-2 の核心）
 
@@ -317,7 +317,7 @@ JsonMapper.builder()
 - `displayName` は **`meta.displayName` の生の値**（未設定なら省略）。**物理名へのフォールバックはビューア側の解決関数で行う**（P 詳細設計 §1.1）。ここで解決済みの値を入れると、「論理名が設定されているか」が区別できなくなり、未整備ハイライト（O-07）が作れない。
 - `diagrams` は、そのテーブルを含むページID の昇順。空配列なら**省略する**（＝未配置。K-12 の導出元）。
 - `color` は **`meta.color` の生の値**（未設定なら省略。P-13）。**ER図はこの索引だけでノードを描くため、ここに載せないと ER図だけ色が付かない。** カラムの色・カラムのタグは載せない（カラムを描く画面は必ずスキーマファイルを読み込んでいる）。
-- ファイル末尾の `tagsUsed` は、使用中タグ（テーブル ∪ カラム）のコードポイント順の集合。タグ入力の候補用（P-12）。
+- ファイル末尾の `tagsUsed` は、使用中タグ（テーブル ∪ カラム個別）のコードポイント順の集合。タグ入力の候補用（P-12）。**カラム辞書の共通タグは含めない**（含めると辞書を保存するたびに索引の再生成が要る。辞書はビューアが常に直接読むので、候補はそこから足せる）。
 
 ### 4.3 `relations[]`（エッジ）
 

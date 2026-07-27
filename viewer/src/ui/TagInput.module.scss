@@ -21,6 +21,17 @@
   border-color: var(--accent);
 }
 
+/* 行高を固定した一覧（仮想化）用。折り返さず、溢れは横スクロールで見る */
+.field.nowrap {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.field.nowrap::-webkit-scrollbar {
+  display: none;
+}
+
 .disabled .field {
   background: var(--input-bg);
 }

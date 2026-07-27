@@ -10,6 +10,7 @@ import erd.core.model.Column;
 import erd.core.model.ColumnMeta;
 import erd.core.model.DiagramPage;
 import erd.core.model.Dictionary;
+import erd.core.model.DictionaryColumn;
 import erd.core.model.DriverConfig;
 import erd.core.model.EdgeLayout;
 import erd.core.model.ForeignKey;
@@ -226,10 +227,20 @@ public final class DataFileParser {
 
     public Parsed<Dictionary> parseDictionary(String content) {
         Obj root = new Obj(stripWrapper(content, "dictionary"));
-        Map<String, String> columns = new LinkedHashMap<>();
+        Map<String, DictionaryColumn> columns = new LinkedHashMap<>();
         JsonNode columnsNode = root.node("columns");
         if (columnsNode != null) {
-            columnsNode.fields().forEachRemaining(e -> columns.put(e.getKey(), e.getValue().asText()));
+            columnsNode.fields().forEachRemaining(e -> {
+                JsonNode value = e.getValue();
+                // 手で書いた辞書のために「物理名: "論理名"」の短縮形も読む（論理名だけの指定）
+                if (value.isTextual()) {
+                    columns.put(e.getKey(), new DictionaryColumn(value.asText()));
+                    return;
+                }
+                Obj c = new Obj(asObject(value, "columns." + e.getKey()));
+                columns.put(e.getKey(), new DictionaryColumn(
+                        c.text("displayName"), c.textArray("tags"), c.text("color"), c.rest()));
+            });
         }
         return new Parsed<>(new Dictionary(columns, root.rest()), List.of());
     }

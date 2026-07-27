@@ -6,6 +6,7 @@ import erd.core.model.Column;
 import erd.core.model.ColumnMeta;
 import erd.core.model.DiagramPage;
 import erd.core.model.Dictionary;
+import erd.core.model.DictionaryColumn;
 import erd.core.model.EdgeLayout;
 import erd.core.model.ForeignKey;
 import erd.core.model.LogicalForeignKey;
@@ -269,62 +270,68 @@ public final class GenerateSampleData {
         }
     }
 
-    /** カラム論理名の横断辞書（§5.6）。同名カラムはプロジェクト全体で同じ意味を持つ。 */
+    /** カラムの共通設定（横断辞書。§5.6）。同名カラムはプロジェクト全体で同じ意味を持つ。 */
     private static Dictionary dictionary() {
-        Map<String, String> c = new LinkedHashMap<>();
-        c.put("id", "ID");
-        c.put("created_at", "作成日時");
-        c.put("updated_at", "更新日時");
-        c.put("user_id", "ユーザーID");
-        c.put("product_id", "商品ID");
-        c.put("order_id", "注文ID");
-        c.put("payment_id", "支払ID");
-        c.put("campaign_id", "キャンペーンID");
-        c.put("category_id", "カテゴリID");
-        c.put("role_id", "ロールID");
-        c.put("tag_id", "タグID");
-        c.put("payment_method_id", "支払方法ID");
-        c.put("email", "メールアドレス");
-        c.put("password", "パスワード");
-        c.put("full_name", "氏名");
-        c.put("phone_number", "電話番号");
-        c.put("birth_date", "生年月日");
-        c.put("address_line1", "住所1");
-        c.put("address_line2", "住所2");
-        c.put("city", "市区町村");
-        c.put("postal_code", "郵便番号");
-        c.put("country", "国");
-        c.put("session_token", "セッショントークン");
-        c.put("expires_at", "有効期限");
-        c.put("role_name", "ロール名");
-        c.put("category_name", "カテゴリ名");
-        c.put("product_name", "商品名");
-        c.put("description", "説明");
-        c.put("price", "価格");
-        c.put("image_url", "画像URL");
-        c.put("quantity", "数量");
-        c.put("rating", "評価");
-        c.put("comment", "コメント");
-        c.put("tag_name", "タグ名");
-        c.put("order_date", "注文日時");
-        c.put("status", "ステータス");
-        c.put("shipment_date", "出荷日時");
-        c.put("carrier", "配送業者");
-        c.put("reason", "理由");
-        c.put("cancelled_at", "キャンセル日時");
-        c.put("method_name", "支払方法名");
-        c.put("payment_date", "支払日時");
-        c.put("amount", "金額");
-        c.put("processed_at", "処理日時");
-        c.put("refund_date", "返金日時");
-        c.put("balance", "残高");
-        c.put("points", "ポイント数");
-        c.put("transaction_date", "取引日時");
-        c.put("campaign_name", "キャンペーン名");
-        c.put("start_date", "開始日");
-        c.put("end_date", "終了日");
-        c.put("bonus_rate", "ボーナス率");
+        Map<String, DictionaryColumn> c = new LinkedHashMap<>();
+        put(c, "id", "ID");
+        // 共通タグ・共通色（個別設定では取り消せないタグ / 個別設定で上書きできる色）
+        c.put("created_at", new DictionaryColumn("作成日時", List.of("監査"), "muted", Map.of()));
+        c.put("updated_at", new DictionaryColumn("更新日時", List.of("監査"), "muted", Map.of()));
+        c.put("email", new DictionaryColumn("メールアドレス", List.of("pii"), "amber", Map.of()));
+        c.put("password", new DictionaryColumn("パスワード", List.of("pii"), "red", Map.of()));
+        c.put("phone_number", new DictionaryColumn("電話番号", List.of("pii"), "amber", Map.of()));
+        c.put("birth_date", new DictionaryColumn("生年月日", List.of("pii"), "amber", Map.of()));
+        put(c, "user_id", "ユーザーID");
+        put(c, "product_id", "商品ID");
+        put(c, "order_id", "注文ID");
+        put(c, "payment_id", "支払ID");
+        put(c, "campaign_id", "キャンペーンID");
+        put(c, "category_id", "カテゴリID");
+        put(c, "role_id", "ロールID");
+        put(c, "tag_id", "タグID");
+        put(c, "payment_method_id", "支払方法ID");
+        put(c, "full_name", "氏名");
+        put(c, "address_line1", "住所1");
+        put(c, "address_line2", "住所2");
+        put(c, "city", "市区町村");
+        put(c, "postal_code", "郵便番号");
+        put(c, "country", "国");
+        put(c, "session_token", "セッショントークン");
+        put(c, "expires_at", "有効期限");
+        put(c, "role_name", "ロール名");
+        put(c, "category_name", "カテゴリ名");
+        put(c, "product_name", "商品名");
+        put(c, "description", "説明");
+        put(c, "price", "価格");
+        put(c, "image_url", "画像URL");
+        put(c, "quantity", "数量");
+        put(c, "rating", "評価");
+        put(c, "comment", "コメント");
+        put(c, "tag_name", "タグ名");
+        put(c, "order_date", "注文日時");
+        put(c, "status", "ステータス");
+        put(c, "shipment_date", "出荷日時");
+        put(c, "carrier", "配送業者");
+        put(c, "reason", "理由");
+        put(c, "cancelled_at", "キャンセル日時");
+        put(c, "method_name", "支払方法名");
+        put(c, "payment_date", "支払日時");
+        put(c, "amount", "金額");
+        put(c, "processed_at", "処理日時");
+        put(c, "refund_date", "返金日時");
+        put(c, "balance", "残高");
+        put(c, "points", "ポイント数");
+        put(c, "transaction_date", "取引日時");
+        put(c, "campaign_name", "キャンペーン名");
+        put(c, "start_date", "開始日");
+        put(c, "end_date", "終了日");
+        put(c, "bonus_rate", "ボーナス率");
         return new Dictionary(c, Map.of());
+    }
+
+    /** 論理名だけの辞書エントリ。 */
+    private static void put(Map<String, DictionaryColumn> c, String name, String displayName) {
+        c.put(name, new DictionaryColumn(displayName));
     }
 
     // -------------------------------------------------------------- diagrams

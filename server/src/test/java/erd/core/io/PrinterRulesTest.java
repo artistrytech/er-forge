@@ -46,8 +46,8 @@ class PrinterRulesTest {
         assertTrue(out.contains("{ name: \"default\","));
 
         String dict = printer.printDictionary(FixtureModels.dictionary());
-        assertTrue(dict.contains("\"default\": \"既定値\","));
-        assertTrue(dict.contains("created_at: \"作成日時\","), "識別子として妥当なキーは裸のまま");
+        assertTrue(dict.contains("\"default\": { displayName: \"既定値\" },"));
+        assertTrue(dict.contains("id: { displayName: \"ID\" },"), "識別子として妥当なキーは裸のまま");
     }
 
     @Test
