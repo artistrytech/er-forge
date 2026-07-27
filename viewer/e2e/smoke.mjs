@@ -141,6 +141,24 @@ async function main() {
     "the physical constraint name is not shown in the list",
     !(await page.locator('[data-testid="fk-list"]').textContent()).includes("users_org_id_fkey"),
   );
+  // 一意制約・インデックスも同じ形（構成カラム + 虫眼鏡）。制約名は詳細ダイアログに寄せる
+  check(
+    "uniques and indexes show their columns without the constraint name",
+    (await page.locator('[data-testid="unique-list"]').textContent()).trim() === "email" &&
+      !(await page.locator('[data-testid="index-list"]').textContent()).includes("idx_users_created_at"),
+  );
+  await page.locator('[data-testid="lunique-list"] [data-testid="constraint-detail"]').click();
+  await page.waitForSelector(".dialog");
+  const luniqueText = await page.locator(".dialog").textContent();
+  check(
+    "constraint detail dialog shows the name, columns and notes",
+    luniqueText.includes("luk_users_org_email") &&
+      luniqueText.includes("org_id") &&
+      luniqueText.includes("email") &&
+      luniqueText.includes("組織内でメールは重複しない"),
+  );
+  await page.keyboard.press("Escape");
+
   const relDetail = page.locator('[data-testid="relation-detail"]');
   // 参照（物理FK・論理外部制約）と被参照の3件すべてに詳細ボタンが出る
   check("relation detail is offered for references and back-references", (await relDetail.count()) === 3);

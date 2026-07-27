@@ -7,7 +7,7 @@ import { useI18n } from "../i18n/useI18n";
 import { colorAttr } from "../model/colors";
 import { loadTable } from "../model/loader";
 import { formatName, resolveColumnName, resolveTableName } from "../model/logicalName";
-import { useAppStore } from "../model/store";
+import { useAppStore, type ConstraintKind } from "../model/store";
 import { parseEdgeId, type Relation, type Table } from "../model/types";
 import { cx } from "../lib/cx";
 import { hrefs } from "./router";
@@ -168,11 +168,11 @@ export function TableInfo({ tableId, onNavigate }: TableInfoProps) {
       {(table.uniques?.length ?? 0) > 0 && (
         <>
           <h3>{t("table.uniques")}</h3>
-          <ul className={styles.itemList}>
+          <ul className={styles.itemList} data-testid="unique-list">
             {table.uniques?.map((u, i) => (
               <li key={u.name ?? i} className={styles.item}>
                 <span className="mono">{u.columns.join(", ")}</span>
-                {u.name !== undefined && <span className={styles.itemName}>{u.name}</span>}
+                <ConstraintDetailButton tableId={table.id} kind="unique" at={i} />
               </li>
             ))}
           </ul>
@@ -182,12 +182,12 @@ export function TableInfo({ tableId, onNavigate }: TableInfoProps) {
       {(table.indexes?.length ?? 0) > 0 && (
         <>
           <h3>{t("table.indexes")}</h3>
-          <ul className={styles.itemList}>
+          <ul className={styles.itemList} data-testid="index-list">
             {table.indexes?.map((ix, i) => (
               <li key={ix.name ?? i} className={styles.item}>
                 <span className="mono">{ix.columns.join(", ")}</span>
                 {ix.unique === true && <span className="badge">unique</span>}
-                {ix.name !== undefined && <span className={styles.itemName}>{ix.name}</span>}
+                <ConstraintDetailButton tableId={table.id} kind="index" at={i} />
               </li>
             ))}
           </ul>
@@ -214,12 +214,12 @@ export function TableInfo({ tableId, onNavigate }: TableInfoProps) {
       {(table.meta?.logicalUniques?.length ?? 0) > 0 && (
         <>
           <h3>{t("table.logicalUniques")}</h3>
-          <ul className={styles.itemList}>
+          <ul className={styles.itemList} data-testid="lunique-list">
             {table.meta?.logicalUniques?.map((u, i) => (
               <li key={u.name ?? i} className={cx(styles.item, styles.itemLogical)}>
                 <span className="mono">{u.columns.join(", ")}</span>
-                {u.name !== undefined && <span className={styles.itemName}>{u.name}</span>}
                 {u.notes !== undefined && <span className={styles.noteInline}>{u.notes}</span>}
+                <ConstraintDetailButton tableId={table.id} kind="logicalUnique" at={i} />
               </li>
             ))}
           </ul>
@@ -294,13 +294,53 @@ function RelationDetailButton({ relationId }: { relationId: string | null }) {
     relationId !== null && (index?.relations ?? []).some((r) => r.id === relationId);
   if (!exists || relationId === null) return null;
   return (
+    <DetailButton
+      label={t("relation.title")}
+      testId="relation-detail"
+      onClick={() => openDialog({ type: "relation", id: relationId })}
+    />
+  );
+}
+
+/** ユニーク制約・インデックス・論理一意制約の詳細を開く虫眼鏡（リレーションと同じ導線） */
+function ConstraintDetailButton({
+  tableId,
+  kind,
+  at,
+}: {
+  tableId: string;
+  kind: ConstraintKind;
+  at: number;
+}) {
+  const { t } = useI18n();
+  const openDialog = useAppStore((s) => s.openDialog);
+  return (
+    <DetailButton
+      label={t("constraint.title")}
+      testId="constraint-detail"
+      onClick={() => openDialog({ type: "constraint", tableId, kind, at })}
+    />
+  );
+}
+
+/** 一覧行の虫眼鏡。制約の種類によらず同じ見た目・同じ位置にする */
+function DetailButton({
+  label,
+  testId,
+  onClick,
+}: {
+  label: string;
+  testId: string;
+  onClick: () => void;
+}) {
+  return (
     <button
       type="button"
       className={styles.detailButton}
-      data-testid="relation-detail"
-      title={t("relation.title")}
-      aria-label={t("relation.title")}
-      onClick={() => openDialog({ type: "relation", id: relationId })}
+      data-testid={testId}
+      title={label}
+      aria-label={label}
+      onClick={onClick}
     >
       <SearchIcon />
     </button>

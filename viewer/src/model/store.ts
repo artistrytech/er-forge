@@ -21,10 +21,15 @@ export type Fatal =
   /** URL が存在しないワークスペースを指している（一覧への導線を出す） */
   | { kind: "workspace-not-found"; id: string };
 
+/** 詳細ダイアログで開ける制約の種類（リレーション以外。テーブル詳細の虫眼鏡から開く） */
+export type ConstraintKind = "unique" | "index" | "logicalUnique";
+
 /** ER図上の一時的なダイアログ（URL を持たない。設計書 §4.4） */
 export type DialogState =
   | { type: "table"; id: string }
-  | { type: "relation"; id: string };
+  | { type: "relation"; id: string }
+  /** 名前を持たない制約もあるため、テーブル内の位置（at）で指す */
+  | { type: "constraint"; tableId: string; kind: ConstraintKind; at: number };
 
 export interface AppState {
   lang: Lang;

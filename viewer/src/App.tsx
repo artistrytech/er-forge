@@ -20,7 +20,7 @@ import { Header } from "./ui/Header";
 import { Link } from "./ui/Link";
 import { NotFound } from "./ui/NotFound";
 import { LeftPanel } from "./ui/LeftPanel";
-import { RelationDialog } from "./ui/RelationDialog";
+import { ConstraintInfoDialog, RelationDialog } from "./ui/DetailDialogs";
 import { SearchDialog } from "./ui/SearchDialog";
 import { TableDetailDialog } from "./ui/TableDetailDialog";
 import { WelcomeScreen, WorkspaceNotFound } from "./ui/Workspace";
@@ -311,6 +311,9 @@ export function App() {
       </main>
       {dialog?.type === "table" && <TableDetailDialog tableId={dialog.id} />}
       {dialog?.type === "relation" && <RelationDialog relationId={dialog.id} />}
+      {dialog?.type === "constraint" && (
+        <ConstraintInfoDialog tableId={dialog.tableId} kind={dialog.kind} at={dialog.at} />
+      )}
       {searchOpen && <SearchDialog />}
       <EditDialogs />
       {exportDiagramId !== null && <ExportDialog diagramId={exportDiagramId} />}

@@ -1,0 +1,26 @@
+/* 詳細ダイアログ（リレーション / 制約）本文のグリッド。共有の .mono / .muted /
+   .error-text / .badge* は global に残す。 */
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 8px 20px;
+  margin: 0;
+}
+
+.detail-grid dt {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.detail-grid dd {
+  margin: 0;
+}
+
+/* 複合キーの順序（上から n 番目） */
+.ordinal {
+  display: inline-block;
+  width: 16px;
+  color: var(--text-muted);
+  font-size: 11.5px;
+}

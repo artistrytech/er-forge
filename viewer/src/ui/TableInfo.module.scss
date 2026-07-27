@@ -103,13 +103,6 @@
   border-style: dashed;
 }
 
-/* 制約名など、読むのに要らないが同定には要る情報は控えめに添える */
-.item-name {
-  color: var(--text-muted);
-  font-family: var(--mono);
-  font-size: 11.5px;
-}
-
 /* チップ内の種別バッジは塗りのグレーピル。.badge は global 共有のため :global で狙う */
 .item :global(.badge) {
   margin: 0;
