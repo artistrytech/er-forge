@@ -170,16 +170,10 @@ public final class DataFileParser {
         if (schemaVersion < 0) {
             throw new DataFileException("required key missing: schemaVersion");
         }
-        // generatedAt は持たない（差分ノイズになるため）。既存ファイルにあるものは
+        // generatedAt / source は持たない（差分ノイズになるため）。既存ファイルにあるものは
         // ここで読み捨てる。読まないと未知キーとして保持され（V-4）、古い値が残り続ける
         root.text("generatedAt");
-
-        Manifest.Source source = null;
-        JsonNode sourceNode = root.node("source");
-        if (sourceNode != null && sourceNode.isObject()) {
-            source = new Manifest.Source(
-                    textOrNull(sourceNode.get("product")), textOrNull(sourceNode.get("version")));
-        }
+        root.node("source");
 
         String config = root.text("config");
         String dictionary = root.text("dictionary");
@@ -198,7 +192,7 @@ public final class DataFileParser {
                     o.text("title"), o.integer("order", 0)));
         }
 
-        return new Parsed<>(new Manifest(schemaVersion, source, config, dictionary,
+        return new Parsed<>(new Manifest(schemaVersion, config, dictionary,
                 tables, diagrams, root.rest()), warnings);
     }
 
@@ -361,10 +355,6 @@ public final class DataFileParser {
             throw new DataFileException("expected an object at " + where);
         }
         return (ObjectNode) node;
-    }
-
-    private static String textOrNull(JsonNode n) {
-        return n == null || n.isNull() ? null : n.asText();
     }
 
     private static Map<String, JsonNode> objectAsMap(JsonNode node) {

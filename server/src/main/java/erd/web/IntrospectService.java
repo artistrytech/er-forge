@@ -167,7 +167,7 @@ final class IntrospectService {
         if (Files.isRegularFile(dataDir.resolve("manifest.js"))) {
             return store.read(dataDir).model();
         }
-        Manifest manifest = new Manifest(SchemaVersions.CURRENT, null,
+        Manifest manifest = new Manifest(SchemaVersions.CURRENT,
                 "config.js", "dictionary.js", Map.of(), List.of(), Map.of());
         return new ProjectModel(manifest, ProjectConfig.EMPTY, Dictionary.EMPTY, List.of(), List.of());
     }

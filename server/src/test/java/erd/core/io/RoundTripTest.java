@@ -62,12 +62,13 @@ class RoundTripTest {
     }
 
     @Test
-    @DisplayName("既存の manifest.js にある generatedAt は、読み込んで書き戻すと消える")
-    void generatedAtIsDropped() {
+    @DisplayName("既存の manifest.js にある generatedAt / source は、読み込んで書き戻すと消える")
+    void generatedAtAndSourceAreDropped() {
         String legacy = """
                 ERD.manifest({
                   schemaVersion: 1,
                   generatedAt: "2026-07-12T00:00:00Z",
+                  source: { product: "PostgreSQL", version: "16.2" },
                   config: "config.js",
                   dictionary: "dictionary.js",
                 });
@@ -76,8 +77,10 @@ class RoundTripTest {
 
         // 未知キーとして保持されてはならない（保持されると古い値が残り続ける）
         assertFalse(manifest.unknown().containsKey("generatedAt"));
+        assertFalse(manifest.unknown().containsKey("source"));
         String printed = printer.printManifest(manifest);
         assertFalse(printed.contains("generatedAt"), printed);
+        assertFalse(printed.contains("source"), printed);
         // 2回目以降は安定する（書き戻した結果がそのまま往復する）
         assertEquals(printed, printer.printManifest(parser.parseManifest(printed).value()));
     }

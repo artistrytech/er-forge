@@ -90,7 +90,7 @@ class IntrospectServiceTest {
         nodes.put("public.orders", new NodeLayout(new Point(520, 80)));
         DiagramPage page = new DiagramPage("core", "コア", 1, nodes, Map.of());
         Manifest manifest = new Manifest(1,
-                new Manifest.Source("H2", "2"), "config.js", "dictionary.js",
+                "config.js", "dictionary.js",
                 Map.of(), List.of(), Map.of());
         store.writeAll(dataDir, new ProjectModel(manifest, ProjectConfig.EMPTY, Dictionary.EMPTY,
                 tables, List.of(page)));

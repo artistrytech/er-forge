@@ -52,7 +52,7 @@ class DiagramServiceTest {
                         "public.orders", new NodeLayout(new Point(520, 80), null, Map.of())),
                 Map.of());
         Manifest manifest = new Manifest(SchemaVersions.CURRENT,
-                new Manifest.Source("PostgreSQL", "16"), "config.js", "dictionary.js",
+                "config.js", "dictionary.js",
                 Map.of(), List.of(), Map.of());
         new ProjectStore().writeAll(dataDir, new ProjectModel(manifest, ProjectConfig.EMPTY,
                 erd.core.model.Dictionary.EMPTY, List.of(users, orders), List.of(core)));

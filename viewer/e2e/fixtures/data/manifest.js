@@ -1,6 +1,5 @@
 ERD.manifest({
   schemaVersion: 1,
-  source: { product: "PostgreSQL", version: "16.2" },
   config: "config.js",
   dictionary: "dictionary.js",
   tables: {

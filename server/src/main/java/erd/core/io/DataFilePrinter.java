@@ -297,13 +297,7 @@ public final class DataFilePrinter {
         Out out = new Out();
         out.open("ERD.manifest({");
         out.line("schemaVersion: " + m.schemaVersion() + ",");
-        // 生成時刻は出力しない。中身が変わっていなくても書き出すたびに差分が出るため
-        if (m.source() != null) {
-            Pairs p = new Pairs();
-            p.add("product", JsText.quote(m.source().product()));
-            p.add("version", JsText.quote(m.source().version()));
-            out.line("source: " + p.inline() + ",");
-        }
+        // 生成時刻・接続元 DB は出力しない。ファイルの中身と無関係に書き換わり、差分ノイズになるため
         if (m.config() != null) {
             out.line("config: " + JsText.quote(m.config()) + ",");
         }

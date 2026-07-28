@@ -235,11 +235,9 @@ public final class IntrospectApplier {
             }
         }
 
-        // 生成時刻は持たない（差分ノイズになるため）。source は接続先が変われば意味のある変化になる
-        Manifest manifest = new Manifest(model.manifest().schemaVersion(),
-                new Manifest.Source(raw.product(), raw.version()),
-                model.manifest().config(), model.manifest().dictionary(),
-                model.manifest().tables(), model.manifest().diagrams(), model.manifest().unknown());
+        // 生成時刻・接続元 DB は持たない（ファイルの中身と無関係に書き換わり、差分ノイズになる）。
+        // manifest は schemaVersion と派生した一覧だけを持つため、逆生成では実質何も変わらない
+        Manifest manifest = model.manifest();
 
         tables = tables.stream().sorted(Comparator.comparing(Table::id)).toList();
         ProjectModel result = new ProjectModel(manifest, model.config(), model.dictionary(),

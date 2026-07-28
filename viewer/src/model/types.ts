@@ -23,11 +23,8 @@ export const zWorkspaces = z.looseObject({
 
 export const zManifest = z.looseObject({
   schemaVersion: z.number(),
-  // generatedAt は持たない（差分ノイズになるため撤去した）。古いデータにあっても
-  // looseObject が黙って通す
-  source: z
-    .looseObject({ product: z.string().optional(), version: z.string().optional() })
-    .optional(),
+  // generatedAt / source は持たない（ファイルの中身と無関係に書き換わり、差分ノイズになるため
+  // 撤去した）。古いデータに残っていても looseObject が黙って通す
   config: z.string().optional(),
   dictionary: z.string().optional(),
   tables: z.record(z.string(), z.string()).optional(),

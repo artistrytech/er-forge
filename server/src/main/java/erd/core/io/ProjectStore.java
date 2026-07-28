@@ -111,7 +111,7 @@ public final class ProjectStore {
 
     /**
      * manifest.js は派生ファイルである（テーブル・ページの一覧から一意に決まる）。
-     * schemaVersion / source / 未知キーは既存の manifest から引き継ぐ。
+     * schemaVersion / 未知キーは既存の manifest から引き継ぐ。
      */
     public Manifest deriveManifest(Manifest old, List<Table> tables, List<DiagramPage> diagrams) {
         Map<String, String> tablePaths = new LinkedHashMap<>();
@@ -122,7 +122,7 @@ public final class ProjectStore {
                 .sorted(Comparator.comparingInt(DiagramPage::order).thenComparing(DiagramPage::id))
                 .map(d -> new Manifest.DiagramRef(d.id(), "diagrams/" + d.id() + ".js", d.title(), d.order()))
                 .toList();
-        return new Manifest(old.schemaVersion(), old.source(),
+        return new Manifest(old.schemaVersion(),
                 "config.js", "dictionary.js", tablePaths, diagramRefs, old.unknown());
     }
 

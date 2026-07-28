@@ -68,7 +68,7 @@ class TableServiceTest {
                         List.of(), List.of(), List.of(), List.of(), Map.of()),
                 TableMeta.EMPTY, Map.of());
         Manifest manifest = new Manifest(SchemaVersions.CURRENT,
-                new Manifest.Source("PostgreSQL", "16"), "config.js", "dictionary.js",
+                "config.js", "dictionary.js",
                 Map.of(), List.of(), Map.of());
         new ProjectStore().writeAll(dataDir, new ProjectModel(manifest, ProjectConfig.EMPTY,
                 erd.core.model.Dictionary.EMPTY, List.of(users, orders, view), List.of()));
