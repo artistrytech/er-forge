@@ -16,6 +16,23 @@
   transition: opacity 0.15s ease;
 }
 
+/* ビュー等（D-07）。破線枠で通常テーブルと区別する。着色は指定色のまま（種別で塗らない）。
+   欠損・選択・ゴーストの各スタイルはこの後に宣言されており、後勝ちで上書きされる */
+.erd-node-view {
+  border-style: dashed;
+}
+
+.erd-node-kind {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .erd-node-selected {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);

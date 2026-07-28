@@ -332,6 +332,17 @@
   overflow-wrap: anywhere;
 }
 
+/* ビュー等の種別（O-10）。原文のまま出すので、行を圧迫しないよう最小限の見た目にする */
+.lp-item-kind {
+  flex: none;
+  margin-left: 6px;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
 .lp-hitcount {
   font-size: 11px;
   background: var(--accent-soft);

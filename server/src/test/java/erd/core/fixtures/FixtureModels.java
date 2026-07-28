@@ -207,9 +207,30 @@ public final class FixtureModels {
     }
 
     /** index.js は派生ファイル。fixture もモデルからの生成で固定する。 */
+    /**
+     * ビュー（K-16）。制約を持たず、{@code kind} に DB が返した原文がそのまま入る。
+     *
+     * <p>ビューは FK を持てないため、ER図上で関係を持たせる手段は人が書く論理外部制約だけである
+     * （D-07）。その運用を fixture でも示す。
+     */
+    public static Table activeUsersView() {
+        TableSchema schema = new TableSchema(
+                "v_active_users", "public", "VIEW", "有効なユーザーの抽出",
+                List.of(
+                        new Column("id", "int8", LogicalType.INT, true),
+                        new Column("email", "varchar(255)", LogicalType.STRING, true)),
+                List.of(), List.of(), List.of(), List.of(), Map.of());
+        TableMeta meta = new TableMeta("有効ユーザー", List.of("core"), null, null, Map.of(),
+                List.of(),
+                List.of(new LogicalForeignKey("lfk_v_active_users_users", List.of("id"),
+                        new Ref("public.users", List.of("id")), "ビューの抽出元")),
+                Map.of(), Map.of());
+        return new Table("public.v_active_users", schema, meta);
+    }
+
     public static IndexModel indexModel() {
         return new IndexGenerator().generate(
-                List.of(usersTable(), ordersTable(), organizationsTable()),
+                List.of(usersTable(), ordersTable(), organizationsTable(), activeUsersView()),
                 List.of(coreDiagram()));
     }
 }

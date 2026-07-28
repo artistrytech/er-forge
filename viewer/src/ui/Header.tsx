@@ -487,6 +487,8 @@ function EditControls({ route }: { route: Route }) {
         body = <PageEditButtons controller={controller} onEnd={requestEnd} />;
       }
     } else if (serverMode === true) {
+      // ビュー等も同じ導線で編集する。編集できるのは meta のみ（TableEdit）なので、
+      // 種別で入口を分ける必要がない（K-16 詳細設計 §7）
       body = <StartEditButton href={hrefs.tableEdit(tableId)} locked={pageInfoEditing} />;
     }
   } else if (route.kind === "columns" || route.kind === "columnsEdit") {

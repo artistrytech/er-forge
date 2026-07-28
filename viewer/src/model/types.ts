@@ -50,6 +50,8 @@ export const zIndexTable = z.looseObject({
   id: z.string(),
   name: z.string(),
   schema: z.string().optional(),
+  /** オブジェクト種別（K-16）。通常テーブルは省略される。ER図はこの索引だけでノードを描く */
+  kind: z.string().optional(),
   displayName: z.string().optional(),
   columns: z.number().optional(),
   pk: z.boolean().optional(),
@@ -193,6 +195,12 @@ export const zTable = z.looseObject({
   id: z.string(),
   name: z.string(),
   schema: z.string().optional(),
+  /**
+   * オブジェクト種別（K-16）。DB が返した `TABLE_TYPE` の原文（`VIEW` / `MATERIALIZED VIEW` /
+   * `FOREIGN TABLE` …）。通常テーブルは省略されるため、欠落は `TABLE` とみなす。
+   * 任意の文字列を受けるため enum にはしない（DB ごとに種別名が違う）。
+   */
+  kind: z.string().optional(),
   comment: z.string().optional(),
   columns: z.array(zColumn),
   primaryKey: z.array(z.string()).optional(),
@@ -203,6 +211,14 @@ export const zTable = z.looseObject({
   meta: zTableMeta.optional(),
 });
 export type Table = z.infer<typeof zTable>;
+
+/**
+ * 通常のテーブルか（K-16）。`kind` の欠落は通常テーブル（既存データはこのキーを持たない）。
+ * 判定はこの二値だけで、種別名そのものは表示にしか使わない。
+ */
+export function isTableKind(kind: string | undefined): boolean {
+  return kind === undefined || kind.toUpperCase() === "TABLE";
+}
 
 // ---- diagrams/**.js（ER図ページ1件） ----
 

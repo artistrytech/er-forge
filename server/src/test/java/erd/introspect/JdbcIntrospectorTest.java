@@ -135,4 +135,59 @@ class JdbcIntrospectorTest {
             assertFalse(namespaces.contains("INFORMATION_SCHEMA"));
         }
     }
+
+    @Test
+    @DisplayName("K-16: ビューを取り込み、H2 の BASE TABLE を TABLE に正規化する")
+    void introspectsViews() throws Exception {
+        try (Connection conn = open("introView")) {
+            try (Statement st = conn.createStatement()) {
+                st.execute("CREATE VIEW \"public\".\"v_active_users\" AS "
+                        + "SELECT \"id\", \"email\" FROM \"public\".\"users\"");
+            }
+            RawSchema raw = introspect(conn, List.of());
+
+            assertEquals(List.of("flyway_schema_history", "orders", "users", "v_active_users"),
+                    raw.tables().stream().map(TableSchema::name).toList());
+
+            // H2 は TABLE_TYPE に "BASE TABLE" を返す。畳まないと全テーブルが「特殊」になる
+            assertEquals("TABLE", table(raw, "users").kind());
+            assertTrue(table(raw, "users").isTable());
+
+            TableSchema view = table(raw, "v_active_users");
+            assertEquals("VIEW", view.kind());
+            assertFalse(view.isTable());
+            assertEquals(List.of("id", "email"),
+                    view.columns().stream().map(Column::name).toList());
+            // ビューは制約を持たない。例外にはならず空で返る
+            assertTrue(view.primaryKey().isEmpty());
+            assertTrue(view.uniques().isEmpty());
+            assertTrue(view.foreignKeys().isEmpty());
+        }
+    }
+
+    @Test
+    @DisplayName("K-16: 種別の採否は名前の規則だけで決める（DB 製品ごとの分岐を持たない）")
+    void relationLikeRule() {
+        // 実測した5 DB が返す種別名（K-16 詳細設計 §2）を、そのまま規則に当てる
+        for (String accepted : List.of("TABLE", "BASE TABLE", "VIEW", "MATERIALIZED VIEW",
+                "PARTITIONED TABLE", "FOREIGN TABLE")) {
+            assertTrue(JdbcIntrospector.isRelationLike(accepted), accepted);
+        }
+        for (String rejected : List.of("INDEX", "PARTITIONED INDEX", "SEQUENCE", "TYPE",
+                "SYNONYM", "ALIAS", "SYSTEM TABLE", "SYSTEM VIEW", "SYSTEM TOAST TABLE")) {
+            assertFalse(JdbcIntrospector.isRelationLike(rejected), rejected);
+        }
+        assertFalse(JdbcIntrospector.isRelationLike(null));
+
+        // 正規化するのは SQL 標準の別名だけ。意味を落とす正規化はしない
+        assertEquals("TABLE", JdbcIntrospector.normalizeKind("BASE TABLE"));
+        assertEquals("TABLE", JdbcIntrospector.normalizeKind(null));
+        assertEquals("TABLE", JdbcIntrospector.normalizeKind("  "));
+        assertEquals("MATERIALIZED VIEW", JdbcIntrospector.normalizeKind("MATERIALIZED VIEW"));
+        assertEquals("VIEW", JdbcIntrospector.normalizeKind(" VIEW "));
+    }
+
+    private static TableSchema table(RawSchema raw, String name) {
+        return raw.tables().stream().filter(t -> t.name().equals(name)).findFirst().orElseThrow();
+    }
 }

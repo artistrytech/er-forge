@@ -153,7 +153,8 @@ function ErdCanvas({ diagramId, focusTableId }: ErdPageProps) {
         type: "table" as const,
         position: { x: layout.pos[0], y: layout.pos[1] },
         width: layout.w,
-        data: { primary, secondary, missing, notes, color: it?.color },
+        // kind は通常テーブルのとき索引に載らない。載っていればそのままバッジになる（D-07）
+        data: { primary, secondary, missing, notes, color: it?.color, kind: it?.kind },
         connectable: false,
       };
     });

@@ -24,6 +24,8 @@ public record IndexModel(List<TableEntry> tables, List<RelationEntry> relations,
             String id,
             String name,
             String schema,
+            /** オブジェクト種別の原文。通常テーブル（TABLE）は null = 省略（K-16） */
+            String kind,
             String displayName,
             int columns,
             boolean pk,

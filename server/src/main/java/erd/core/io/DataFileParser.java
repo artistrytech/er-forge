@@ -73,6 +73,8 @@ public final class DataFileParser {
         }
 
         String schema = root.text("schema");
+        // kind の欠落は通常テーブル（K-16）。既存データはこのキーを持たない
+        String kind = root.text("kind");
         String comment = root.text("comment");
 
         List<Column> columns = new ArrayList<>();
@@ -115,7 +117,8 @@ public final class DataFileParser {
         }
 
         TableSchema tableSchema = new TableSchema(
-                name, schema, comment, columns, primaryKey, uniques, indexes, foreignKeys, dialect);
+                name, schema, kind, comment, columns, primaryKey, uniques, indexes, foreignKeys,
+                dialect);
         return new Parsed<>(new Table(id, tableSchema, meta, unknown), warnings);
     }
 

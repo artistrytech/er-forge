@@ -7,6 +7,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  isTableKind,
   zDiagram,
   zDictionary,
   zIndexData,
@@ -44,12 +45,15 @@ describe("fixtures をビューアのスキーマで読める", () => {
     const r = zIndexData.safeParse(runFixture("index.js"));
     expect(r.success).toBe(true);
     if (r.success) {
-      expect(r.data.tables?.length).toBe(3);
+      expect(r.data.tables?.length).toBe(4);
       expect(r.data.relations?.some((rel) => rel.kind === "logical")).toBe(true);
       // 解決済みカーディナリティと手動設定の区別（explicit）が読める
       const users = r.data.relations?.find((rel) => rel.id === "public.users#fk:users_org_id_fkey");
       expect(users?.cardinality?.child).toBe("1..N");
       expect(users?.explicit).toEqual(["child"]);
+      // オブジェクト種別（K-16）: 通常テーブルは省略され、ビューだけが kind を持つ
+      expect(r.data.tables?.find((x) => x.id === "public.users")?.kind).toBeUndefined();
+      expect(r.data.tables?.find((x) => x.id === "public.v_active_users")?.kind).toBe("VIEW");
     }
   });
   it("dictionary.js（予約語キー default を含む）", () => {
@@ -61,13 +65,32 @@ describe("fixtures をビューアのスキーマで読める", () => {
       expect(r.data.columns?.["deleted_at"]).toEqual({ tags: ["廃止"], color: "muted" });
     }
   });
-  it.each(["users.table.js", "orders.table.js", "organizations.table.js", "escape_test.table.js", "future.table.js"])(
+  it.each(["users.table.js", "orders.table.js", "organizations.table.js", "escape_test.table.js",
+    "future.table.js", "v_active_users.table.js"])(
     "%s",
     (file) => {
       const r = zTable.safeParse(runFixture(file));
       expect(r.success).toBe(true);
     },
   );
+  it("ビュー（K-16）: kind を読み、通常テーブルは kind を持たない", () => {
+    const view = zTable.safeParse(runFixture("v_active_users.table.js"));
+    expect(view.success).toBe(true);
+    if (view.success) {
+      expect(view.data.kind).toBe("VIEW");
+      expect(isTableKind(view.data.kind)).toBe(false);
+      // ビューは制約を持たない。関係は人が書いた論理外部制約だけ（D-07）
+      expect(view.data.primaryKey).toBeUndefined();
+      expect(view.data.foreignKeys).toBeUndefined();
+      expect(view.data.meta?.logicalForeignKeys?.length).toBe(1);
+    }
+    const table = zTable.safeParse(runFixture("users.table.js"));
+    expect(table.success).toBe(true);
+    if (table.success) {
+      expect(table.data.kind).toBeUndefined();
+      expect(isTableKind(table.data.kind)).toBe(true);
+    }
+  });
   it("未知キー（future.table.js）を捨てずに保持する", () => {
     const r = zTable.safeParse(runFixture("future.table.js"));
     expect(r.success).toBe(true);

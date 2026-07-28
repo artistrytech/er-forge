@@ -3,6 +3,7 @@
   "schema": {
     "name": "orders",
     "schema": "public",
+    "kind": "TABLE",
     "comment": "注文",
     "columns": [
       {

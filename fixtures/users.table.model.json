@@ -3,6 +3,7 @@
   "schema": {
     "name": "users",
     "schema": "public",
+    "kind": "TABLE",
     "comment": "ユーザーマスタ",
     "columns": [
       {

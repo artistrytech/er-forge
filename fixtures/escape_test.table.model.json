@@ -3,6 +3,7 @@
   "schema": {
     "name": "escape_test",
     "schema": "public",
+    "kind": "TABLE",
     "comment": null,
     "columns": [
       {

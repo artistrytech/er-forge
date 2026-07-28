@@ -3,6 +3,7 @@
   "schema": {
     "name": "organizations",
     "schema": "public",
+    "kind": "TABLE",
     "comment": "組織",
     "columns": [
       {

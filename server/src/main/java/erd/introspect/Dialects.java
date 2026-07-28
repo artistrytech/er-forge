@@ -148,7 +148,7 @@ public final class Dialects {
             }
             Map<String, JsonNode> dialect = new LinkedHashMap<>(t.dialect());
             dialect.putAll(b.build());
-            tables.add(new TableSchema(t.name(), t.schema(), t.comment(), t.columns(),
+            tables.add(new TableSchema(t.name(), t.schema(), t.kind(), t.comment(), t.columns(),
                     t.primaryKey(), t.uniques(), t.indexes(), t.foreignKeys(), dialect));
         }
         return new RawSchema(schema.product(), schema.version(), schema.driver(),

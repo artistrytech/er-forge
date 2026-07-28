@@ -63,6 +63,11 @@ public final class DataFilePrinter {
         if (t.schema().schema() != null) {
             out.line("schema: " + JsText.quote(t.schema().schema()) + ",");
         }
+        // kind は通常テーブルのとき出力しない。常に出すと、ビュー対応の導入時に
+        // 既存の全テーブルへ kind: "TABLE" 追加の差分が出てしまう（K-16 詳細設計 §3.3）
+        if (!t.schema().isTable()) {
+            out.line("kind: " + JsText.quote(t.schema().kind()) + ",");
+        }
         if (notEmpty(t.schema().comment())) {
             out.line("comment: " + JsText.quote(t.schema().comment()) + ",");
         }
@@ -423,6 +428,7 @@ public final class DataFilePrinter {
                         p.add("id", JsText.quote(t.id()));
                         p.add("name", JsText.quote(t.name()));
                         if (t.schema() != null) p.add("schema", JsText.quote(t.schema()));
+                        if (notEmpty(t.kind())) p.add("kind", JsText.quote(t.kind()));
                         if (notEmpty(t.displayName())) p.add("displayName", JsText.quote(t.displayName()));
                         p.add("columns", String.valueOf(t.columns()));
                         p.add("pk", String.valueOf(t.pk()));

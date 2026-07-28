@@ -21,6 +21,11 @@ export interface TableNodeData extends Record<string, unknown> {
   notes?: string;
   /** 指定色（P-13）。未知トークンは colorAttr が落とし、既定の外観になる */
   color?: string;
+  /**
+   * 通常テーブル以外の種別名（D-07）。`VIEW` / `MATERIALIZED VIEW` など DB が返した原文で、
+   * 翻訳しない（値そのものがラベル）。通常テーブルでは undefined。
+   */
+  kind?: string;
   /** 自動レイアウトのプレビュー中に「現在の配置」を薄く重ねるゴースト（H-07 §7.2） */
   ghost?: boolean;
 }
@@ -36,6 +41,8 @@ export const TableNode = memo(function TableNode({ id, data }: NodeProps<TableNo
   );
   const cls = cx(
     styles.erdNode,
+    // ビュー等は破線枠で区別する（D-07）。色は指定色のまま = 種別で自動着色しない
+    data.kind !== undefined && styles.erdNodeView,
     data.missing && styles.erdNodeMissing,
     data.ghost && styles.erdNodeGhost,
     // 減光はエッジ（RelationEdge）と共用のため global クラスのまま
@@ -52,6 +59,11 @@ export const TableNode = memo(function TableNode({ id, data }: NodeProps<TableNo
       data-ghost={data.ghost === true ? "true" : undefined}
     >
       <Handle type="target" position={Position.Top} className={styles.erdHandle} isConnectable={false} />
+      {data.kind !== undefined && (
+        <div className={styles.erdNodeKind} data-testid="erd-node-kind">
+          {data.kind}
+        </div>
+      )}
       <div className={styles.erdNodeName}>{data.primary}</div>
       {data.secondary !== undefined && <div className={styles.erdNodeSub}>{data.secondary}</div>}
       {data.missing && <div className={styles.erdNodeWarn}>⚠</div>}

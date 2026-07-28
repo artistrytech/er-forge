@@ -14,7 +14,7 @@ import {
   resolveTableName,
 } from "../model/logicalName";
 import { useAppStore, type ConstraintKind } from "../model/store";
-import { parseEdgeId, type Relation, type Table } from "../model/types";
+import { isTableKind, parseEdgeId, type Relation, type Table } from "../model/types";
 import { cx } from "../lib/cx";
 import { hrefs } from "./router";
 import { Link } from "./Link";
@@ -75,6 +75,12 @@ export function TableInfo({ tableId, onNavigate }: TableInfoProps) {
 
   return (
     <div className={styles.tableInfo}>
+      {/* ビュー等の種別バッジ（O-10）。DB が返した原文をそのまま出すため翻訳しない */}
+      {!isTableKind(table.kind) && (
+        <p className={styles.objectKind} data-testid="object-kind">
+          <span className={styles.objectKindBadge}>{table.kind}</span>
+        </p>
+      )}
       {table.comment !== undefined && table.comment !== "" && (
         <p className={styles.tableComment}>{table.comment}</p>
       )}

@@ -709,6 +709,7 @@ function UnplacedTray({
               <span className={styles.lpItemName}>
                 {formatName(resolveIndexTableName(it), it.name, nameDisplay)}
               </span>
+              {it.kind !== undefined && <span className={styles.lpItemKind}>{it.kind}</span>}
               {recent.includes(it.id) && <span className={styles.trayNew}>{t("tray.new")}</span>}
             </button>
           </li>
@@ -751,7 +752,9 @@ function AllLane({
       return (
         it.name.toLowerCase().includes(q) ||
         it.id.toLowerCase().includes(q) ||
-        resolved.name.toLowerCase().includes(q)
+        resolved.name.toLowerCase().includes(q) ||
+        // 種別でも絞り込めるようにする（O-10）。"view" と打てばビューだけが残る
+        (it.kind?.toLowerCase().includes(q) ?? false)
       );
     });
   }, [index, filter]);
@@ -930,6 +933,8 @@ function TableRow({
         onClick={() => onSelect(it.id)}
       >
         <span className={styles.lpItemName}>{label}</span>
+        {/* ビュー等の種別（O-10）。DB が返した原文なので翻訳しない */}
+        {it.kind !== undefined && <span className={styles.lpItemKind}>{it.kind}</span>}
       </button>
       {canPlace &&
         (onPage ? (

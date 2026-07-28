@@ -60,6 +60,8 @@ public final class IndexGenerator {
                     t.id(),
                     t.schema().name(),
                     t.schema().schema(),
+                    // ER図はこの索引だけでノードを描くため、種別を載せないとビューを区別できない（D-07）
+                    t.schema().isTable() ? null : t.schema().kind(),
                     displayName == null || displayName.isEmpty() ? null : displayName,
                     t.schema().columns().size(),
                     !t.schema().primaryKey().isEmpty(),

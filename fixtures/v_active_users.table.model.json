@@ -1,0 +1,67 @@
+{
+  "id": "public.v_active_users",
+  "schema": {
+    "name": "v_active_users",
+    "schema": "public",
+    "kind": "VIEW",
+    "comment": "有効なユーザーの抽出",
+    "columns": [
+      {
+        "name": "id",
+        "type": "int8",
+        "logicalType": "int",
+        "nullable": true,
+        "autoIncrement": false,
+        "generated": false,
+        "comment": null,
+        "unknown": { },
+        "default": null
+      },
+      {
+        "name": "email",
+        "type": "varchar(255)",
+        "logicalType": "string",
+        "nullable": true,
+        "autoIncrement": false,
+        "generated": false,
+        "comment": null,
+        "unknown": { },
+        "default": null
+      }
+    ],
+    "primaryKey": [ ],
+    "uniques": [ ],
+    "indexes": [ ],
+    "foreignKeys": [ ],
+    "dialect": { }
+  },
+  "meta": {
+    "displayName": "有効ユーザー",
+    "tags": [
+      "core"
+    ],
+    "color": null,
+    "notes": null,
+    "columns": { },
+    "logicalUniques": [ ],
+    "logicalForeignKeys": [
+      {
+        "name": "lfk_v_active_users_users",
+        "columns": [
+          "id"
+        ],
+        "ref": {
+          "table": "public.users",
+          "columns": [
+            "id"
+          ]
+        },
+        "notes": "ビューの抽出元"
+      }
+    ],
+    "relations": { },
+    "unknown": { },
+    "empty": false
+  },
+  "unknown": { }
+}

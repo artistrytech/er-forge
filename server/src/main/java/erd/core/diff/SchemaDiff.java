@@ -85,8 +85,7 @@ public final class SchemaDiff {
         for (Map.Entry<String, TableSchema> e : dbTables.entrySet()) {
             if (!existing.containsKey(e.getKey())) addedSchemas.put(e.getKey(), e.getValue());
         }
-        List<RenameCandidate> candidates =
-                new ArrayList<>(renames.detectTables(removedSchemas, addedSchemas));
+        List<RenameCandidate> candidates = detectTableRenames(removedSchemas, addedSchemas);
 
         // ---- 決定を反映してペアを確定する ----
         Map<String, RenameDecision> byId = new LinkedHashMap<>();
@@ -182,6 +181,42 @@ public final class SchemaDiff {
         return new DiffPlan(stats, items, candidates, guards, ignored, outOfScope, warnings);
     }
 
+    /**
+     * テーブルのリネーム候補（K-17）。<b>種別ごとに分けて推定する。</b>
+     *
+     * <p>{@link RenameDetector} はカラム構成の類似度だけで判定するため、ビューは元テーブルと
+     * 列構成が一致することが多く、{@code users}（TABLE）と {@code v_users}（VIEW）が
+     * 「確度: 高」のリネーム候補として提示されてしまう。種別が違うものはリネームではなく
+     * 「削除 + 追加」であり、候補にしてはならない。
+     */
+    private List<RenameCandidate> detectTableRenames(Map<String, TableSchema> removed,
+                                                     Map<String, TableSchema> added) {
+        Set<String> kinds = new LinkedHashSet<>();
+        removed.values().forEach(s -> kinds.add(kindKey(s)));
+        added.values().forEach(s -> kinds.add(kindKey(s)));
+
+        List<RenameCandidate> out = new ArrayList<>();
+        for (String kind : kinds) {
+            Map<String, TableSchema> r = byKind(removed, kind);
+            Map<String, TableSchema> a = byKind(added, kind);
+            if (r.isEmpty() || a.isEmpty()) continue;
+            out.addAll(renames.detectTables(r, a));
+        }
+        return out;
+    }
+
+    private static String kindKey(TableSchema s) {
+        return s.kind().toUpperCase(java.util.Locale.ROOT);
+    }
+
+    private static Map<String, TableSchema> byKind(Map<String, TableSchema> src, String kind) {
+        Map<String, TableSchema> out = new LinkedHashMap<>();
+        src.forEach((id, s) -> {
+            if (kindKey(s).equals(kind)) out.put(id, s);
+        });
+        return out;
+    }
+
     private static int order(String change) {
         return switch (change) {
             case "added" -> 0;
@@ -220,7 +255,7 @@ public final class SchemaDiff {
                     neu.name(), null, null, tableSeed, true, List.of(), List.of(), List.of(), List.of()));
         }
         return new DiffItem("table:" + id, "table", "added", id, null, null,
-                neu.columns().size() + " columns", true, List.of(), List.of(), List.of(), children);
+                objectSummary(neu), true, List.of(), List.of(), List.of(), children);
     }
 
     // ------------------------------------------------------------- テーブル削除
@@ -239,7 +274,7 @@ public final class SchemaDiff {
             warns.add(new DiffItem.Warn("REFERENCED_BY", String.join(", ", referencing)));
         }
         return new DiffItem("table:" + old.id(), "table", "removed", old.id(), null,
-                old.schema().columns().size() + " columns", null,
+                objectSummary(old.schema()), null,
                 true, List.of(), List.of(), warns, List.of());
     }
 
@@ -295,6 +330,13 @@ public final class SchemaDiff {
         if (!Objects.equals(Normalize.comment(oldSchema.comment()), Normalize.comment(neu.comment()))) {
             children.add(DiffItem.of(tid + "/comment", "comment", "modified", newId,
                     oldSchema.comment(), neu.comment()));
+        }
+
+        // ---- kind（オブジェクト種別。K-16）----
+        // ドライバ更新で TABLE_TYPE の文字列が変わったときに黙って書き換わらないよう、差分に出す
+        if (!oldSchema.kind().equalsIgnoreCase(neu.kind())) {
+            children.add(DiffItem.of(tid + "/kind", "objectKind", "modified", newId,
+                    oldSchema.kind(), neu.kind()));
         }
 
         // ---- カラム ----
@@ -604,6 +646,12 @@ public final class SchemaDiff {
         List<String> out = new ArrayList<>(a);
         out.addAll(b);
         return out;
+    }
+
+    /** 追加・削除の要約。通常テーブル以外は種別を頭に付ける（何が増減したのか一目で分かるように）。 */
+    private static String objectSummary(TableSchema s) {
+        String columns = s.columns().size() + " columns";
+        return s.isTable() ? columns : s.kind() + ", " + columns;
     }
 
     private static String fkSummary(ForeignKey fk) {

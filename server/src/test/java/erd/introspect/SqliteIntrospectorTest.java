@@ -94,6 +94,27 @@ class SqliteIntrospectorTest {
         }
     }
 
+    @Test
+    @DisplayName("K-16: ビューを取り込み、内部テーブル（sqlite_*）は種別で除外される")
+    void introspectsViews() throws Exception {
+        try (Connection conn = open()) {
+            try (var st = conn.createStatement()) {
+                st.execute("CREATE VIEW v_users AS SELECT id, email FROM users");
+            }
+            String ns = JdbcIntrospector.namespaces(conn).stream().findFirst().orElse("");
+            RawSchema raw = introspect(conn, ns, List.of());
+
+            // sqlite_schema / sqlite_sequence は SYSTEM TABLE なので採用ルールで落ちる
+            assertEquals(List.of("flyway_schema_history", "orders", "users", "v_users"),
+                    raw.tables().stream().map(TableSchema::name).toList());
+
+            TableSchema view = table(raw, "v_users");
+            assertEquals("VIEW", view.kind());
+            assertFalse(view.isTable());
+            assertTrue(table(raw, "users").isTable());
+        }
+    }
+
     private static TableSchema table(RawSchema raw, String name) {
         return raw.tables().stream().filter(t -> t.name().equals(name)).findFirst().orElseThrow();
     }

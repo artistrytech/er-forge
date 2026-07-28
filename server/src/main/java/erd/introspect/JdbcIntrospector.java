@@ -37,15 +37,17 @@ public final class JdbcIntrospector implements Introspector {
         String catalog = catalogMode ? ns : null;
         String schema = catalogMode ? null : ns;
 
-        // 1. テーブル一覧（TABLE のみ。VIEW / SEQUENCE は対象外）
+        // 1. オブジェクト一覧（テーブルとビュー等。種別は原文のまま持つ。K-16）
         List<String> names = new ArrayList<>();
         Map<String, String> comments = new LinkedHashMap<>();
-        try (ResultSet rs = md.getTables(catalog, schema, "%", new String[] { "TABLE" })) {
+        Map<String, String> kinds = new LinkedHashMap<>();
+        try (ResultSet rs = md.getTables(catalog, schema, "%", relationLikeTypes(md, warnings))) {
             while (rs.next()) {
                 String name = rs.getString("TABLE_NAME");
                 if (!opts.accepts(ns, name)) continue;
                 names.add(name);
                 comments.put(name, trimToNull(rs.getString("REMARKS")));
+                kinds.put(name, normalizeKind(rs.getString("TABLE_TYPE")));
             }
         }
         names.sort(Comparator.naturalOrder());
@@ -57,12 +59,25 @@ public final class JdbcIntrospector implements Introspector {
             while (rs.next()) {
                 String table = rs.getString("TABLE_NAME");
                 if (!comments.containsKey(table)) continue;
-                String name = rs.getString("COLUMN_NAME");
-                TypeMapper.ColumnType t = TypeMapper.map(
-                        rs.getString("TYPE_NAME"), rs.getInt("DATA_TYPE"),
-                        rs.getInt("COLUMN_SIZE"), rs.getInt("DECIMAL_DIGITS"));
 
-                String isNullable = rs.getString("IS_NULLABLE");
+                // 以降は JDBC の列番号昇順に読む。Oracle は REMARKS(12) / COLUMN_DEF(13) を LONG
+                // （ストリーム）で返すため、IS_NULLABLE(18) などを先に読んでから戻ると
+                // ORA-17027「ストリームはすでにクローズ済」で内省が丸ごと落ちる。
+                String name = rs.getString("COLUMN_NAME");              // 4
+                int dataType = rs.getInt("DATA_TYPE");                  // 5
+                String typeName = rs.getString("TYPE_NAME");            // 6
+                int columnSize = rs.getInt("COLUMN_SIZE");              // 7
+                int decimalDigits = rs.getInt("DECIMAL_DIGITS");        // 9
+                String comment = trimToNull(rs.getString("REMARKS"));   // 12
+                String rawDefault = rs.getString("COLUMN_DEF");         // 13
+                String isNullable = rs.getString("IS_NULLABLE");        // 18
+                boolean autoIncrement =
+                        "YES".equalsIgnoreCase(rs.getString("IS_AUTOINCREMENT"));   // 23
+                boolean generated =
+                        "YES".equalsIgnoreCase(rs.getString("IS_GENERATEDCOLUMN")); // 24
+
+                TypeMapper.ColumnType t =
+                        TypeMapper.map(typeName, dataType, columnSize, decimalDigits);
                 boolean nullable;
                 if ("NO".equalsIgnoreCase(isNullable)) {
                     nullable = false;
@@ -73,10 +88,7 @@ public final class JdbcIntrospector implements Introspector {
                     nullable = true;
                     warnings.add(table + "." + name + ": IS_NULLABLE is unknown; treating as nullable");
                 }
-                boolean autoIncrement = "YES".equalsIgnoreCase(rs.getString("IS_AUTOINCREMENT"));
-                boolean generated = "YES".equalsIgnoreCase(rs.getString("IS_GENERATEDCOLUMN"));
-                String def = defaultValue(rs.getString("COLUMN_DEF"), autoIncrement);
-                String comment = trimToNull(rs.getString("REMARKS"));
+                String def = defaultValue(rawDefault, autoIncrement);
 
                 columns.computeIfAbsent(table, k -> new ArrayList<>()).add(new Column(
                         name, t.type(), t.logicalType(), nullable, def,
@@ -93,18 +105,86 @@ public final class JdbcIntrospector implements Introspector {
                 warnings.add(name + ": Could not read columns. Check permissions.");
                 continue;
             }
-            List<String> pk = primaryKey(md, catalog, schema, name);
+            // 制約系は種別で分岐しない。ビューでは空が返るのが普通だが、マテリアライズドビューでは
+            // 実インデックスが取れる（PostgreSQL / Oracle で確認済み）。未知のドライバが例外を
+            // 投げても内省全体は止めず、そのオブジェクトの制約だけを諦める（§7.1 の2層構成と同じ思想）。
+            List<String> pk = List.of();
             List<UniqueConstraint> uniques = new ArrayList<>();
             List<IndexDef> indexes = new ArrayList<>();
-            indexes(md, catalog, schema, name, pk, uniques, indexes);
-            List<ForeignKey> fks = foreignKeys(md, catalog, schema, name, catalogMode);
-            tables.add(new TableSchema(name, ns, comments.get(name), cols, pk, uniques, indexes, fks,
+            try {
+                pk = primaryKey(md, catalog, schema, name);
+                indexes(md, catalog, schema, name, pk, uniques, indexes);
+            } catch (SQLException e) {
+                uniques.clear();
+                indexes.clear();
+                warnings.add(name + ": Could not read key/index metadata (" + e.getMessage() + ")");
+            }
+            List<ForeignKey> fks;
+            try {
+                fks = foreignKeys(md, catalog, schema, name, catalogMode);
+            } catch (SQLException e) {
+                fks = List.of();
+                warnings.add(name + ": Could not read foreign key metadata (" + e.getMessage() + ")");
+            }
+            tables.add(new TableSchema(name, ns, kinds.getOrDefault(name, TableSchema.TABLE),
+                    comments.get(name), cols, pk, uniques, indexes, fks,
                     Map.<String, JsonNode>of()));
         }
 
         String driver = md.getDriverName() + " " + md.getDriverVersion();
         return new RawSchema(md.getDatabaseProductName(), md.getDatabaseProductVersion(),
                 driver, ns, tables, warnings);
+    }
+
+    // ------------------------------------------------------------------ 種別（K-16）
+
+    /** {@code getTableTypes()} が使えないドライバ向けのフォールバック（現行の挙動を下回らない）。 */
+    private static final String[] FALLBACK_TYPES = { "TABLE", "VIEW" };
+
+    /**
+     * 取り込む種別の一覧（K-16 詳細設計 §4.1）。
+     *
+     * <p>{@code getTableTypes()} の戻り値を<b>DB を問わない1つのルール</b>で絞る。製品ごとの分岐は
+     * 持たない。索引・シーケンス・型・同義語・システム領域はここで落ちる。
+     * {@code types = null}（全種別）にしてはならない: PostgreSQL では {@code public} スキーマの
+     * インデックスとシーケンスが、Oracle ではシノニムが、そのまま一覧に混入する。
+     */
+    private static String[] relationLikeTypes(DatabaseMetaData md, List<String> warnings) {
+        List<String> types = new ArrayList<>();
+        try (ResultSet rs = md.getTableTypes()) {
+            while (rs.next()) {
+                String type = rs.getString(1);
+                if (isRelationLike(type)) types.add(type);
+            }
+        } catch (SQLException e) {
+            warnings.add("Could not read table types (" + e.getMessage()
+                    + "); falling back to TABLE / VIEW");
+            return FALLBACK_TYPES;
+        }
+        return types.isEmpty() ? FALLBACK_TYPES : types.toArray(String[]::new);
+    }
+
+    /** 「名前に TABLE か VIEW を含み、SYSTEM を含まない」。これが唯一の判定規則である。 */
+    static boolean isRelationLike(String tableType) {
+        if (tableType == null) return false;
+        String t = tableType.toUpperCase(java.util.Locale.ROOT);
+        if (t.contains("SYSTEM")) return false;
+        return t.contains("TABLE") || t.contains("VIEW");
+    }
+
+    /**
+     * {@code TABLE_TYPE} の正規化。SQL 標準の別名である {@code BASE TABLE} だけを畳み、
+     * それ以外は原文のまま保つ（{@code MATERIALIZED VIEW} → {@code VIEW} のような
+     * 意味を落とす正規化はしない）。
+     *
+     * <p>H2 は要求側の {@code "TABLE"} を受け付けるのに {@code TABLE_TYPE} には
+     * {@code "BASE TABLE"} を返す。ここで畳まないと、H2 では全テーブルが「特殊」に分類される。
+     */
+    static String normalizeKind(String tableType) {
+        if (tableType == null) return TableSchema.TABLE;
+        String t = tableType.trim();
+        if (t.isEmpty()) return TableSchema.TABLE;
+        return t.equalsIgnoreCase("BASE TABLE") ? TableSchema.TABLE : t;
     }
 
     // ------------------------------------------------------------ 各メタデータ

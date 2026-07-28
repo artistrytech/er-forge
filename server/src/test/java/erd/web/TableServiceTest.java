@@ -60,11 +60,18 @@ class TableServiceTest {
                                 new Column("code", "varchar(20)", LogicalType.STRING, false)),
                         List.of("id"), List.of(), List.of(), List.of(), Map.of()),
                 TableMeta.EMPTY, Map.of());
+        // ビュー（K-16）。スキーマは読み取り専用で、meta だけ編集できる
+        Table view = new Table("public.v_users",
+                new TableSchema("v_users", "public", "VIEW", null,
+                        List.of(new Column("id", "int4", LogicalType.INT, true),
+                                new Column("email", "varchar(255)", LogicalType.STRING, true)),
+                        List.of(), List.of(), List.of(), List.of(), Map.of()),
+                TableMeta.EMPTY, Map.of());
         Manifest manifest = new Manifest(SchemaVersions.CURRENT, "2026-07-13T00:00:00Z",
                 new Manifest.Source("PostgreSQL", "16"), "config.js", "dictionary.js",
                 Map.of(), List.of(), Map.of());
         new ProjectStore().writeAll(dataDir, new ProjectModel(manifest, ProjectConfig.EMPTY,
-                erd.core.model.Dictionary.EMPTY, List.of(users, orders), List.of()));
+                erd.core.model.Dictionary.EMPTY, List.of(users, orders, view), List.of()));
     }
 
     private String hashOf(String rel) {
@@ -310,5 +317,57 @@ class TableServiceTest {
     @Test
     void baseHashMatchesFile() {
         assertEquals(hashOf("schema/public/users.js"), service.baseHash(dataDir, "public.users"));
+    }
+
+    // ------------------------------------------------------------ ビュー（K-16 / O-10）
+
+    /** ビューの完全な定義（machine-owned 部分は setup と同一）に meta を差し込んだ JSON。 */
+    private String viewJson(String columnsJson, String metaJson) {
+        return """
+                {
+                  "id": "public.v_users", "name": "v_users", "schema": "public", "kind": "VIEW",
+                  "columns": %s%s
+                }
+                """.formatted(columnsJson, metaJson.isEmpty() ? "" : ",\n  \"meta\": " + metaJson);
+    }
+
+    private static final String VIEW_COLUMNS = """
+            [
+                    { "name": "id", "type": "int4", "logicalType": "int", "nullable": true },
+                    { "name": "email", "type": "varchar(255)", "logicalType": "string", "nullable": true }
+                  ]""";
+
+    @Test
+    void viewMetaCanBeEdited() throws Exception {
+        String meta = """
+                { "displayName": "ユーザービュー", "tags": ["core"],
+                  "columns": { "email": { "displayName": "メール" } } }
+                """;
+        var outcome = put("public.v_users", viewJson(VIEW_COLUMNS, meta),
+                hashOf("schema/public/v_users.js"));
+
+        assertInstanceOf(TableService.Ok.class, outcome);
+        Table saved = parser.parseTable(Files.readString(
+                dataDir.resolve("schema/public/v_users.js"), StandardCharsets.UTF_8)).value();
+        assertEquals("ユーザービュー", saved.meta().displayName());
+        assertEquals("VIEW", saved.schema().kind(), "meta の保存で kind が失われてはならない");
+
+        String index = Files.readString(dataDir.resolve("index.js"), StandardCharsets.UTF_8);
+        assertTrue(index.contains("kind: \"VIEW\""));
+    }
+
+    @Test
+    void viewIsEditedLikeATable() throws Exception {
+        // 種別による拒否は持たない（K-16 詳細設計 §7）。編集画面が扱うのは meta だけであり、
+        // ビューをテーブルと別扱いにすると論理名・タグ・注記まで編集できなくなる
+        String withExtraColumn = """
+                [
+                    { "name": "id", "type": "int4", "logicalType": "int", "nullable": true },
+                    { "name": "email", "type": "varchar(255)", "logicalType": "string", "nullable": true },
+                    { "name": "added", "type": "int4", "logicalType": "int", "nullable": true }
+                  ]""";
+        assertInstanceOf(TableService.Ok.class,
+                put("public.v_users", viewJson(withExtraColumn, ""),
+                        hashOf("schema/public/v_users.js")));
     }
 }

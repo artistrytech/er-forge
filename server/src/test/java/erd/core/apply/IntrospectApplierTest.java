@@ -273,4 +273,68 @@ class IntrospectApplierTest {
         assertTrue(result.model().table("public.organizations").isEmpty());
         assertTrue(DiffFixtures.table(result.model(), "public.users").schema().foreignKeys().isEmpty());
     }
+
+    // ------------------------------------------------------------ ビュー（K-16）
+
+    @Test
+    @DisplayName("K-16: 追加されたビューは kind を保ったまま取り込まれ、未配置トレイに入る")
+    void appliesAddedView() {
+        TableSchema view = new TableSchema("v_active_users", "public", "VIEW", null,
+                List.of(new Column("id", "int8", LogicalType.INT, true)),
+                List.of(), List.of(), List.of(), List.of(), Map.of());
+        RawSchema raw = DiffFixtures.raw(FixtureModels.usersTable().schema(),
+                FixtureModels.ordersTable().schema(),
+                FixtureModels.organizationsTable().schema(), view);
+
+        ApplyResult result = apply(DiffFixtures.model(), raw, List.of());
+
+        Table applied = DiffFixtures.table(result.model(), "public.v_active_users");
+        assertEquals("VIEW", applied.schema().kind());
+        assertFalse(applied.schema().isTable());
+        assertTrue(result.unplacedTables().contains("public.v_active_users"));
+    }
+
+    @Test
+    @DisplayName("K-16: 参照先を失った FK の剪定が走っても kind が失われない")
+    void keepsKindThroughForeignKeyPruning() {
+        // organizations を削除する = users の FK が剪定される。その users がビューだった場合でも
+        // kind は保たれなければならない（withForeignKeys が kind を引き継がないと TABLE に戻る）
+        TableSchema users = FixtureModels.usersTable().schema();
+        TableSchema usersAsView = new TableSchema(users.name(), users.schema(), "VIEW",
+                users.comment(), users.columns(), users.primaryKey(), users.uniques(),
+                users.indexes(), users.foreignKeys(), users.dialect());
+        RawSchema before = DiffFixtures.raw(usersAsView, FixtureModels.ordersTable().schema(),
+                FixtureModels.organizationsTable().schema());
+        ProjectModel withView = apply(DiffFixtures.model(), before, List.of()).model();
+        assertEquals("VIEW", DiffFixtures.table(withView, "public.users").schema().kind());
+
+        RawSchema raw = DiffFixtures.raw(usersAsView, FixtureModels.ordersTable().schema());
+        DiffPlan plan = diff.plan(withView, raw, PatternList.EMPTY, List.of());
+        ApplyResult result = applier.apply(withView, raw, plan,
+                new LinkedHashSet<>(List.of("table:public.organizations")));
+
+        Table applied = DiffFixtures.table(result.model(), "public.users");
+        assertTrue(applied.schema().foreignKeys().isEmpty(), "FK は剪定される");
+        assertEquals("VIEW", applied.schema().kind(), "剪定で kind が TABLE に戻ってはならない");
+    }
+
+    @Test
+    @DisplayName("K-16: kind の差分を選択しなければ既存の種別が保たれる")
+    void kindChangeIsSelectable() {
+        TableSchema users = FixtureModels.usersTable().schema();
+        TableSchema asView = new TableSchema(users.name(), users.schema(), "VIEW", users.comment(),
+                users.columns(), users.primaryKey(), users.uniques(), users.indexes(),
+                users.foreignKeys(), users.dialect());
+        RawSchema raw = DiffFixtures.raw(asView, FixtureModels.ordersTable().schema(),
+                FixtureModels.organizationsTable().schema());
+        ProjectModel model = DiffFixtures.model();
+        DiffPlan plan = diff.plan(model, raw, PatternList.EMPTY, List.of());
+
+        // 何も選択しない = kind の変更を適用しない
+        ApplyResult skipped = applier.apply(model, raw, plan, Set.of());
+        assertEquals("TABLE", DiffFixtures.table(skipped.model(), "public.users").schema().kind());
+
+        ApplyResult taken = applier.apply(model, raw, plan, DiffFixtures.selectAll(plan));
+        assertEquals("VIEW", DiffFixtures.table(taken.model(), "public.users").schema().kind());
+    }
 }

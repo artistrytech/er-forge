@@ -273,4 +273,75 @@ class SchemaDiffTest {
         assertTrue(fk.requires().contains("table:public.invoices"));
         assertTrue(fk.requires().contains("table:public.orders/column:invoice_id"));
     }
+
+    // ------------------------------------------------------------ ビュー（K-16 / K-17）
+
+    @Test
+    @DisplayName("K-17: 列構成が同じでも種別が違えばリネーム候補にしない")
+    void doesNotPairAcrossKinds() {
+        // 既存の users テーブルが DB から消え、まったく同じ列を持つビューが現れた状況。
+        // カラム構成シグネチャは一致するため、種別を見ないと確度「高」で誤検出される
+        TableSchema users = FixtureModels.usersTable().schema();
+        TableSchema view = new TableSchema("v_users", "public", "VIEW", users.comment(),
+                users.columns(), List.of(), List.of(), List.of(), List.of(), Map.of());
+        RawSchema raw = DiffFixtures.raw(view, FixtureModels.ordersTable().schema(),
+                FixtureModels.organizationsTable().schema());
+
+        DiffPlan plan = diff.plan(DiffFixtures.model(), raw, PatternList.EMPTY, List.of());
+
+        assertTrue(plan.renameCandidates().stream()
+                        .noneMatch(c -> "public.users".equals(c.from())),
+                "テーブル → ビューはリネームではなく「削除 + 追加」である");
+        assertEquals("added", plan.index().get("table:public.v_users").change());
+        assertEquals("removed", plan.index().get("table:public.users").change());
+    }
+
+    @Test
+    @DisplayName("K-17: 種別が同じもの同士ではリネーム候補が出る（抑止は種別またぎだけ）")
+    void stillPairsWithinSameKind() {
+        TableSchema users = FixtureModels.usersTable().schema();
+        TableSchema renamed = new TableSchema("members", "public", users.comment(), users.columns(),
+                users.primaryKey(), users.uniques(), users.indexes(), users.foreignKeys(),
+                users.dialect());
+        RawSchema raw = DiffFixtures.raw(renamed, FixtureModels.ordersTable().schema(),
+                FixtureModels.organizationsTable().schema());
+
+        DiffPlan plan = diff.plan(DiffFixtures.model(), raw, PatternList.EMPTY, List.of());
+
+        assertTrue(plan.renameCandidates().stream()
+                .anyMatch(c -> "public.users".equals(c.from()) && "public.members".equals(c.to())));
+    }
+
+    @Test
+    @DisplayName("K-16: 種別の変化は差分項目として出る")
+    void detectsKindChange() {
+        // 同名のオブジェクトがテーブルからビューに置き換わった（DROP TABLE → CREATE VIEW）
+        TableSchema users = FixtureModels.usersTable().schema();
+        TableSchema asView = new TableSchema(users.name(), users.schema(), "VIEW", users.comment(),
+                users.columns(), users.primaryKey(), users.uniques(), users.indexes(),
+                users.foreignKeys(), users.dialect());
+        RawSchema raw = DiffFixtures.raw(asView, FixtureModels.ordersTable().schema(),
+                FixtureModels.organizationsTable().schema());
+
+        DiffPlan plan = diff.plan(DiffFixtures.model(), raw, PatternList.EMPTY, List.of());
+
+        DiffItem kind = plan.index().get("table:public.users/kind");
+        assertNotNull(kind);
+        assertEquals("objectKind", kind.kind());
+        assertEquals("TABLE", kind.before());
+        assertEquals("VIEW", kind.after());
+        assertTrue(kind.selectable());
+    }
+
+    @Test
+    @DisplayName("K-16: kind を持たない既存定義を再内省しても差分は出ない（既存プロジェクトの互換性）")
+    void noDiffForLegacyModelWithoutKind() {
+        // DiffFixtures のモデルは kind を持たない9引数コンストラクタで作られている＝既存データ相当
+        DiffPlan plan = diff.plan(DiffFixtures.model(), DiffFixtures.sameAsModel(),
+                PatternList.EMPTY, List.of());
+
+        assertTrue(plan.items().stream().flatMap(i -> i.children().stream())
+                .noneMatch(c -> "objectKind".equals(c.kind())));
+        assertEquals(0, plan.stats().modified());
+    }
 }

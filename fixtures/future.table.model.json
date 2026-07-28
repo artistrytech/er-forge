@@ -3,6 +3,7 @@
   "schema": {
     "name": "future",
     "schema": "public",
+    "kind": "TABLE",
     "comment": null,
     "columns": [
       {

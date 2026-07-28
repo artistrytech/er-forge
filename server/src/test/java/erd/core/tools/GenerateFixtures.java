@@ -29,7 +29,8 @@ public final class GenerateFixtures {
                 FixtureModels.ordersTable(),
                 FixtureModels.organizationsTable(),
                 FixtureModels.escapeTable(),
-                FixtureModels.unknownKeysTable() }) {
+                FixtureModels.unknownKeysTable(),
+                FixtureModels.activeUsersView() }) {
             String base = t.schema().name();
             String js = printer.printTable(t);
             write(dir.resolve(base + ".table.js"), js);

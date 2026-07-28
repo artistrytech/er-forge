@@ -26,6 +26,8 @@ class GoldenFixtureTest {
                 printer.printTable(FixtureModels.organizationsTable()));
         assertEquals(FixtureDir.read("escape_test.table.js"), printer.printTable(FixtureModels.escapeTable()));
         assertEquals(FixtureDir.read("future.table.js"), printer.printTable(FixtureModels.unknownKeysTable()));
+        assertEquals(FixtureDir.read("v_active_users.table.js"),
+                printer.printTable(FixtureModels.activeUsersView()));
         assertEquals(FixtureDir.read("core.diagram.js"), printer.printDiagram(FixtureModels.coreDiagram()));
         assertEquals(FixtureDir.read("manifest.js"), printer.printManifest(FixtureModels.manifest()));
         assertEquals(FixtureDir.read("config.js"), printer.printConfig(FixtureModels.config()));

@@ -379,12 +379,15 @@ public final class IntrospectApplier {
         DiffItem comment = children.get(tid + "/comment");
         String commentValue = comment == null || applied(comment, selection, index)
                 ? neu.comment() : oldSchema.comment();
+        DiffItem kind = children.get(tid + "/kind");
+        String kindValue = kind == null || applied(kind, selection, index)
+                ? neu.kind() : oldSchema.kind();
         DiffItem dialect = children.get(tid + "/dialect");
         var dialectValue = dialect == null || applied(dialect, selection, index)
                 ? neu.dialect() : oldSchema.dialect();
 
-        return new TableSchema(neu.name(), neu.schema(), commentValue, columns, primaryKey,
-                uniques, indexes, foreignKeys, dialectValue);
+        return new TableSchema(neu.name(), neu.schema(), kindValue, commentValue, columns,
+                primaryKey, uniques, indexes, foreignKeys, dialectValue);
     }
 
     /** 制約リストの部分適用。選択されていない削除は残し、選択されていない変更は旧定義のままにする。 */
@@ -438,9 +441,10 @@ public final class IntrospectApplier {
         return out;
     }
 
+    /** FK だけを差し替える。<b>kind を引き継ぎ忘れると、剪定が走ったビューが黙ってテーブルに戻る。</b> */
     private static TableSchema withForeignKeys(TableSchema s, List<ForeignKey> fks) {
-        return new TableSchema(s.name(), s.schema(), s.comment(), s.columns(), s.primaryKey(),
-                s.uniques(), s.indexes(), fks, s.dialect());
+        return new TableSchema(s.name(), s.schema(), s.kind(), s.comment(), s.columns(),
+                s.primaryKey(), s.uniques(), s.indexes(), fks, s.dialect());
     }
 
     // ------------------------------------------------------- リネームの波及
