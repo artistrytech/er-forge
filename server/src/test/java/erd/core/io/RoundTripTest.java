@@ -62,6 +62,27 @@ class RoundTripTest {
     }
 
     @Test
+    @DisplayName("既存の manifest.js にある generatedAt は、読み込んで書き戻すと消える")
+    void generatedAtIsDropped() {
+        String legacy = """
+                ERD.manifest({
+                  schemaVersion: 1,
+                  generatedAt: "2026-07-12T00:00:00Z",
+                  config: "config.js",
+                  dictionary: "dictionary.js",
+                });
+                """;
+        var manifest = parser.parseManifest(legacy).value();
+
+        // 未知キーとして保持されてはならない（保持されると古い値が残り続ける）
+        assertFalse(manifest.unknown().containsKey("generatedAt"));
+        String printed = printer.printManifest(manifest);
+        assertFalse(printed.contains("generatedAt"), printed);
+        // 2回目以降は安定する（書き戻した結果がそのまま往復する）
+        assertEquals(printed, printer.printManifest(parser.parseManifest(printed).value()));
+    }
+
+    @Test
     @DisplayName("T-10: 未知キーを含む fixture を読んで書き戻すと未知キーが保持される")
     void unknownKeysPreserved() {
         String original = FixtureDir.read("future.table.js");

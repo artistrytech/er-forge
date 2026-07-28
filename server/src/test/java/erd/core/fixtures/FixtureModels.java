@@ -179,7 +179,7 @@ public final class FixtureModels {
         tables.put("public.users", "schema/public/users.js");
         tables.put("public.orders", "schema/public/orders.js");
         tables.put("public.organizations", "schema/public/organizations.js");
-        return new Manifest(1, "2026-07-12T00:00:00Z",
+        return new Manifest(1,
                 new Manifest.Source("PostgreSQL", "16.2"),
                 "config.js", "dictionary.js", tables,
                 List.of(new Manifest.DiagramRef("core", "diagrams/core.js", "コアドメイン", 1)),

@@ -56,7 +56,7 @@ public final class GenerateSampleData {
         List<Table> tables = parse(sql);
         enrich(tables);
 
-        Manifest manifest = new Manifest(SchemaVersions.CURRENT, "2026-07-13T00:00:00Z",
+        Manifest manifest = new Manifest(SchemaVersions.CURRENT,
                 new Manifest.Source("PostgreSQL", "16"), "config.js", "dictionary.js",
                 Map.of(), List.of(), Map.of());
         ProjectModel model = new ProjectModel(manifest, ProjectConfig.EMPTY,

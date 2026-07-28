@@ -170,7 +170,9 @@ public final class DataFileParser {
         if (schemaVersion < 0) {
             throw new DataFileException("required key missing: schemaVersion");
         }
-        String generatedAt = root.text("generatedAt");
+        // generatedAt は持たない（差分ノイズになるため）。既存ファイルにあるものは
+        // ここで読み捨てる。読まないと未知キーとして保持され（V-4）、古い値が残り続ける
+        root.text("generatedAt");
 
         Manifest.Source source = null;
         JsonNode sourceNode = root.node("source");
@@ -196,7 +198,7 @@ public final class DataFileParser {
                     o.text("title"), o.integer("order", 0)));
         }
 
-        return new Parsed<>(new Manifest(schemaVersion, generatedAt, source, config, dictionary,
+        return new Parsed<>(new Manifest(schemaVersion, source, config, dictionary,
                 tables, diagrams, root.rest()), warnings);
     }
 

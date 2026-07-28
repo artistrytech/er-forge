@@ -6,10 +6,15 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** data/manifest.js。ファイル一覧とデータ形式バージョン。 */
+/**
+ * data/manifest.js。ファイル一覧とデータ形式バージョン。
+ *
+ * <p>生成時刻（{@code generatedAt}）は持たない。中身が何も変わっていなくても書き出すたびに
+ * 差分が出るため、Git 管理ではノイズにしかならない（ヘッダコメントを入れない理由と同じ。
+ * Phase0 詳細設計 §2.1）。読み込み時は既存ファイルとの互換のために受け付けて捨てる。
+ */
 public record Manifest(
         int schemaVersion,
-        String generatedAt,
         Source source,
         String config,
         String dictionary,
@@ -28,6 +33,6 @@ public record Manifest(
     }
 
     public Manifest withSchemaVersion(int v) {
-        return new Manifest(v, generatedAt, source, config, dictionary, tables, diagrams, unknown);
+        return new Manifest(v, source, config, dictionary, tables, diagrams, unknown);
     }
 }

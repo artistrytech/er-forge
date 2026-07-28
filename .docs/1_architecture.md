@@ -420,7 +420,6 @@ Git の競合を解消しやすくするため）。
 ```js
 ERD.manifest({
   schemaVersion: 1,
-  generatedAt: "2026-07-11T09:00:00Z",
   source: { product: "PostgreSQL", version: "16.2" },
   config: "config.js",
   dictionary: "dictionary.js",

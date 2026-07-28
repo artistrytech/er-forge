@@ -297,9 +297,7 @@ public final class DataFilePrinter {
         Out out = new Out();
         out.open("ERD.manifest({");
         out.line("schemaVersion: " + m.schemaVersion() + ",");
-        if (m.generatedAt() != null) {
-            out.line("generatedAt: " + JsText.quote(m.generatedAt()) + ",");
-        }
+        // 生成時刻は出力しない。中身が変わっていなくても書き出すたびに差分が出るため
         if (m.source() != null) {
             Pairs p = new Pairs();
             p.add("product", JsText.quote(m.source().product()));

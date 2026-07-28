@@ -117,7 +117,9 @@ ERD.table({
 - 先頭に BOM を付けない。UTF-8。
 - 改行は **LF** のみ。
 - ファイル末尾に**改行1つ**（`});\n`）。
-- ファイル冒頭にヘッダコメントを**入れない**（「自動生成」等のコメントは、差分ノイズと `generatedAt` の書き換えを生むだけ）。
+- ファイル冒頭にヘッダコメントを**入れない**（「自動生成」等のコメントは差分ノイズを生むだけ）。
+  **生成時刻も持たない**（`manifest.js` の `generatedAt` は同じ理由で撤去した。中身が変わっていなくても
+  書き出すたびに差分が出る。既存ファイルにあるものはパーサが読み捨てるため、次の書き込みで消える）。
 
 ### 2.2 インデントと区切り
 
@@ -195,7 +197,7 @@ ERD.table({
 | `meta` | `displayName` `tags` `color` `notes` `columns` `logicalUniques` `logicalForeignKeys` `relations` |
 | `meta.columns.<name>` | `displayName` `tags` `color` `notes` |
 | `ERD.diagram` | `id` `title` `order` `nodes` `edges` |
-| `ERD.manifest` | `schemaVersion` `generatedAt` `source` `config` `dictionary` `tables` `diagrams` |
+| `ERD.manifest` | `schemaVersion` `source` `config` `dictionary` `tables` `diagrams` |
 | `ERD.index` | `tables` `relations` `tagsUsed` |
 | `ERD.config` | `ignoreTables` |
 | `ERD.dictionary` | `columns`（値は `displayName` `tags` `color` を持つオブジェクト） |

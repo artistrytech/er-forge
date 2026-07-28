@@ -89,7 +89,7 @@ class IntrospectServiceTest {
         nodes.put("public.users", new NodeLayout(new Point(120, 80)));
         nodes.put("public.orders", new NodeLayout(new Point(520, 80)));
         DiagramPage page = new DiagramPage("core", "コア", 1, nodes, Map.of());
-        Manifest manifest = new Manifest(1, "2026-07-13T00:00:00Z",
+        Manifest manifest = new Manifest(1,
                 new Manifest.Source("H2", "2"), "config.js", "dictionary.js",
                 Map.of(), List.of(), Map.of());
         store.writeAll(dataDir, new ProjectModel(manifest, ProjectConfig.EMPTY, Dictionary.EMPTY,

@@ -67,7 +67,7 @@ class TableServiceTest {
                                 new Column("email", "varchar(255)", LogicalType.STRING, true)),
                         List.of(), List.of(), List.of(), List.of(), Map.of()),
                 TableMeta.EMPTY, Map.of());
-        Manifest manifest = new Manifest(SchemaVersions.CURRENT, "2026-07-13T00:00:00Z",
+        Manifest manifest = new Manifest(SchemaVersions.CURRENT,
                 new Manifest.Source("PostgreSQL", "16"), "config.js", "dictionary.js",
                 Map.of(), List.of(), Map.of());
         new ProjectStore().writeAll(dataDir, new ProjectModel(manifest, ProjectConfig.EMPTY,

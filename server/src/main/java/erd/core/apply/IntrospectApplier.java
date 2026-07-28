@@ -235,8 +235,8 @@ public final class IntrospectApplier {
             }
         }
 
+        // 生成時刻は持たない（差分ノイズになるため）。source は接続先が変われば意味のある変化になる
         Manifest manifest = new Manifest(model.manifest().schemaVersion(),
-                java.time.Instant.now().truncatedTo(java.time.temporal.ChronoUnit.SECONDS).toString(),
                 new Manifest.Source(raw.product(), raw.version()),
                 model.manifest().config(), model.manifest().dictionary(),
                 model.manifest().tables(), model.manifest().diagrams(), model.manifest().unknown());
