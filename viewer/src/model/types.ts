@@ -207,6 +207,11 @@ export const zTable = z.looseObject({
   uniques: z.array(zUnique).optional(),
   indexes: z.array(zIndexDef).optional(),
   foreignKeys: z.array(zForeignKey).optional(),
+  /**
+   * ビュー等の定義 SQL（K-18）。**行ごとに分けた配列**で持つ（1本の文字列にすると
+   * Git 差分が1行に潰れる）。標準メタデータでは取れないため、DB と権限によっては空になる。
+   */
+  definition: z.array(z.string()).optional(),
   dialect: z.record(z.string(), z.unknown()).optional(),
   meta: zTableMeta.optional(),
 });

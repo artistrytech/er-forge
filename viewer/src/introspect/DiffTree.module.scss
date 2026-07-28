@@ -78,3 +78,32 @@
 .diff-values ins {
   text-decoration: none;
 }
+
+/* 定義 SQL の変更（K-18）。複数行のため、行内ではなくブロックで前後を並べる */
+.diff-definition {
+  display: grid;
+  gap: 6px;
+  margin: 2px 0 8px 44px;
+}
+
+.diff-definition pre {
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-x: auto;
+}
+
+.diff-definition-before {
+  background: var(--bg);
+  color: var(--text-muted);
+  text-decoration: line-through;
+  text-decoration-color: var(--text-muted);
+}
+
+.diff-definition-after {
+  background: var(--bg);
+}

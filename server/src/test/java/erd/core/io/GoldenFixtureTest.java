@@ -40,6 +40,8 @@ class GoldenFixtureTest {
     void parseMatchesModelJson() {
         assertEquals(FixtureDir.read("users.table.model.json"),
                 Json.pretty(parser.parseTable(FixtureDir.read("users.table.js")).value()));
+        assertEquals(FixtureDir.read("v_active_users.table.model.json"),
+                Json.pretty(parser.parseTable(FixtureDir.read("v_active_users.table.js")).value()));
         assertEquals(FixtureDir.read("core.diagram.model.json"),
                 Json.pretty(parser.parseDiagram(FixtureDir.read("core.diagram.js")).value()));
         assertEquals(FixtureDir.read("manifest.model.json"),

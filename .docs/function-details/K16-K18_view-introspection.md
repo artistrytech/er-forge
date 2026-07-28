@@ -1,4 +1,4 @@
-# 詳細設計: K-16 / K-17 — ビュー等の非テーブルオブジェクトの逆生成
+# 詳細設計: K-16 〜 K-18 — ビュー等の非テーブルオブジェクトの逆生成
 
 設計書 §1.3 は「JDBC ドライバがあれば原則すべての DB に対応する」と定めるが、現行の
 `JdbcIntrospector` は `getTables(..., new String[] { "TABLE" })` として**ビューを明示的に除外**して
@@ -18,20 +18,19 @@ DB 製品ごとの分岐は層1（`JdbcIntrospector`）に一切入れない。
    実測どおり例外は出ず、空か実データが返る）。**種別で処理を分岐する必要がない**
 3. 未知の DB が新しい種別名を返しても、ルールが名前ベースなら自動的に追随する
 
-### 1.1 スコープ（Phase A）
+### 1.1 スコープ
 
-| 含む | 含まない（→ §10） |
+| 含む | 含まない（→ §11 実装未定） |
 |---|---|
-| ビュー等の一覧・列・コメントの取得 | **ビュー定義 SQL（`SELECT ...`）の取得** |
-| 種別（`kind`）の保存・差分・表示 | ビュー → テーブルの依存関係の取得 |
-| ER図へのノード表示 | 依存エッジの描画（**描かないことが決定済み**） |
-| カタログ詳細でのビュー表示 | Oracle のマテビュー判別（`ALL_MVIEWS`） |
-| 種別をまたぐリネーム候補の抑止 | ビュー列 → 元テーブル列の由来（lineage） |
+| ビュー等の一覧・列・コメントの取得（K-16） | ビュー → テーブルの依存関係の取得 |
+| 種別（`kind`）の保存・差分・表示（K-16） | 依存エッジの描画（**描かないことが決定済み**） |
+| 種別をまたぐリネーム候補の抑止（K-17） | Oracle のマテビュー判別（`ALL_MVIEWS`） |
+| **ビュー定義 SQL の取得・保存・差分・表示（K-18）** | 差分プレビューの種別フィルタ |
+| ER図へのノード表示（D-07）・カタログ詳細（O-10 / O-11） | ビュー列 → 元テーブル列の由来（lineage） |
 
-> **ビュー定義 SQL が Phase A に入らない点は、「ドキュメント化」という当初目的に対して重要な制限である。**
-> 定義 SQL は標準メタデータでは取得できず、必ず DB 別のカタログ照会になる（§10.1）。これは層2
-> （`DialectEnhancer`）の担当であり、層1に分岐を入れない本方針と矛盾しない。Phase A は
-> 「どんなビューが存在し、どんな列を持つか」までを扱う。
+定義 SQL（K-18）は標準メタデータでは取得できず、必ず DB 別のカタログ照会になる。これは層2
+（`DialectEnhancer`）の担当であり、層1に分岐を入れない本方針と矛盾しない。**したがって層2の
+Enhancer を持つ DB（PostgreSQL / MySQL）でのみ定義が取れる**（§8.4）。
 
 ## 2. 実測に基づく前提
 
@@ -325,8 +324,8 @@ for (String kind : union(kindsOf(removedSchemas), kindsOf(addedSchemas))) {
 `PLACED_DELETE` ガードは削除方向のみを見ているため**発火しない**。
 
 差分プレビューで種別が読めるよう、追加・削除の要約に種別を前置する
-（`VIEW, 2 columns`）。**種別による折りたたみ / 絞り込みは Phase A では実装していない**
-（§10.5）。ビューが数十本あるプロジェクトで初回プレビューが読みにくい場合に着手する。
+（`VIEW, 2 columns`）。**種別による折りたたみ / 絞り込みは実装していない**（§11.4）。
+ビューが数十本あるプロジェクトで初回プレビューが読みにくい場合に着手する。
 
 ## 6. 表示
 
@@ -406,23 +405,111 @@ ERD.index({
 > そのときは「ビューではカラム編集の UI を出さない」という形になるはずで、
 > 種別で編集の入口ごと塞ぐ形には戻さない（`meta` の編集は常に許す）。
 
-## 8. 移行と互換性
+## 8. K-18: ビュー定義 SQL
+
+ビューは「どんな列があるか」だけでは説明にならない。**何を抽出しているのか**が本体であり、
+ドキュメント化という目的からすればここが中心になる。
+
+### 8.1 なぜ `dialect` に入れないのか
+
+`dialect` は差分検出で**マップ全体を1項目として**比較する
+（[`SchemaDiff`](../../server/src/main/java/erd/core/diff/SchemaDiff.java) の `dialect` 比較）。
+定義をここに入れると、差分プレビューに出るのは「dialect が変わった」という1行と、
+JSON を丸ごと文字列化した before / after だけになり、**何がどう変わったのか読めない**。
+
+そこで `TableSchema.definition` という**一級のフィールド**に置き、専用の差分項目
+（`kind = "definition"`）を出す。
+
+### 8.2 なぜ行の配列で持つのか
+
+[`JsText.quote`](../../server/src/main/java/erd/core/io/JsText.java) は `\n` をエスケープする。
+定義を1本の文字列で持つと、複数行の SQL が**1行の巨大なリテラル**になり、
+「1つの変更 = 1行の差分」（INV-5）が壊れる。WHERE 句を1つ足しただけで数百文字の行がまるごと
+置き換わった差分になり、レビューできない。
+
+```js
+definition: [
+  " SELECT u.id,",
+  "    u.email,",
+  "    o.id AS order_id",
+  "   FROM users u",
+  "     LEFT JOIN orders o ON o.user_id = u.id",
+  "  WHERE u.email IS NOT NULL;",
+],
+```
+
+出力位置は `foreignKeys` の後・`dialect` の前。ビューでは制約がすべて空になるため、
+実際にはカラム表のすぐ下に来る。
+
+### 8.3 行分割の決定論性
+
+同じ定義から常に同じ配列が出ないと、意味のない Git 差分が出る
+（`Dialects.Builder.splitLines`）。
+
+- 改行コードを `\n` に正規化（CRLF / CR を吸収）
+- 各行の**行末の空白を落とす**
+- 先頭と末尾の空行を捨てる
+- それ以外は DB が返したまま。**サーバー側で SQL を整形しない**
+
+### 8.4 取得元と DB ごとの差
+
+| DB | 取得元 | 状況 |
+|---|---|---|
+| PostgreSQL | `pg_get_viewdef(oid, true)`（`relkind IN ('v','m')`） | **実装済み。** 整形済みの複数行で返る。マテビューも取れる |
+| MySQL | `information_schema.VIEWS.VIEW_DEFINITION` | **実装済み。** ただし整形されず**1行で返る**（後述） |
+| SQL Server | `sys.sql_modules.definition` | **未実装**（層2の Enhancer が無い） |
+| Oracle | `ALL_VIEWS.TEXT`（LONG 型） | **未実装**（層2の Enhancer が無い） |
+| SQLite | `sqlite_master.sql` | **未実装**（層2の Enhancer が無い） |
+
+**MySQL は定義を1行で返す。** PostgreSQL の `pg_get_viewdef(oid, true)` と違って改行を復元する
+手段が無く、`definition` は1要素の配列になる。定義を変えると1行まるごとの差分になるが、
+**整形して行に割るのはサーバー側に SQL パーサを抱えることを意味する**ため採らない
+（正確さを優先し、DB が返したものをそのまま保つ）。
+
+SQL Server / Oracle / SQLite に定義が要るなら、それぞれの `DialectEnhancer` を追加する。
+層1には手を入れずに済む（設計書 §7.1 の2層構成が意図どおり効く箇所）。
+
+### 8.5 「取れなかった」と「消えた」を区別する
+
+層2の Enhancer は権限やバージョンで失敗しうる（`Dialects.enhance` が警告に落として続行する）。
+そのとき定義は空で返ってくるが、**これを「定義が削除された」差分にしてはならない。**
+毎回の逆生成で削除候補が出続け、差分プレビューが信用されなくなる。
+
+そこで差分・適用の両方で、**新しい定義が空のときは既存の定義を保つ**。
+
+```java
+// SchemaDiff: 空になった定義は差分にしない
+if (!oldSchema.definition().equals(neu.definition()) && !neu.definition().isEmpty()) { ... }
+
+// IntrospectApplier: 空で上書きしない
+List<String> definitionValue = neu.definition().isEmpty() ? oldSchema.definition() : ...;
+```
+
+### 8.6 表示（O-11）
+
+- カタログのオブジェクト詳細に「定義」セクションを置き、行を改行で繋ぎ直して等幅ブロックで出す。
+  **長い行は折り返さず横スクロールさせる**（SQL は行の対応が読めることが重要で、折り返すと
+  行番号の感覚が壊れる）
+- 差分プレビューでは、`definition` 項目だけ before / after を**ブロックで縦に並べる**
+  （他の項目と同じ行内表示にすると読めない）
+
+## 9. 移行と互換性
 
 | 観点 | 結論 |
 |---|---|
 | `manifest.schemaVersion` | **上げない**。キーの追加は前方互換（V-4） |
 | `Migration` の追加 | **不要** |
 | 旧ビューアで新データを開く | `kind` は未知キーとして無視され、**ビューが通常テーブルとして描画される**。壊れはしない |
-| 新ビューアで旧データを開く | `kind` 欠落 = `"TABLE"`。差分ゼロ |
+| 新ビューアで旧データを開く | `kind` 欠落 = `"TABLE"`、`definition` 欠落 = 空。差分ゼロ |
 | `manifest.tables` のキー名 | **据え置く**。ビューも `tables` マップに載る。意味的にはずれるが、キー名変更は後方互換を破るため `kind` で判別する |
 | ファイル配置 | `schema/<ns>/<name>.js` に同居。**テーブルとビューは DB 上同一の名前空間にあるため ID 衝突は起きない** |
 
-## 9. テスト観点
+## 10. テスト観点
 
 | # | 観点 | 場所 |
 |---|---|---|
 | T-1 | `kind = "TABLE"` は出力されず、既存 golden fixture がバイト一致のまま | `GoldenFixtureTest` / `RoundTripTest` |
-| T-2 | `kind = "VIEW"` を持つテーブルの往復同一（parse → print がバイト一致） | 新規 fixture（`*.view.js`）+ `RoundTripTest` |
+| T-2 | `kind = "VIEW"` を持つテーブルの往復同一（parse → print がバイト一致） | 新規 fixture（`v_active_users.table.js`）+ `GoldenFixtureTest` |
 | T-3 | `kind` の変更が1行だけの差分になる | `DiffMinimalityTest` |
 | T-4 | H2 の `"BASE TABLE"` が `"TABLE"` に正規化され、ビューが `"VIEW"` で取れる | `JdbcIntrospectorTest` |
 | T-5 | SQLite でビューが取れ、`sqlite_schema` / `sqlite_sequence` が除外される | `SqliteIntrospectorTest` |
@@ -431,34 +518,19 @@ ERD.index({
 | T-8 | `kind` 無しの既存モデルを再逆生成しても差分が出ない | `SchemaDiffTest` |
 | T-9 | ビューでも `meta` を保存でき、保存後も `kind` が残る（種別で拒否しない） | `TableServiceTest` |
 | T-10 | 種別の実測値がドライバ更新後も前提どおり | `TableTypeProbeTest`（アサーション無しの記録用） |
+| T-11 | 定義 SQL が `dialect` ではなく専用フィールドに入る | `DialectsTest` |
+| T-12 | 行分割が決定論的（CRLF / 行末空白 / 前後の空行を吸収する） | `DialectsTest` |
+| T-13 | 定義を含むファイルの往復同一 | `DialectsTest` |
+| T-14 | **定義の1行を変更 → 差分が1行**（K-18 の核心。1本の文字列だと壊れる） | `DiffMinimalityTest` |
+| T-15 | 層2 が定義を取れなかった回に「定義が消えた」差分を出さない | `SchemaDiffTest` |
+| T-16 | 層2 が定義を取れなかった回に既存の定義を消さない | `IntrospectApplierTest` |
+| T-17 | FK の剪定が走っても `kind` と `definition` が保たれる | `IntrospectApplierTest` |
 
-## 10. Phase B 以降
+## 11. 実装未定の項目
 
-### 10.1 ビュー定義 SQL（Phase B の中心）
+いずれも**着手予定は無い**。必要になったときに、この節を出発点にする。
 
-標準メタデータには存在しないため、**層2（`DialectEnhancer`）で取得する**。既存の
-`PostgresEnhancer` / `MysqlEnhancer` と同じ枠組みに載るので、層1に分岐は入らない。
-
-| DB | 取得元 |
-|---|---|
-| PostgreSQL | `pg_get_viewdef(oid, true)` |
-| MySQL | `information_schema.VIEWS.VIEW_DEFINITION` |
-| SQL Server | `sys.sql_modules.definition` |
-| Oracle | `ALL_VIEWS.TEXT`（LONG 型のため読み出しに注意） |
-| SQLite | `sqlite_master.sql` |
-
-設計上の要点が2つある。
-
-1. **`dialect` に入れてはならない。** 差分検出は
-   [`SchemaDiff`](../../server/src/main/java/erd/core/diff/SchemaDiff.java) で `dialect` 全体を
-   1項目として比較するため、before / after が JSON 丸ごとの文字列になり差分プレビューが実用に
-   ならない。`definition` として一級のフィールドに置き、専用の差分項目を出す
-2. **行の配列で持つ。** [`JsText.quote`](../../server/src/main/java/erd/core/io/JsText.java) は
-   `\n` をエスケープして1行の文字列にするため、複数行の定義 SQL をそのまま入れると
-   **「1つの変更 = 1行の差分」（INV-5）が壊れる**。`definition: ["SELECT ...", "  FROM ...", ...]`
-   と行分割すれば Git 差分が読める
-
-### 10.2 依存関係
+### 11.1 ビュー → テーブルの依存関係
 
 ビュー → 参照元テーブルの依存は **DB 間で取得可否が非対称**である。
 
@@ -469,31 +541,44 @@ ERD.index({
 | Oracle | `ALL_DEPENDENCIES` |
 | **MySQL** | **相当するカタログが無い**（定義 SQL のパースが必要） |
 
-MySQL は未対応として警告を出し、代替手段として論理外部制約（§6.2）を案内する。
-**定義 SQL を正規表現でパースして FROM 句を拾う実装は採らない**（確実に破綻する）。
+MySQL だけ構造的に対応できない。**定義 SQL を正規表現でパースして FROM 句を拾う実装は採らない**
+（確実に破綻する）。
 
 なお、依存関係を取得できても**エッジとして描画しないことは決定済み**である（1つのビューが5テーブルを
 参照するようなケースで ER図が過密になるため）。取得する場合の用途はカタログ詳細での一覧表示に
-限られる。
+限られる。**現状は、人が書く論理外部制約（P-06）で代替できる**——これは MySQL のように自動取得
+できない DB でも同じように機能するという利点がある。
 
-### 10.3 Oracle のマテリアライズドビュー判別
+### 11.2 SQL Server / Oracle / SQLite の定義 SQL
 
-`ALL_MVIEWS` を引いて `kind` を上書きする。層2の担当。優先度は低い（現状すでに通常テーブルとして
-取り込まれており、実害が出ていない）。
+K-18 は層2の Enhancer を持つ PostgreSQL / MySQL でのみ動く（§8.4）。他の DB でも定義が要るなら、
+それぞれの `DialectEnhancer` を追加する。クエリは §8.4 の表に控えてある。層1には手を入れない。
 
-### 10.4 差分プレビューの種別フィルタ
+Oracle の `ALL_VIEWS.TEXT` は LONG 型であり、**ResultSet の列を昇順に読まないと `ORA-17027` に
+なる**点に注意する（層1の `getColumns` でまったく同じ罠を踏んだ。
+[`JdbcIntrospector`](../../server/src/main/java/erd/introspect/JdbcIntrospector.java) の
+カラム読み取りループのコメントを参照）。
+
+### 11.3 Oracle のマテリアライズドビュー判別
+
+Oracle はマテビューを `TABLE_TYPE = TABLE` として返すため、通常テーブルと区別できない（§2）。
+`ALL_MVIEWS` を引いて `kind` を上書きすれば区別できる。層2の担当。
+**現状すでに通常テーブルとして取り込まれており、実害は出ていない。**
+
+### 11.4 差分プレビューの種別フィルタ
 
 ビューが数十本あるプロジェクトで初回プレビューが読みにくい場合、`DiffTree` に種別による
-折りたたみ / 絞り込みを追加する。Phase A では要約への種別前置（§6.4）までにとどめている。
+折りたたみ / 絞り込みを追加する。現状は要約への種別前置（`VIEW, 2 columns`。§6.4）まで。
 
-### 10.5 パーティション親テーブルの扱い
+### 11.5 パーティション親テーブルの扱い
 
-本設計により PostgreSQL の `PARTITIONED TABLE`（パーティション親）が新たに取り込まれるように
+K-16 により PostgreSQL の `PARTITIONED TABLE`（パーティション親）が新たに取り込まれるように
 なった。**子パーティションは以前から `TABLE` として個別に取り込まれている**ため、月次パーティションが
-数十ある表では ER図・一覧が肥大する。これは本設計が持ち込んだ問題ではないが、気になる場合は
+数十ある表では ER図・一覧が肥大する。これは K-16 が持ち込んだ問題ではないが、気になる場合は
 無視リスト（K-15）に `public\..*_20\d{2}` のようなパターンを登録して除外する。
 
-### 10.6 ビュー列の由来（lineage）
+### 11.6 ビュー列の由来（lineage）
 
+ビューの列が元テーブルのどの列から来ているかを辿る機能。
 `SELECT * FROM <view> WHERE 1=0` の `ResultSetMetaData.getTableName` / `getColumnName` で
-取得できる場合があるが、ドライバ依存で式列は空になる。優先度は最も低い。
+取得できる場合があるが、ドライバ依存で式列は空になる。

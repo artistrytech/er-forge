@@ -407,6 +407,15 @@ public final class SchemaDiff {
         fkDiff(children, tid, oldSchema.foreignKeys(), neu.foreignKeys(), colPairs,
                 addedColumnIds, removedColumnIds, addedIds);
 
+        // ---- definition（ビュー等の定義 SQL。層2 が取得する。K-18）----
+        // 層2 が失敗した回（Enhancer の SQL が権限で通らない等）に定義が空で返ってきても、
+        // 「定義が消えた」差分にはしない。人の情報ではないが、取れなかっただけのものを
+        // 削除候補として見せるのは差分プレビューのノイズにしかならない
+        if (!oldSchema.definition().equals(neu.definition()) && !neu.definition().isEmpty()) {
+            children.add(DiffItem.of(tid + "/definition", "definition", "modified", newId,
+                    joinLines(oldSchema.definition()), joinLines(neu.definition())));
+        }
+
         // ---- dialect（Enhancer が取得した DB 固有情報。層2） ----
         if (!oldSchema.dialect().equals(neu.dialect())) {
             children.add(DiffItem.of(tid + "/dialect", "dialect", "modified", "dialect",
@@ -646,6 +655,11 @@ public final class SchemaDiff {
         List<String> out = new ArrayList<>(a);
         out.addAll(b);
         return out;
+    }
+
+    /** 定義 SQL の差分表示用。ビューアが行に割り直して整形する（K-18）。 */
+    private static String joinLines(List<String> lines) {
+        return lines.isEmpty() ? null : String.join("\n", lines);
     }
 
     /** 追加・削除の要約。通常テーブル以外は種別を頭に付ける（何が増減したのか一目で分かるように）。 */

@@ -8,6 +8,12 @@ ERD.table({
     { name: "id", type: "int8", logicalType: "int", nullable: true },
     { name: "email", type: "varchar(255)", logicalType: "string", nullable: true },
   ],
+  definition: [
+    " SELECT users.id,",
+    "    users.email",
+    "   FROM users",
+    "  WHERE (users.deleted_at IS NULL);",
+  ],
   meta: {
     displayName: "有効ユーザー",
     tags: ["core"],

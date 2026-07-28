@@ -107,6 +107,8 @@ public final class DataFileParser {
                     o.text("onUpdate")));
         }
 
+        // ビュー等の定義 SQL（K-18）。行の配列で持つ
+        List<String> definition = root.textArray("definition");
         Map<String, JsonNode> dialect = objectAsMap(root.node("dialect"));
         TableMeta meta = readMeta(root.node("meta"), warnings);
         Map<String, JsonNode> unknown = root.rest();
@@ -118,7 +120,7 @@ public final class DataFileParser {
 
         TableSchema tableSchema = new TableSchema(
                 name, schema, kind, comment, columns, primaryKey, uniques, indexes, foreignKeys,
-                dialect);
+                definition, dialect);
         return new Parsed<>(new Table(id, tableSchema, meta, unknown), warnings);
     }
 

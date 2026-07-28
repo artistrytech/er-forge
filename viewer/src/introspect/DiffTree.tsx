@@ -168,12 +168,23 @@ function ChildRow({
             ? `${item.renamedFrom} → ${item.target}`
             : item.target}
         </span>
-        <span className={styles.diffValues}>
-          {item.before !== null && <del className="mono">{item.before}</del>}
-          {item.before !== null && item.after !== null && " → "}
-          {item.after !== null && <ins className="mono">{item.after}</ins>}
-        </span>
+        {/* 定義 SQL（K-18）は複数行になる。1行に並べると読めないのでブロックで出す */}
+        {item.kind === "definition" ? (
+          <span className={styles.diffValues}>{t("introspect.definitionChanged")}</span>
+        ) : (
+          <span className={styles.diffValues}>
+            {item.before !== null && <del className="mono">{item.before}</del>}
+            {item.before !== null && item.after !== null && " → "}
+            {item.after !== null && <ins className="mono">{item.after}</ins>}
+          </span>
+        )}
       </div>
+      {item.kind === "definition" && (
+        <div className={styles.diffDefinition}>
+          {item.before !== null && <pre className={styles.diffDefinitionBefore}>{item.before}</pre>}
+          {item.after !== null && <pre className={styles.diffDefinitionAfter}>{item.after}</pre>}
+        </div>
+      )}
       <Warnings item={item} />
       {item.children.map((child) => (
         <ChildRow key={child.id} item={child} selection={selection} onToggle={onToggle} />

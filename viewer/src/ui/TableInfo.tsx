@@ -277,6 +277,16 @@ export function TableInfo({ tableId, onNavigate }: TableInfoProps) {
 
       <PagesSection table={table} onNavigate={onNavigate} />
 
+      {/* ビュー等の定義 SQL（K-18 / O-11）。行の配列で持っているので改行で繋ぎ直す */}
+      {(table.definition?.length ?? 0) > 0 && (
+        <>
+          <h3>{t("table.definition")}</h3>
+          <pre className={styles.definitionPre} data-testid="view-definition">
+            {table.definition?.join("\n")}
+          </pre>
+        </>
+      )}
+
       {table.dialect !== undefined && Object.keys(table.dialect).length > 0 && (
         <>
           <h3>{t("table.dialect")}</h3>

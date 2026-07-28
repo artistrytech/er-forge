@@ -45,6 +45,7 @@ public final class MysqlEnhancer implements DialectEnhancer {
             warnings.add("Could not read CHECK constraints. This database version may not support them.");
         }
         enums(conn, ns, byTable);
+        definitions(conn, ns, byTable);
         RawSchema merged = Dialects.merge(schema, byTable);
         return new RawSchema(merged.product(), merged.version(), merged.driver(),
                 merged.namespace(), merged.tables(), warnings);
@@ -133,5 +134,37 @@ public final class MysqlEnhancer implements DialectEnhancer {
             current.append(c);
         }
         return out;
+    }
+
+    private static final String DEFINITIONS_SQL = """
+            SELECT TABLE_NAME AS tbl, VIEW_DEFINITION AS def
+              FROM information_schema.VIEWS
+             WHERE TABLE_SCHEMA = ?
+             ORDER BY TABLE_NAME
+            """;
+
+    /**
+     * ビューの定義 SQL（K-18）。
+     *
+     * <p><b>MySQL は定義を整形せず1行で返す。</b>（PostgreSQL の {@code pg_get_viewdef(oid, true)}
+     * と違い、改行を復元する手段が無い。）結果として definition は1要素の配列になり、
+     * 定義を変えると1行まるごとの差分になる。整形して行に割るとサーバー側に SQL パーサを
+     * 抱えることになるため、<b>DB が返したものをそのまま保つ</b>（正確さを優先する）。
+     *
+     * <p>{@code VIEW_DEFINITION} は権限が無いと空文字で返る（エラーにはならない）。
+     * その場合は definition を持たせない。
+     */
+    private void definitions(Connection conn, String ns, Map<String, Dialects.Builder> byTable)
+            throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(DEFINITIONS_SQL)) {
+            ps.setString(1, ns);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    String def = rs.getString("def");
+                    if (def == null || def.isBlank()) continue;
+                    builder(byTable, rs.getString("tbl")).setDefinition(def);
+                }
+            }
+        }
     }
 }

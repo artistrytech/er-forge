@@ -71,6 +71,7 @@ public final class Dialects {
         private final List<ObjectNode> checks = new ArrayList<>();
         private final Map<String, List<String>> enums = new TreeMap<>();
         private final List<ObjectNode> indexes = new ArrayList<>();
+        private List<String> definition = List.of();
 
         /** CHECK 制約（JDBC 標準に API が存在しない。§7.4）。 */
         public void addCheck(String name, String expression) {
@@ -94,8 +95,43 @@ public final class Dialects {
             indexes.add(n);
         }
 
+        /**
+         * ビュー等の定義 SQL（K-18）。<b>dialect には入れない。</b>
+         * dialect は差分検出でマップ全体を1項目として比較するため、そこに入れると
+         * 「定義が変わった」しか分からず、差分プレビューが実用にならない。
+         *
+         * <p>行に分けて保持する。改行を含む1本の文字列にすると、プリンタが {@code \n} を
+         * エスケープして1行に畳み、「1つの変更 = 1行の差分」（INV-5）が壊れる。
+         */
+        public void setDefinition(String sql) {
+            definition = splitLines(sql);
+        }
+
+        /**
+         * 決定論的な行分割。行末の空白を落とし、末尾の空行を捨てる
+         * （同じ定義から常に同じ配列が出ないと、意味のない Git 差分が出る）。
+         */
+        static List<String> splitLines(String sql) {
+            if (sql == null) return List.of();
+            List<String> lines = new ArrayList<>();
+            for (String raw : sql.replace("\r\n", "\n").replace('\r', '\n').split("\n", -1)) {
+                lines.add(raw.stripTrailing());
+            }
+            while (!lines.isEmpty() && lines.get(lines.size() - 1).isEmpty()) {
+                lines.remove(lines.size() - 1);
+            }
+            while (!lines.isEmpty() && lines.get(0).isEmpty()) {
+                lines.remove(0);
+            }
+            return List.copyOf(lines);
+        }
+
+        List<String> definition() {
+            return definition;
+        }
+
         boolean isEmpty() {
-            return checks.isEmpty() && enums.isEmpty() && indexes.isEmpty();
+            return checks.isEmpty() && enums.isEmpty() && indexes.isEmpty() && definition.isEmpty();
         }
 
         /** キー順・要素順を固定した dialect マップ。 */
@@ -148,8 +184,10 @@ public final class Dialects {
             }
             Map<String, JsonNode> dialect = new LinkedHashMap<>(t.dialect());
             dialect.putAll(b.build());
+            // definition は dialect ではなく一級のフィールドへ入れる（K-18）
+            List<String> definition = b.definition().isEmpty() ? t.definition() : b.definition();
             tables.add(new TableSchema(t.name(), t.schema(), t.kind(), t.comment(), t.columns(),
-                    t.primaryKey(), t.uniques(), t.indexes(), t.foreignKeys(), dialect));
+                    t.primaryKey(), t.uniques(), t.indexes(), t.foreignKeys(), definition, dialect));
         }
         return new RawSchema(schema.product(), schema.version(), schema.driver(),
                 schema.namespace(), tables, schema.warnings());

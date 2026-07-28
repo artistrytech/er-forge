@@ -100,6 +100,15 @@ public final class DataFilePrinter {
             }
             out.close("],");
         }
+        // ビュー等の定義 SQL（K-18）。1行 = 1要素で出す。1本の文字列にすると \n が
+        // エスケープされて1行に畳まれ、「1つの変更 = 1行の差分」（INV-5）が壊れる
+        if (!t.schema().definition().isEmpty()) {
+            out.open("definition: [");
+            for (String line : t.schema().definition()) {
+                out.line(JsText.quote(line) + ",");
+            }
+            out.close("],");
+        }
         if (!t.schema().dialect().isEmpty()) {
             out.open("dialect: {");
             emitUnknown(out, t.schema().dialect());

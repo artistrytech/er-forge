@@ -69,6 +69,17 @@ class DiffMinimalityTest {
         assertSingleLineChanged(printer.printDiagram(before), printer.printDiagram(after));
     }
 
+    @Test
+    @DisplayName("K-18: ビュー定義の1行を変更 → 差分が1行（定義を1本の文字列で持つと壊れる）")
+    void changeOneLineOfViewDefinition() {
+        Table before = FixtureModels.activeUsersView();
+        List<String> definition = new ArrayList<>(before.schema().definition());
+        definition.set(3, "  WHERE (users.deleted_at IS NULL AND users.active);");
+        Table after = before.withSchema(before.schema().withDefinition(definition));
+
+        assertSingleLineChanged(printer.printTable(before), printer.printTable(after));
+    }
+
     private static TableSchema withColumns(TableSchema s, List<Column> columns) {
         return new TableSchema(s.name(), s.schema(), s.comment(), columns, s.primaryKey(),
                 s.uniques(), s.indexes(), s.foreignKeys(), s.dialect());

@@ -219,7 +219,14 @@ public final class FixtureModels {
                 List.of(
                         new Column("id", "int8", LogicalType.INT, true),
                         new Column("email", "varchar(255)", LogicalType.STRING, true)),
-                List.of(), List.of(), List.of(), List.of(), Map.of());
+                List.of(), List.of(), List.of(), List.of(),
+                // 定義 SQL は行ごとに持つ（K-18）。1行変えたら1行だけの差分になる
+                List.of(
+                        " SELECT users.id,",
+                        "    users.email",
+                        "   FROM users",
+                        "  WHERE (users.deleted_at IS NULL);"),
+                Map.of());
         TableMeta meta = new TableMeta("有効ユーザー", List.of("core"), null, null, Map.of(),
                 List.of(),
                 List.of(new LogicalForeignKey("lfk_v_active_users_users", List.of("id"),

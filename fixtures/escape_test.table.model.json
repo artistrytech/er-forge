@@ -46,6 +46,7 @@
     "uniques": [ ],
     "indexes": [ ],
     "foreignKeys": [ ],
+    "definition": [ ],
     "dialect": { }
   },
   "meta": {

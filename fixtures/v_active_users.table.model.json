@@ -33,6 +33,12 @@
     "uniques": [ ],
     "indexes": [ ],
     "foreignKeys": [ ],
+    "definition": [
+      " SELECT users.id,",
+      "    users.email",
+      "   FROM users",
+      "  WHERE (users.deleted_at IS NULL);"
+    ],
     "dialect": { }
   },
   "meta": {

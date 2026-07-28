@@ -101,6 +101,54 @@ class DialectsTest {
         assertEquals(List.of(), MysqlEnhancer.parseEnumValues(null));
     }
 
+    // ------------------------------------------------------ ビュー定義 SQL（K-18）
+
+    /**
+     * 定義 SQL は dialect ではなく<b>一級のフィールド</b>に入る。
+     * dialect に入れると差分検出がマップ全体を1項目として比べるため、
+     * 「定義が変わった」しか分からず差分プレビューが実用にならない。
+     */
+    @Test
+    void definitionGoesToItsOwnFieldNotDialect() {
+        Dialects.Builder builder = new Dialects.Builder();
+        builder.setDefinition(" SELECT users.id\n   FROM users;");
+
+        RawSchema merged = Dialects.merge(schemaOf("v_users"), Map.of("v_users", builder));
+        TableSchema view = merged.tables().get(0);
+
+        assertEquals(List.of(" SELECT users.id", "   FROM users;"), view.definition());
+        assertTrue(view.dialect().isEmpty(), "dialect には入れない");
+    }
+
+    /** 行分割は決定論的でなければならない（同じ定義から常に同じ配列が出ること）。 */
+    @Test
+    void definitionIsSplitDeterministically() {
+        // 改行コードの違い（CRLF / CR）を吸収し、行末の空白と前後の空行を落とす
+        assertEquals(List.of("SELECT 1", "  FROM t"),
+                Dialects.Builder.splitLines("\r\nSELECT 1  \r\n  FROM t\t\r\n\r\n"));
+        assertEquals(List.of("SELECT 1", "  FROM t"),
+                Dialects.Builder.splitLines("SELECT 1\r  FROM t"));
+        assertEquals(List.of(), Dialects.Builder.splitLines(null));
+        assertEquals(List.of(), Dialects.Builder.splitLines("   \n\n"));
+        // MySQL は整形せず1行で返す。そのまま1要素になる（サーバー側で整形しない）
+        assertEquals(List.of("select `u`.`id` AS `id` from `users` `u`"),
+                Dialects.Builder.splitLines("select `u`.`id` AS `id` from `users` `u`"));
+    }
+
+    /** 定義 SQL を含むスキーマファイルが、決定論的プリンタで往復してバイト単位で一致する。 */
+    @Test
+    void definitionRoundTripsThroughTheDataFile() {
+        Dialects.Builder builder = new Dialects.Builder();
+        builder.setDefinition(" SELECT users.id,\n    users.email\n   FROM users;");
+
+        String printed = print(Dialects.merge(schemaOf("v_users"), Map.of("v_users", builder)));
+        Table reparsed = new DataFileParser().parseTable(printed).value();
+
+        assertEquals(printed, new DataFilePrinter().printTable(reparsed));
+        assertEquals(3, reparsed.schema().definition().size());
+        assertTrue(printed.contains("definition: ["));
+    }
+
     private static String print(RawSchema schema) {
         return new DataFilePrinter().printTable(new Table(
                 RawSchema.idOf(schema.tables().get(0)), schema.tables().get(0),

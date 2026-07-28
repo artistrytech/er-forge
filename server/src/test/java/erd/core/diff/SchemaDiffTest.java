@@ -334,6 +334,46 @@ class SchemaDiffTest {
     }
 
     @Test
+    @DisplayName("K-18: ビュー定義の変更が差分項目として出る")
+    void detectsDefinitionChange() {
+        TableSchema users = FixtureModels.usersTable().schema();
+        TableSchema withDef = users.withDefinition(List.of("SELECT 1", "  FROM t"));
+        RawSchema raw = DiffFixtures.raw(withDef, FixtureModels.ordersTable().schema(),
+                FixtureModels.organizationsTable().schema());
+
+        DiffPlan plan = diff.plan(DiffFixtures.model(), raw, PatternList.EMPTY, List.of());
+
+        DiffItem def = plan.index().get("table:public.users/definition");
+        assertNotNull(def);
+        assertEquals("definition", def.kind());
+        assertNull(def.before(), "既存側は定義を持たない");
+        assertEquals("SELECT 1\n  FROM t", def.after());
+    }
+
+    @Test
+    @DisplayName("K-18: 層2 が定義を取れなかった回に「定義が消えた」差分を出さない")
+    void doesNotReportDefinitionLossWhenLayer2Fails() {
+        // 既存側は定義を持つが、今回の内省では Enhancer が失敗して空で返ってきた状況。
+        // これを差分にすると、権限やバージョンの都合で毎回「削除候補」が出続けることになる
+        TableSchema users = FixtureModels.usersTable().schema()
+                .withDefinition(List.of("SELECT 1"));
+        ProjectModel model = new ProjectModel(DiffFixtures.model().manifest(),
+                DiffFixtures.model().config(), DiffFixtures.model().dictionary(),
+                DiffFixtures.model().tables().stream()
+                        .map(tt -> tt.id().equals("public.users") ? tt.withSchema(users) : tt)
+                        .toList(),
+                DiffFixtures.model().diagrams());
+        RawSchema raw = DiffFixtures.raw(FixtureModels.usersTable().schema(),
+                FixtureModels.ordersTable().schema(),
+                FixtureModels.organizationsTable().schema());
+
+        DiffPlan plan = diff.plan(model, raw, PatternList.EMPTY, List.of());
+
+        assertNull(plan.index().get("table:public.users/definition"));
+        assertEquals(0, plan.stats().modified());
+    }
+
+    @Test
     @DisplayName("K-16: kind を持たない既存定義を再内省しても差分は出ない（既存プロジェクトの互換性）")
     void noDiffForLegacyModelWithoutKind() {
         // DiffFixtures のモデルは kind を持たない9引数コンストラクタで作られている＝既存データ相当

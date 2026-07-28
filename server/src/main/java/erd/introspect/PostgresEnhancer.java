@@ -38,6 +38,7 @@ public final class PostgresEnhancer implements DialectEnhancer {
         checks(conn, ns, byTable);
         enums(conn, ns, byTable);
         indexes(conn, ns, byTable);
+        definitions(conn, ns, byTable);
         return Dialects.merge(schema, byTable);
     }
 
@@ -117,6 +118,32 @@ public final class PostgresEnhancer implements DialectEnhancer {
                 while (rs.next()) {
                     builder(byTable, rs.getString("tbl")).addIndex(
                             rs.getString("name"), rs.getString("def"), rs.getString("predicate"));
+                }
+            }
+        }
+    }
+
+    private static final String DEFINITIONS_SQL = """
+            SELECT c.relname AS tbl, pg_get_viewdef(c.oid, true) AS def
+              FROM pg_class c
+              JOIN pg_namespace n ON n.oid = c.relnamespace
+             WHERE n.nspname = ? AND c.relkind IN ('v', 'm')
+             ORDER BY c.relname
+            """;
+
+    /**
+     * ビュー / マテリアライズドビューの定義 SQL（K-18）。
+     *
+     * <p>{@code pg_get_viewdef(oid, true)} は整形済み（複数行・インデント付き）で返し、同じ定義
+     * からは常に同じ文字列が出る。整形しない版を使うと1行に潰れ、Git 差分が読めなくなる。
+     */
+    private void definitions(Connection conn, String ns, Map<String, Dialects.Builder> byTable)
+            throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(DEFINITIONS_SQL)) {
+            ps.setString(1, ns);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    builder(byTable, rs.getString("tbl")).setDefinition(rs.getString("def"));
                 }
             }
         }

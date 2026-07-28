@@ -319,6 +319,49 @@ class IntrospectApplierTest {
     }
 
     @Test
+    @DisplayName("K-18: 定義 SQL が適用され、FK の剪定が走っても失われない")
+    void appliesAndKeepsDefinition() {
+        TableSchema users = FixtureModels.usersTable().schema();
+        TableSchema usersAsView = new TableSchema(users.name(), users.schema(), "VIEW",
+                users.comment(), users.columns(), users.primaryKey(), users.uniques(),
+                users.indexes(), users.foreignKeys(),
+                List.of(" SELECT users.id", "   FROM users;"), users.dialect());
+        RawSchema before = DiffFixtures.raw(usersAsView, FixtureModels.ordersTable().schema(),
+                FixtureModels.organizationsTable().schema());
+        ProjectModel withView = apply(DiffFixtures.model(), before, List.of()).model();
+        assertEquals(List.of(" SELECT users.id", "   FROM users;"),
+                DiffFixtures.table(withView, "public.users").schema().definition());
+
+        // organizations を削除 → users の FK が剪定される
+        RawSchema raw = DiffFixtures.raw(usersAsView, FixtureModels.ordersTable().schema());
+        DiffPlan plan = diff.plan(withView, raw, PatternList.EMPTY, List.of());
+        ApplyResult result = applier.apply(withView, raw, plan,
+                new LinkedHashSet<>(List.of("table:public.organizations")));
+
+        assertEquals(List.of(" SELECT users.id", "   FROM users;"),
+                DiffFixtures.table(result.model(), "public.users").schema().definition(),
+                "剪定で定義 SQL が消えてはならない");
+    }
+
+    @Test
+    @DisplayName("K-18: 層2 が定義を取れなかった回に既存の定義を消さない")
+    void keepsDefinitionWhenLayer2ReturnsNothing() {
+        TableSchema users = FixtureModels.usersTable().schema();
+        TableSchema withDef = users.withDefinition(List.of("SELECT 1"));
+        RawSchema first = DiffFixtures.raw(withDef, FixtureModels.ordersTable().schema(),
+                FixtureModels.organizationsTable().schema());
+        ProjectModel model = apply(DiffFixtures.model(), first, List.of()).model();
+
+        // 次の内省では Enhancer が失敗し、definition が空で返ってきた
+        RawSchema without = DiffFixtures.raw(users, FixtureModels.ordersTable().schema(),
+                FixtureModels.organizationsTable().schema());
+        ApplyResult result = apply(model, without, List.of());
+
+        assertEquals(List.of("SELECT 1"),
+                DiffFixtures.table(result.model(), "public.users").schema().definition());
+    }
+
+    @Test
     @DisplayName("K-16: kind の差分を選択しなければ既存の種別が保たれる")
     void kindChangeIsSelectable() {
         TableSchema users = FixtureModels.usersTable().schema();

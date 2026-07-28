@@ -90,6 +90,7 @@
         "onUpdate": "no action"
       }
     ],
+    "definition": [ ],
     "dialect": { }
   },
   "meta": {

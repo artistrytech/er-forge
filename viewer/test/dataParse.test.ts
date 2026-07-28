@@ -83,6 +83,9 @@ describe("fixtures をビューアのスキーマで読める", () => {
       expect(view.data.primaryKey).toBeUndefined();
       expect(view.data.foreignKeys).toBeUndefined();
       expect(view.data.meta?.logicalForeignKeys?.length).toBe(1);
+      // 定義 SQL は行の配列（K-18）。1本の文字列にすると Git 差分が読めない
+      expect(view.data.definition?.length).toBe(4);
+      expect(view.data.definition?.[0]).toBe(" SELECT users.id,");
     }
     const table = zTable.safeParse(runFixture("users.table.js"));
     expect(table.success).toBe(true);
