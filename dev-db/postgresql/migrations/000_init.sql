@@ -1,5 +1,13 @@
--- PostgreSQL用 DDLサンプル（約30テーブル）
-
+-- PostgreSQL用 DDLサンプル（約30テーブル）。dev-db の初期スキーマ（migrate.mjs が最初に流す）。
+--
+-- このファイルは2つの役割を兼ねる:
+--   1. dev-db（PostgreSQL）の初期スキーマ。001 以降のマイグレーションはこの上に積む
+--   2. **同梱サンプルデータの元データ**（gradlew generateSampleData がここをパースして
+--      server/src/main/resources/erd-sample を生成する）
+--
+-- 2 のため、**このファイルは PostgreSQL 方言のままでなければならない**（パーサが PostgreSQL 前提）。
+-- 他 DB 製品の同等スキーマは dev-db/<product>/migrations/000_init.sql に別に置いてある。
+--
 -- スキーマ: public
 
 -- -----------------------------

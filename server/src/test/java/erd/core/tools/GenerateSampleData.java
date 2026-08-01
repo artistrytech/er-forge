@@ -38,7 +38,8 @@ import java.util.stream.Stream;
 /**
  * 同梱サンプルデータの生成（設計書 §3.6）。
  *
- * <p>.docs/sample-schema.sql（PostgreSQL DDL）をパースし、論理名・論理制約・
+ * <p>dev-db/postgresql/migrations/000_init.sql（PostgreSQL DDL。dev-db の初期スキーマと
+ * 共用する）をパースし、論理名・論理制約・
  * ER図ページの配置例を加えた「完成状態」の data/** を生成する。出力は
  * server/src/main/resources/erd-sample/ にコミットし、fat JAR に同梱する。
  * ブートストラップ（POST /__erd/bootstrap）がこれをプロジェクトへ書き出す。

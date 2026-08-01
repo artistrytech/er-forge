@@ -8,13 +8,18 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * 追加 DB 検証（Phase 7）の共通ヘルパ。
  *
- * <p>DDL は {@code dev-db/ddl/*.sql}（{@code devdb.dir} システムプロパティで場所を渡す）から読む。
- * 手動 GUI 検証（docker compose）と自動テストで同じ DDL を共有し、二重管理を避ける。
+ * <p>初期スキーマは {@code dev-db/<product>/migrations/000_init.sql}（{@code devdb.dir}
+ * システムプロパティで dev-db の場所を渡す）から読む。手動 GUI 検証（docker compose）と
+ * 自動テストで同じファイルを共有し、二重管理を避ける。中身は PostgreSQL 版
+ * （同梱サンプルの元データ。26テーブル）を各製品の方言へ移植したもの。
  *
  * <p>SQL Server / Oracle のテストは docker compose が起動していないと skip する。
  * その判定に使えるよう、接続失敗を素直に伝える {@link #tryOpen} を用意する。
@@ -23,15 +28,71 @@ final class DbTestSupport {
 
     private DbTestSupport() {}
 
-    /** {@code dev-db/ddl/<name>.sql} を読み込む。 */
-    static String ddl(String name) {
+    /**
+     * 000_init.sql が作るテーブル（作成順）。3製品とも同じ構成を移植してある。
+     *
+     * <p>内省結果は名前の自然順（{@code Comparator.naturalOrder()}）に並ぶため、比較する側で
+     * {@code sorted()} してから使う。Oracle は識別子が大文字に畳まれ、{@code '_'} と英大文字の
+     * 大小関係が逆転する（{@code 'S' < '_'}）ので、**大文字化してから**並べ替えること。
+     */
+    static final List<String> SAMPLE_TABLES = List.of(
+            "users", "user_profiles", "user_addresses", "user_sessions", "roles", "user_roles",
+            "product_categories", "products", "product_images", "inventories", "product_reviews",
+            "product_tags", "product_tag_mappings",
+            "orders", "order_items", "shipments", "order_status_logs", "order_cancellations",
+            "payment_methods", "payments", "payment_histories", "refunds",
+            "points", "point_transactions", "point_campaigns", "point_bonus_rules");
+
+    /** 内省結果と比較するための期待値（自然順に整列済み）。 */
+    static List<String> sampleTablesSorted(boolean upperCase) {
+        return SAMPLE_TABLES.stream()
+                .map(t -> upperCase ? t.toUpperCase(java.util.Locale.ROOT) : t)
+                .sorted()
+                .toList();
+    }
+
+    /** {@code dev-db/<product>/migrations/000_init.sql} を読み込む。 */
+    static String initSql(String product) {
         String dir = System.getProperty("devdb.dir");
         if (dir == null) throw new IllegalStateException("devdb.dir system property is not set");
         try {
-            return Files.readString(Path.of(dir, "ddl", name + ".sql"));
+            return Files.readString(Path.of(dir, product, "migrations", "000_init.sql"));
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
+    }
+
+    /**
+     * スクリプト中の {@code CREATE TABLE} を書かれた順に拾う（スキーマ修飾は落とす）。
+     *
+     * <p>26テーブルの DROP をテスト側に手で並べると、DDL を1つ足すたびに書き漏らして
+     * 「前回の残骸が残ったまま内省する」ことになる。冪等化はここから導出する。
+     */
+    static List<String> createdTables(String script) {
+        List<String> names = new ArrayList<>();
+        Matcher m = Pattern.compile("(?im)^\\s*CREATE\\s+TABLE\\s+([\\w.\"]+)").matcher(script);
+        while (m.find()) {
+            String name = m.group(1).replace("\"", "");
+            int dot = name.lastIndexOf('.');
+            names.add(dot >= 0 ? name.substring(dot + 1) : name);
+        }
+        return names;
+    }
+
+    /**
+     * スクリプトが作るテーブルを**作成と逆順に**落とす（子から先に消えるので FK に触らない）。
+     * 存在しないものは黙って飛ばす。
+     *
+     * @param qualifier スキーマ修飾（{@code "dbo."} など。不要なら空文字）
+     * @param suffix    製品ごとの後置（Oracle の {@code " CASCADE CONSTRAINTS"} など。不要なら空文字）
+     */
+    static void dropAll(Connection conn, String script, String qualifier, String suffix) {
+        List<String> tables = new ArrayList<>(createdTables(script));
+        Collections.reverse(tables);
+        String[] statements = tables.stream()
+                .map(t -> "DROP TABLE " + qualifier + t + suffix)
+                .toArray(String[]::new);
+        runIgnoring(conn, statements);
     }
 
     /**

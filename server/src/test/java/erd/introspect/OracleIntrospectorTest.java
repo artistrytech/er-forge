@@ -1,6 +1,7 @@
 package erd.introspect;
 
 import erd.core.model.Column;
+import erd.core.model.ForeignKey;
 import erd.core.model.LogicalType;
 import erd.core.model.TableSchema;
 import org.junit.jupiter.api.AfterEach;
@@ -49,11 +50,10 @@ class OracleIntrospectorTest {
         props.put("oracle.jdbc.remarksReporting", "true");  // コメントを REMARKS に載せる
         conn = DbTestSupport.tryOpen(URL, "ERD", "erd", props);
         assumeTrue(conn != null, "Oracle (dev-db docker compose) is not reachable; skipping");
-        DbTestSupport.runIgnoring(conn,
-                "DROP TABLE orders CASCADE CONSTRAINTS",
-                "DROP TABLE users CASCADE CONSTRAINTS",
-                "DROP TABLE flyway_schema_history CASCADE CONSTRAINTS");
-        DbTestSupport.runScript(conn, DbTestSupport.ddl("oracle"));
+        String sql = DbTestSupport.initSql("oracle");
+        // CASCADE CONSTRAINTS を付けるので落とす順序は問わないが、逆順で子から消す
+        DbTestSupport.dropAll(conn, sql, "", " CASCADE CONSTRAINTS");
+        DbTestSupport.runScript(conn, sql);
     }
 
     @AfterEach
@@ -73,11 +73,11 @@ class OracleIntrospectorTest {
         assertTrue(raw.product().toLowerCase().contains("oracle"), raw.product());
 
         // Oracle は識別子を大文字に畳む
-        assertEquals(List.of("FLYWAY_SCHEMA_HISTORY", "ORDERS", "USERS"),
+        assertEquals(DbTestSupport.sampleTablesSorted(true),
                 raw.tables().stream().map(TableSchema::name).toList());
 
         TableSchema users = table(raw, "USERS");
-        assertEquals(List.of("ID", "EMAIL", "ORG_ID", "NOTE", "CREATED_AT"),
+        assertEquals(List.of("ID", "EMAIL", "PASSWORD", "CREATED_AT", "UPDATED_AT"),
                 users.columns().stream().map(Column::name).toList());
         assertEquals(List.of("ID"), users.primaryKey());
         assertTrue(users.columns().get(0).autoIncrement(), "GENERATED AS IDENTITY");
@@ -85,26 +85,42 @@ class OracleIntrospectorTest {
         Column email = column(users, "EMAIL");
         assertEquals(LogicalType.STRING, email.logicalType());
         assertFalse(email.nullable());
-        assertEquals(LogicalType.STRING, column(users, "NOTE").logicalType(), "CLOB は string");
         assertEquals(LogicalType.DATETIME, column(users, "CREATED_AT").logicalType());
+        assertEquals(LogicalType.STRING,
+                column(table(raw, "PRODUCTS"), "DESCRIPTION").logicalType(), "CLOB は string");
 
-        // コメントからの論理名補完（K-14 / P-02）に使う REMARKS を確認する
-        assertEquals("ユーザーマスタ", users.comment());
-        assertEquals("メールアドレス", email.comment());
+        // コメントからの論理名補完（K-14 / P-02）に使う REMARKS を確認する。
+        // 移植元（同梱サンプル）が持つのは表コメントだけで、列コメントは無い
+        assertEquals("ユーザー情報", users.comment());
+        assertEquals("商品レビュー", table(raw, "PRODUCT_REVIEWS").comment());
 
+        // PK の裏付けインデックスは畳み、UNIQUE 制約の裏付けだけが uniques に残る
         assertEquals(List.of("USERS_EMAIL_KEY"),
                 users.uniques().stream().map(u -> u.name()).toList());
-        assertEquals(List.of("IDX_USERS_CREATED_AT"),
-                users.indexes().stream().map(i -> i.name()).toList());
+        assertEquals(List.of(), users.indexes());
 
-        TableSchema orders = table(raw, "ORDERS");
-        // Oracle の NUMBER 系は固定小数点（decimal）として正規化される
-        assertEquals(LogicalType.DECIMAL, column(orders, "TOTAL").logicalType());
-        var fk = orders.foreignKeys().get(0);
-        assertEquals(List.of("USER_ID"), fk.columns());
-        assertTrue(fk.ref().table().toUpperCase().endsWith("USERS"), fk.ref().table());
+        // Oracle の NUMBER 系は桁の有無によらず固定小数点（decimal）として正規化される
+        assertEquals(LogicalType.DECIMAL,
+                column(table(raw, "ORDER_ITEMS"), "PRICE").logicalType());
+        assertEquals(LogicalType.DECIMAL,
+                column(table(raw, "ORDER_ITEMS"), "QUANTITY").logicalType());
+
+        // COMMENT は Oracle の予約語のため DDL で引用符を付けている（内省では他の列と同じ大文字）
+        assertEquals(LogicalType.STRING,
+                column(table(raw, "PRODUCT_REVIEWS"), "COMMENT").logicalType());
+
+        // 複合主キー
+        assertEquals(List.of("USER_ID", "ROLE_ID"), table(raw, "USER_ROLES").primaryKey());
+
+        TableSchema orderItems = table(raw, "ORDER_ITEMS");
+        var fk = orderItems.foreignKeys().stream()
+                .filter(f -> f.columns().equals(List.of("ORDER_ID"))).findFirst().orElseThrow();
+        assertTrue(fk.ref().table().toUpperCase().endsWith("ORDERS"), fk.ref().table());
         assertEquals(List.of("ID"), fk.ref().columns());
-        assertEquals("cascade", fk.onDelete());
+        // 移植元（同梱サンプル）は ON DELETE を指定していない。Oracle には NO ACTION が無く、
+        // ドライバは DELETE_RULE = importedKeyRestrict を返すため restrict になる
+        // （SQL Server / SQLite は同じ DDL で no action。製品差がそのまま出る）
+        assertEquals("restrict", fk.onDelete());
     }
 
     @Test
@@ -116,9 +132,10 @@ class OracleIntrospectorTest {
     @Test
     @DisplayName("K-06: 今回の内省に限った除外パターンが効く")
     void scopeExclude() throws Exception {
-        RawSchema raw = introspect(List.of("FLYWAY_*"));
-        assertEquals(List.of("ORDERS", "USERS"),
-                raw.tables().stream().map(TableSchema::name).toList());
+        RawSchema raw = introspect(List.of("POINT*"));
+        List<String> names = raw.tables().stream().map(TableSchema::name).toList();
+        assertEquals(DbTestSupport.SAMPLE_TABLES.size() - 4, names.size());
+        assertTrue(names.stream().noneMatch(n -> n.startsWith("POINT")), names.toString());
     }
 
     private static TableSchema table(RawSchema raw, String name) {

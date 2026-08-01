@@ -1,6 +1,7 @@
 package erd.introspect;
 
 import erd.core.model.Column;
+import erd.core.model.ForeignKey;
 import erd.core.model.LogicalType;
 import erd.core.model.TableSchema;
 import org.junit.jupiter.api.AfterEach;
@@ -40,10 +41,10 @@ class SqlServerIntrospectorTest {
     void setUp() throws Exception {
         conn = DbTestSupport.tryOpen(URL, "sa", "Erd_password1", null);
         assumeTrue(conn != null, "SQL Server (dev-db docker compose) is not reachable; skipping");
-        // 冪等化: FK を持つ側から先に落とす
-        DbTestSupport.runIgnoring(conn,
-                "DROP TABLE dbo.orders", "DROP TABLE dbo.users", "DROP TABLE dbo.flyway_schema_history");
-        DbTestSupport.runScript(conn, DbTestSupport.ddl("sqlserver"));
+        String sql = DbTestSupport.initSql("sqlserver");
+        // 冪等化: 作成の逆順に落とす（FK を持つ子テーブルから先に消える）
+        DbTestSupport.dropAll(conn, sql, "dbo.", "");
+        DbTestSupport.runScript(conn, sql);
     }
 
     @AfterEach
@@ -57,41 +58,49 @@ class SqlServerIntrospectorTest {
     }
 
     @Test
-    @DisplayName("スキーマモード・IDENTITY・NVARCHAR/BIT/DATETIME2/NUMERIC を標準メタデータで内省する")
+    @DisplayName("スキーマモード・IDENTITY・NVARCHAR/DATETIME2/NUMERIC/DATE を標準メタデータで内省する")
     void introspectsStandardMetadata() throws Exception {
         RawSchema raw = introspect(List.of());
         assertTrue(raw.product().toLowerCase().contains("sql server"), raw.product());
 
-        assertEquals(List.of("flyway_schema_history", "orders", "users"),
+        assertEquals(DbTestSupport.sampleTablesSorted(false),
                 raw.tables().stream().map(TableSchema::name).toList());
 
         TableSchema users = table(raw, "users");
-        assertEquals(List.of("id", "email", "org_id", "is_active", "created_at"),
+        assertEquals(List.of("id", "email", "password", "created_at", "updated_at"),
                 users.columns().stream().map(Column::name).toList());
         assertEquals(List.of("id"), users.primaryKey());
         assertTrue(users.columns().get(0).autoIncrement(), "IDENTITY 列");
 
-        Column email = users.columns().get(1);
+        Column email = column(users, "email");
         assertEquals(LogicalType.STRING, email.logicalType());
         assertFalse(email.nullable());
-        assertTrue(users.columns().get(2).nullable(), "org_id は NULL 可");
-        assertEquals(LogicalType.BOOL, column(users, "is_active").logicalType(), "BIT は bool");
+        assertTrue(column(users, "created_at").nullable(), "created_at は NULL 可");
         assertEquals(LogicalType.DATETIME, column(users, "created_at").logicalType());
 
-        // PK の裏付けインデックスは畳み、ユニーク / 非ユニークを振り分ける（§7.4）
+        TableSchema profiles = table(raw, "user_profiles");
+        assertEquals(LogicalType.DATE, column(profiles, "birth_date").logicalType());
+        assertEquals(LogicalType.STRING,
+                column(table(raw, "products"), "description").logicalType(), "NVARCHAR(MAX) は string");
+        assertEquals(LogicalType.DECIMAL, column(table(raw, "products"), "price").logicalType());
+        assertEquals(LogicalType.INT, column(table(raw, "inventories"), "quantity").logicalType());
+
+        // PK の裏付けインデックスは畳み、UNIQUE 制約の裏付けだけが uniques に残る（§7.4）
         assertEquals(List.of("users_email_key"),
                 users.uniques().stream().map(u -> u.name()).toList());
-        assertEquals(List.of("idx_users_created_at"),
-                users.indexes().stream().map(i -> i.name()).toList());
+        assertEquals(List.of(), users.indexes());
 
-        TableSchema orders = table(raw, "orders");
-        assertEquals(LogicalType.DECIMAL, column(orders, "total").logicalType());
-        var fk = orders.foreignKeys().get(0);
-        assertEquals("orders_user_id_fkey", fk.name());
-        assertEquals(List.of("user_id"), fk.columns());
-        assertTrue(fk.ref().table().endsWith("users"), fk.ref().table());
+        // 複合主キー
+        assertEquals(List.of("product_id", "tag_id"), table(raw, "product_tag_mappings").primaryKey());
+
+        TableSchema orderItems = table(raw, "order_items");
+        var fk = orderItems.foreignKeys().stream()
+                .filter(f -> f.name().equals("order_items_order_id_fkey")).findFirst().orElseThrow();
+        assertEquals(List.of("order_id"), fk.columns());
+        assertTrue(fk.ref().table().endsWith("orders"), fk.ref().table());
         assertEquals(List.of("id"), fk.ref().columns());
-        assertEquals("cascade", fk.onDelete());
+        // 移植元（同梱サンプル）は ON DELETE を指定していないため既定の no action になる
+        assertEquals(ForeignKey.DEFAULT_ACTION, fk.onDelete());
     }
 
     @Test
@@ -103,9 +112,10 @@ class SqlServerIntrospectorTest {
     @Test
     @DisplayName("K-06: 今回の内省に限った除外パターンが効く")
     void scopeExclude() throws Exception {
-        RawSchema raw = introspect(List.of("flyway_*"));
-        assertEquals(List.of("orders", "users"),
-                raw.tables().stream().map(TableSchema::name).toList());
+        RawSchema raw = introspect(List.of("point*"));
+        List<String> names = raw.tables().stream().map(TableSchema::name).toList();
+        assertEquals(DbTestSupport.SAMPLE_TABLES.size() - 4, names.size());
+        assertTrue(names.stream().noneMatch(n -> n.startsWith("point")), names.toString());
     }
 
     private static TableSchema table(RawSchema raw, String name) {

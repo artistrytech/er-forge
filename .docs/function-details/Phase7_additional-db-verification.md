@@ -8,10 +8,14 @@ Oracle, SQLite, H2 …）は、ユーザーが JDBC ドライバの jar を追�
 
 ## 1. 検証の形
 
-H2 の検証（`JdbcIntrospectorTest`）と**同じスキーマ**（`users` / `orders` /
-`flyway_schema_history`）を各 DB の方言で用意し、内省結果を突き合わせる。DDL は
-`dev-db/ddl/{sqlite,sqlserver,oracle}.sql` に置き、**手動 GUI 検証と自動テストで共有する**
-（二重管理を避ける）。
+同梱サンプルの元データ（`dev-db/postgresql/migrations/000_init.sql`。26テーブル）を各 DB の
+方言へ移植したものを用意し、内省結果を突き合わせる。DDL は
+`dev-db/{sqlite,sqlserver,oracle}/migrations/000_init.sql` に置き、**手動 GUI 検証と自動テストで
+共有する**（二重管理を避ける）。製品ごとの移植で変えたところは各ファイルの先頭に書いてある。
+
+段階的なスキーマ変更（`001`〜`008`）は **PostgreSQL でのみ**用意する。差分検出・リネーム候補の
+検証は層1に依存しないため製品ごとに繰り返す意味が薄く、`001` が扱う ENUM・部分インデックス・
+式インデックスに至っては、拾う側の層2（`DialectEnhancer`）が PostgreSQL / MySQL にしか無い。
 
 | DB | ドライバ | 実行環境 | テスト |
 |---|---|---|---|
@@ -45,6 +49,9 @@ H2 の検証（`JdbcIntrospectorTest`）と**同じスキーマ**（`users` / `o
 - コメント構文（`COMMENT ON`）が無いため、論理名のコメント補完（K-14）は対象外。
 - 内部テーブル（`sqlite_schema` / `sqlite_sequence`）は `getTables(type=TABLE)` で除外され、
   内省結果に現れない。
+- **UNIQUE 制約の名前が残らない。** 表制約として書くと裏付けインデックスは
+  `sqlite_autoindex_<表>_<連番>` になり、制約名が失われる。移植版では `CREATE UNIQUE INDEX` で
+  明示的に名前を付け、他製品と内省結果が揃うようにしている。
 
 > **上の2点（型アフィニティ・番兵 COLUMN_SIZE）は `TypeMapper` を実際に直したフェーズ7の成果。**
 > SQLite の検証が無ければ、無意味な桁付き型が出力に混入していた。
@@ -53,7 +60,8 @@ H2 の検証（`JdbcIntrospectorTest`）と**同じスキーマ**（`users` / `o
 
 - **スキーマモード。** `getSchemas()` が `dbo` を返す。名前空間は `dbo`、データベースは catalog。
 - **IDENTITY** 列は `IS_AUTOINCREMENT=YES` で取れる。
-- 型: `NVARCHAR`→string / `BIT`→bool / `DATETIME2`→datetime / `NUMERIC`→decimal。
+- 型: `NVARCHAR`→string / `NVARCHAR(MAX)`→string / `DATETIME2`→datetime / `DATE`→date /
+  `NUMERIC`→decimal / `INT`→int。
 - **表・列コメントは JDBC の `REMARKS` に出ない**（拡張プロパティに入るため）。コメント補完
   （K-14）は PostgreSQL / Oracle 側で検証する。
 - 既定 DB（master）に検証用 DB が無いため、docker compose の `sqlserver-init` が
@@ -70,6 +78,12 @@ H2 の検証（`JdbcIntrospectorTest`）と**同じスキーマ**（`users` / `o
 - 型: `VARCHAR2`→string / `CLOB`→string / `TIMESTAMP`→datetime / `NUMBER`系→decimal。
   Oracle の `NUMBER` は整数用途でも固定小数点として扱われる（`id` も logicalType は decimal）。
 - **12c+ の `GENERATED ... AS IDENTITY`** は `IS_AUTOINCREMENT=YES` で取れる。
+- **`ON DELETE` を書かない FK が `restrict` になる。** Oracle に `NO ACTION` は無く、ドライバは
+  `DELETE_RULE = importedKeyRestrict` を返す。同じ DDL でも SQL Server / SQLite は `no action`
+  になるため、**FK の削除規則は製品差がそのまま内省結果に出る**（26テーブルの移植版を
+  3製品で流して確認した）。逆生成した定義を製品間で比較するときの注意点。
+- **予約語は引用符が要る。** `COMMENT` は Oracle の予約語のため、移植版では `"COMMENT"` と
+  書いている。大文字で引用しているので、内省結果は引用しない識別子と同じ大文字になる。
 
 ## 3. 運用上の含意（接続 UI・ドライバ）
 

@@ -302,7 +302,7 @@ erd/workspace-*/data/** text eol=lf
 | **サンプルデータを取り込む** | ツールに同梱したサンプル（約30テーブルの `data/**` 一式）を書き出す。DB を用意せずに機能を試せる |
 | （将来）**空のプロジェクトを作成する** | テーブルの手動作成（J-01）が実装された時点で選択肢に追加する |
 
-- サンプルデータは `.docs/sample-schema.sql`（約30テーブルの PostgreSQL DDL。日本語コメント付き）を元に、**実装時に生成して同梱する**（論理名・論理制約・ER図ページの配置例を含んだ、完成状態のサンプルとする）。
+- サンプルデータは `dev-db/postgresql/migrations/000_init.sql`（約30テーブルの PostgreSQL DDL。日本語コメント付き。dev-db の初期スキーマと共用）を元に、**実装時に生成して同梱する**（論理名・論理制約・ER図ページの配置例を含んだ、完成状態のサンプルとする）。
 - 既存の `data/**` がある状態では、サンプルの取り込みを**実行できない**（上書き事故を防ぐ）。
 - **静的モードで `data/**` が空の場合**は、「データがありません。サーバーモードで起動して初期化してください」と表示する（静的モードには初期化手段がない）。
 
@@ -1173,7 +1173,7 @@ React Flow の標準機能（d3-zoom ベース）を使用する。
 |---|---|---|
 | **0** | `server/core`: モデル定義（machine / human の型分離）、Jackson パーサ（未知キーの保持）、**決定論的プリンタ**、`index.js` 生成（カーディナリティの解決）、`schemaVersion` の移行基盤、golden fixture（[詳細設計](function-details/Phase0_model-printer-index.md)） | 「ファイル → 読み取り → 書き戻し → 元と**バイト単位で完全一致**」がテストで保証される。Java / TS の出力一致も CI で保証される |
 | **1** | `viewer`: 静的モードのビューア（ハッシュルーター、i18n、インクリメンタルロード、React Flow（テーブル名ノード + 物理 / 論理エッジ + カーディナリティ）、ページ切替、ズーム、検索、詳細ダイアログ、テーブルカタログ（一覧・詳細）） | サンプルの `data/**` を `file://` で開いて閲覧でき、ER図 ⇔ カタログを標準のリンクで行き来できる |
-| **2** | ビルド: Vite singlefile による `index.html`、Gradle shadowJar による `erd-server.jar`、ZIP 化手順、**サンプルデータの同梱**（`.docs/sample-schema.sql` から生成） | Release の ZIP を展開して閲覧・起動できる。空の状態から「サンプルを取り込む」で動作を確認できる |
+| **2** | ビルド: Vite singlefile による `index.html`、Gradle shadowJar による `erd-server.jar`、ZIP 化手順、**サンプルデータの同梱**（`dev-db/postgresql/migrations/000_init.sql` から生成） | Release の ZIP を展開して閲覧・起動できる。空の状態から「サンプルを取り込む」で動作を確認できる |
 | **3** | `server/web`: Javalin、**静的配信 + 書き込み API**、モード判定、**初回起動のブートストラップ**、**形式の自動移行**、編集セッション（閲覧ルート / 編集ルート）、ドラッグの永続化（**明示保存**）、保存時の競合検出（内容ハッシュ）、WatchService + SSE + 外部変更のバナー通知、Undo / Redo、配置のエクスポート（[詳細設計](function-details/H01-H13_layout-edit-sync-undo.md)） | GUI でノードを動かして [保存] すると `data/diagrams/*.js` が更新される。外部変更を踏み潰さない。古い形式のデータを開くと自動移行される |
 | **4** | テーブル編集画面、論理名（テーブル / カラム個別）、カラム論理名の横断一括編集画面、論理一意制約 / 論理外部制約の編集 | 論理名・論理制約を GUI で設定でき、ER図に破線エッジとして反映される |
 | **5** | `server/introspect`: JDBC 標準内省、ドライバ動的ロード、テーブル無視リスト、差分プレビュー、リネーム検出、部分適用、コメントからの論理名補完、アトミック適用（[詳細設計](function-details/K08-K13_introspect-diff-apply.md)） | PostgreSQL / MySQL から逆生成しても `data/diagrams/**` と `meta`（論理名・論理制約）が保持される |

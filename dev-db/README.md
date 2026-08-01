@@ -7,12 +7,41 @@
   内省が成立することを確かめる（→ [追加 DB の検証](../.docs/function-details/Phase7_additional-db-verification.md)）。
 - **SQLite**（Phase 7）: サーバー不要。内省テストがプロセス内で完結する（docker 不要）。
 
+## ディレクトリ構成
+
+DB 製品ごとに `<product>/migrations/` を持つ。`000_init.sql` が初期スキーマで、**4製品とも
+同じ26テーブル**（PostgreSQL 版を各方言へ移植したもの）。移植で変えたところは各ファイルの
+先頭のコメントに書いてある。
+
+```
+dev-db/
+├── postgresql/migrations/
+│   ├── 000_init.sql          初期スキーマ。**同梱サンプルの元データを兼ねる**（下記）
+│   └── 001〜008_*.sql        段階的なスキーマ変更（逆生成の差分を試す。PostgreSQL のみ）
+├── sqlserver/migrations/000_init.sql
+├── oracle/migrations/000_init.sql
+├── sqlite/migrations/000_init.sql
+├── docker-compose.yml
+└── migrate.mjs               マイグレーション実行ツール（PostgreSQL 専用）
+```
+
+`postgresql/migrations/000_init.sql` は **`gradlew generateSampleData` の入力**でもある
+（同梱サンプルデータの元データ）。パーサが PostgreSQL 前提のため、**このファイルは
+PostgreSQL 方言のままにしておくこと**。
+
+`001`〜`008` は PostgreSQL にしか無い。差分検出・リネーム候補の検証は層1に依存せず製品ごとに
+繰り返す意味が薄いうえ、`001` が扱う ENUM・部分インデックス・式インデックスは、拾う側の層2
+（`DialectEnhancer`）が PostgreSQL / MySQL にしか無いためである。
+
 ## 起動
+
+**コンテナは空の DB で起動する**（compose は DDL を流さない）。スキーマは migrate.mjs で入れる。
 
 ```sh
 cd dev-db
-docker compose up -d          # 初回は .docs/sample-schema.sql（約30テーブル）が自動で流れる
+docker compose up -d          # 空の PostgreSQL が起動する
 npm install                   # マイグレーションツールの依存（pg）
+node migrate.mjs up 000       # 初期スキーマ（約30テーブル）を流す
 ```
 
 | 項目 | 値 |
@@ -21,20 +50,24 @@ npm install                   # マイグレーションツールの依存（pg�
 | ユーザー / パスワード | `erd` / `erd` |
 | 対象スキーマ | `public` |
 
-DB を作り直す（初期 DDL からやり直す）: `docker compose down -v && docker compose up -d`
+DB を作り直す（初期スキーマからやり直す）:
+`docker compose down -v && docker compose up -d && node migrate.mjs up 000`
 
 > Docker が WSL 側にしか無い場合は `wsl docker compose up -d` のように呼ぶ。
 > マイグレーションツールは TCP で繋ぐだけなので、Windows 側の node からそのまま動く。
 
 ## マイグレーション
 
+対象は **PostgreSQL のみ**（`migrate.mjs` は `pg` だけに依存する）。
+
 ```sh
 node migrate.mjs status       # 適用済み / 未適用の一覧
 node migrate.mjs up           # 未適用をすべて適用
+node migrate.mjs up 000       # 初期スキーマだけ入れて止める
 node migrate.mjs up 003       # 003 まで適用して止める（段階的に逆生成を試す）
 ```
 
-- `migrations/*.sql` をファイル名の昇順に適用する
+- `postgresql/migrations/*.sql` をファイル名の昇順に適用する（`000_init.sql` が初期スキーマ）
 - 適用済みかどうかは **`erd_migrate.schema_migrations`** テーブル1つで判断する
 - 1ファイル = 1トランザクション。失敗すればロールバックし、記録も残らない
 
@@ -82,9 +115,14 @@ DB で実際に確かめる。**層1（`JdbcIntrospector`）だけで内省が�
 各 DB ごとの挙動・既知の癖の詳細は
 [追加 DB の検証](../.docs/function-details/Phase7_additional-db-verification.md) にまとめてある。
 
+スキーマは3製品とも `<product>/migrations/000_init.sql`（PostgreSQL 版と同じ26テーブルの移植）。
+**テストが接続後に自分で流す**（毎回 DROP → CREATE で冪等。落とす順序は DDL の CREATE TABLE の
+並びから導出するので、テーブルを足しても書き漏らさない）。手動 GUI で試したいときは、その
+ファイルを DB クライアントで実行してからツールの `#/introspect` で下の URL に接続する。
+
 ### SQLite（docker 不要）
 
-サーバーを立てないため、テストがプロセス内で完結する。DDL は `ddl/sqlite.sql`。
+サーバーを立てないため、テストがプロセス内で完結する（`:memory:` に毎回作り直す）。
 
 ```sh
 cd server && ./gradlew test --tests 'erd.introspect.SqliteIntrospectorTest'
@@ -117,7 +155,4 @@ cd server && ./gradlew test --tests 'erd.introspect.OracleIntrospectorTest'
 | 対象スキーマ | `ERD`（Oracle は識別子を大文字に畳む） |
 
 - **テストは DB が起動していなければ自動 skip する**（`assumeTrue`）。Docker を必須ゲートにしない。
-- テーブルの DDL（`ddl/sqlserver.sql` / `ddl/oracle.sql`）は、テストが接続後に自分で流す
-  （毎回 DROP → CREATE で冪等）。手動 GUI で試したいときは、その DDL を DB クライアントで実行してから
-  ツールの `#/introspect` で上の URL に接続する。
 - 使い終わったら `docker compose --profile mssql --profile oracle down -v` で落とす（重いので放置しない）。

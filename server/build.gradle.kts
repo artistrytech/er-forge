@@ -66,14 +66,15 @@ tasks.register<JavaExec>("generateFixtures") {
     args(file("../fixtures").absolutePath)
 }
 
-// 同梱サンプルデータの再生成（.docs/sample-schema.sql → resources/erd-sample。出力をコミットする）
+// 同梱サンプルデータの再生成（dev-db の PostgreSQL 初期スキーマ → resources/erd-sample。
+// 出力をコミットする）。入力は dev-db の 000_init.sql と共用で、二重管理を避けている
 tasks.register<JavaExec>("generateSampleData") {
     group = "build"
-    description = "Regenerate bundled sample data from .docs/sample-schema.sql"
+    description = "Regenerate bundled sample data from dev-db/postgresql/migrations/000_init.sql"
     mainClass = "erd.core.tools.GenerateSampleData"
     classpath = sourceSets["test"].runtimeClasspath
     args(
-        file("../.docs/sample-schema.sql").absolutePath,
+        file("../dev-db/postgresql/migrations/000_init.sql").absolutePath,
         file("src/main/resources/erd-sample").absolutePath,
     )
 }

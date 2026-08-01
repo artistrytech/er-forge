@@ -6,13 +6,15 @@
 #   docker compose --profile mssql  up -d      # SQL Server（+ erd_sample DB を作る init）
 #   docker compose --profile oracle up -d      # Oracle（gvenzl/oracle-free）
 #
-# PostgreSQL の初期 DDL は .docs/sample-schema.sql（同梱サンプルの元データ）をそのまま流用する。
-# コンテナの初回起動時にだけ /docker-entrypoint-initdb.d/*.sql が実行される。
-# 作り直したいときは `docker compose down -v`（ボリュームごと消す）→ `up -d`。
+# **どの DB も空で起動する。** スキーマは compose では流さない。
+#   PostgreSQL      ... node migrate.mjs up（postgresql/migrations/000_init.sql が初期スキーマ）
+#   SQL Server / Oracle ... 内省テスト（Sql*IntrospectorTest）が接続後に
+#                           <product>/migrations/000_init.sql を自分で流す。
+#                           手動 GUI 検証で使うときは README の手順で流す
 #
-# SQL Server / Oracle は空の DB / ユーザーだけ用意し、テーブルの DDL（dev-db/ddl/*.sql）は
-# 内省テスト（Sql*IntrospectorTest）が接続後に自分で流す。手動 GUI 検証で使うときは
-# README の手順で DDL を流す。
+# initdb.d で初期 DDL を流していた頃は、同じスキーマを作る経路が2つ（compose と migrate.mjs）に
+# なり、000 が「未適用」のまま残った。初期化もマイグレーションの1本目として通し、経路を1つに保つ。
+# 作り直したいときは `docker compose down -v`（ボリュームごと消す）→ `up -d` → `node migrate.mjs up`。
 #
 # ポートは既存のインスタンスとぶつからないよう PostgreSQL は 5442 にしている
 # （SQL Server 1433 / Oracle 1521 は既定のまま）。
@@ -30,7 +32,6 @@ services:
       - "5442:5432"
     volumes:
       - erd-dev-db-data:/var/lib/postgresql/data
-      - ../.docs/sample-schema.sql:/docker-entrypoint-initdb.d/001_sample_schema.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U erd -d erd_sample"]
       interval: 3s

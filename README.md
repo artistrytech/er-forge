@@ -19,7 +19,7 @@
 | `viewer/` | TypeScript / React / Vite。単一 `index.html` に全アセットをインライン化 |
 | `fixtures/` | Java / TS 共通の golden fixture（プリンタ出力の一致を保証） |
 | `distribution/` | 配布 ZIP に同梱する固定ファイル（起動スクリプト・README） |
-| `dev-db/` | 動作確認用の DB（PostgreSQL / SQL Server / Oracle の docker compose）とマイグレーション・検証用 DDL（→ [README](dev-db/README.md)） |
+| `dev-db/` | 動作確認用の DB（PostgreSQL / SQL Server / Oracle の docker compose）と、DB 製品ごとのスキーマ・マイグレーション（→ [README](dev-db/README.md)） |
 
 ## 開発環境の起動
 
@@ -71,8 +71,11 @@ PowerShell では `$env:ERD_PORT="5400"` を先に実行する。
 逆生成を実 DB に対して試すための PostgreSQL（docker compose）と、
 段階的に適用できるマイグレーション一式を [dev-db/](dev-db/README.md) に用意している。
 
+コンテナは**空の DB で起動する**。スキーマは初期化（`000_init.sql`）も含めて migrate.mjs で入れる。
+
 ```sh
 cd dev-db && docker compose up -d && npm install
+node migrate.mjs up 000     # 初期スキーマ（約30テーブル。同梱サンプルの元データ）
 node migrate.mjs up 001     # ENUM / CHECK / 部分・式インデックスまで適用
 ```
 
@@ -134,7 +137,8 @@ Maven からダウンロードできる（設定は全ワークスペース共�
 
 ## 同梱サンプルデータの再生成
 
-`.docs/sample-schema.sql` を変更した場合:
+`dev-db/postgresql/migrations/000_init.sql`（dev-db の初期スキーマ = 同梱サンプルの元データ）を
+変更した場合:
 
 ```sh
 cd server && ./gradlew generateSampleData

@@ -1,15 +1,22 @@
 /**
- * 最小のマイグレーション実行ツール。
+ * 最小のマイグレーション実行ツール（PostgreSQL 専用）。
  *
  *   node migrate.mjs status   適用済み / 未適用の一覧を表示する
  *   node migrate.mjs up       未適用のマイグレーションを順に適用する
  *   node migrate.mjs up 003   003 まで適用して止める（逆生成を段階的に試すため）
  *
  * 仕組みはこれだけ:
- * - `migrations/*.sql` をファイル名の昇順に適用する（連番を先頭に付ける）
+ * - `postgresql/migrations/*.sql` をファイル名の昇順に適用する（連番を先頭に付ける）
+ * - 000_init.sql が初期スキーマ（同梱サンプルの元データ。26テーブル）。
+ *   **docker compose は初期 DDL を流さない**（`docker compose up -d` の直後は空の DB）。
+ *   初期化もマイグレーションの1本目として通し、経路を1つに保つ
  * - 適用済みかどうかは管理テーブル1つで判断する
  * - 1ファイル = 1トランザクション。失敗したらロールバックし、記録も残さない
  *   （PostgreSQL は DDL もトランザクションに入るため、中途半端な適用が残らない）
+ *
+ * 他 DB 製品（SQL Server / Oracle / SQLite）はここでは扱わない。各製品の
+ * `<product>/migrations/000_init.sql` は内省テストが接続後に自分で流す（手動 GUI 検証では
+ * DB クライアントから流す）。段階的なスキーマ変更の検証は PostgreSQL でのみ行う。
  *
  * 管理テーブルは **public ではなく専用スキーマ（erd_migrate）に置く**。
  * public に置くと、このツール自身の管理テーブルが逆生成の対象になり、
@@ -24,7 +31,7 @@ import { fileURLToPath } from "node:url";
 import pg from "pg";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const MIGRATIONS_DIR = join(here, "migrations");
+const MIGRATIONS_DIR = join(here, "postgresql", "migrations");
 const DATABASE_URL =
   process.env.DATABASE_URL ?? "postgres://erd:erd@localhost:5442/erd_sample";
 
