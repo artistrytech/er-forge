@@ -7,6 +7,7 @@
  * - ER図が描画される（ノード = テーブル名、エッジ = 物理FK実線 / 論理FK破線、カーディナリティ記号）
  * - ER図 ⇔ テーブルカタログをブラウザ標準のリンクで行き来できる（X-04 / B-10）
  * - ページ切替・検索（Ctrl+K）・詳細ダイアログ・未知ルート・言語切替・戻る
+ * - ツールメニューからの全スキーマ情報の JSON 書き出し（静的モードでも使える）
  *
  * データは e2e/fixtures/data（このテスト専用の小さな固定データ）を使う。
  * ビルド成果物に data/ を含めないため（配布物は index.html だけを配る）、ここで組み立てる。
@@ -14,7 +15,7 @@
  * ブラウザはシステムの Edge / Chrome を使う（playwright のブラウザダウンロード不要）。
  */
 import { chromium } from "playwright";
-import { cpSync, copyFileSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
@@ -257,6 +258,42 @@ async function main() {
     "static mode cannot add workspaces",
     (await page.locator('[data-testid="workspace-add"]').count()) === 0,
   );
+  await page.keyboard.press("Escape");
+
+  // 11c) ツール（工具）: 全スキーマ情報を1つの JSON で書き出す。静的モードでも使えることが要件
+  await page.click('[data-testid="tools-button"]');
+  await page.waitForSelector('[data-testid="tools-menu"]');
+  const [download] = await Promise.all([
+    page.waitForEvent("download", { timeout: 15000 }),
+    page.click('[data-testid="export-schema-json"]'),
+  ]);
+  check("schema export downloads a json file", download.suggestedFilename() === "schema-default.json");
+  const exported = readFileSync(await download.path(), "utf-8");
+  const schema = JSON.parse(exported);
+  check("export contains every table with its metadata", schema.tables.length === 6);
+  check("export contains the relations", schema.relations.length > 0);
+  check(
+    "export carries the hand-written metadata (logical names / notes)",
+    schema.tables.some((t) => t.meta?.displayName),
+  );
+  // 辞書は独立したキーでは出さず、カラム論理名とタグをテーブルへ畳んで出す（色は運ばない）。
+  // fixture の created_at は辞書だけが論理名・タグを持つカラム
+  check("the dictionary is not a separate key", schema.dictionary === undefined);
+  check(
+    "dictionary column names and tags are merged into the tables",
+    schema.tables
+      .filter((t) => t.columns.some((c) => c.name === "created_at"))
+      .every(
+        (t) =>
+          JSON.stringify(t.meta?.columns?.created_at) ===
+          JSON.stringify({ displayName: "作成日時", tags: ["監査"] }),
+      ),
+  );
+  check(
+    "export has no page / layout information",
+    schema.diagrams === undefined && !exported.includes('"pos"') && !exported.includes("diagrams/"),
+  );
+  check("export is minified", !exported.includes("\n"));
   await page.keyboard.press("Escape");
 
   // 12) ブラウザの戻る（X-05）

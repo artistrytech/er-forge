@@ -473,6 +473,28 @@ function markTableError(id: string, error: string): void {
 }
 
 /**
+ * 全テーブルが揃うまで待つ（スキーマ JSON の書き出し）。
+ *
+ * 段階5 のバックグラウンドロードは**アイドル待ち**なので、書き出しの時点で終わっている保証がない。
+ * ここでは待たずに詰めて読む。`loadTable` が済んだもの・実行中のものを共有するため、
+ * 二重読み込みにはならない。読めなかったテーブル（`tableErrors`）はここでは再試行せず、
+ * 呼び出し側が「書き出せなかったもの」として扱う。
+ */
+export async function loadAllTables(): Promise<void> {
+  const manifest = useAppStore.getState().manifest;
+  if (!manifest) return;
+  const ids = Object.keys(manifest.tables ?? {});
+  const MAX_PARALLEL = 8;
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    while (next < ids.length) {
+      await loadTable(ids[next++]!);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(MAX_PARALLEL, ids.length) }, worker));
+}
+
+/**
  * 段階5: アイドル時のバックグラウンドロード（§6.2）。
  * requestIdleCallback（未対応環境は setTimeout）でチャンク実行し、並列度 8 に制限する。
  */

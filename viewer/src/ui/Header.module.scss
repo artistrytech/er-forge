@@ -152,7 +152,7 @@
   white-space: nowrap;
 }
 
-/* ---- ヘッダのプルダウン（information・設定） ---- */
+/* ---- ヘッダのプルダウン（ツール・information・設定） ---- */
 
 .menu-anchor {
   position: relative;
@@ -160,7 +160,8 @@
 }
 
 .settings-dropdown,
-.info-dropdown {
+.info-dropdown,
+.tools-dropdown {
   position: absolute;
   top: calc(100% + 6px);
   right: 0;
@@ -223,6 +224,50 @@
 /* 設定メニュー内のボタンは左寄せで並べる（見た目は共有の Button に任せる） */
 .block-button {
   align-self: flex-start;
+}
+
+/* ---- ツール（データの持ち出し。1件 = 見出し + 補足の縦積み） ---- */
+
+.tools-dropdown {
+  min-width: 260px;
+  max-width: 320px;
+  padding: 6px;
+  gap: 2px;
+}
+
+.tool-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tool-item:hover:not(:disabled) {
+  background: var(--accent-soft);
+}
+
+.tool-item:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.tool-item-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.tool-item-hint {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-muted);
 }
 
 /* ---- information（読むだけ。操作は置かない） ---- */

@@ -10,12 +10,19 @@ import { useEffect, useState } from "react";
 import { useI18n } from "../i18n/useI18n";
 import { apiPatch, apiPost, wpath } from "../model/api";
 import { useEditStore } from "../model/editStore";
+import { loadAllTables } from "../model/loader";
 import { usePageEditStore, type PageEditController } from "../model/pageEditStore";
 import type { NameDisplay } from "../model/logicalName";
+import {
+  buildSchemaExport,
+  schemaExportFileName,
+  serializeSchemaExport,
+} from "../model/schemaExport";
 import { queueToastAfterReload, totalTableCount, useAppStore } from "../model/store";
 import { isValidWorkspaceId, type WorkspaceRef } from "../model/workspace";
 import type { Lang } from "../i18n/messages";
 import { cx } from "../lib/cx";
+import { downloadText } from "../lib/download";
 import { Button } from "./Button";
 import { Dialog } from "./Dialog";
 import { Link } from "./Link";
@@ -114,8 +121,9 @@ export function Header({ currentDiagramId }: { currentDiagramId?: string }) {
         )}
       </nav>
       <div className={styles.appHeaderRight}>
-        {/* 画面によって出入りする編集操作を右端に置き、常設の information・設定はその左に固定する
+        {/* 画面によって出入りする編集操作を右端に置き、常設のツール・information・設定はその左に固定する
             （編集操作の有無でアイコンの位置がずれないようにするため） */}
+        <ToolsMenu />
         <InfoMenu />
         <SettingsMenu />
         <EditControls route={route} />
@@ -152,6 +160,85 @@ function NavLink({
     <Link className={className} href={href}>
       {children}
     </Link>
+  );
+}
+
+// ------------------------------------------------------------------ ツールメニュー（工具）
+
+/**
+ * ツール（データの持ち出し）。今は「全スキーマ情報を JSON で書き出す」1件だが、
+ * 同種の一括操作が増える場所として独立したプルダウンにしている。
+ *
+ * 中身は手元に読み込み済みのデータから組み立てるため、**静的モードでも同じように使える**
+ * （サーバー API を経由しない）。書き出しの中身の線引きは schemaExport.ts を参照。
+ */
+function ToolsMenu() {
+  const { t } = useI18n();
+  const addToast = useAppStore((s) => s.addToast);
+  const { open, setOpen, toggle, ref } = useDropdown();
+  const [busy, setBusy] = useState(false);
+
+  const exportSchema = async (): Promise<void> => {
+    setBusy(true);
+    try {
+      // 書き出しは全テーブルが対象。バックグラウンドロードの進み具合に依存させない
+      await loadAllTables();
+      const s = useAppStore.getState();
+      const { data, missing } = buildSchemaExport({
+        manifest: s.manifest,
+        index: s.index,
+        dictionary: s.dictionary,
+        tables: s.tables,
+      });
+      downloadText(
+        schemaExportFileName(s.workspaceId),
+        serializeSchemaExport(data),
+        "application/json",
+      );
+      setOpen(false);
+      addToast(t("tools.exportSchemaDone", { n: data.tables.length }));
+      // 読めなかったテーブルは黙って落とさない（件数だけ出す。原因はテーブル画面側で分かる）
+      if (missing.length > 0) {
+        addToast(t("tools.exportSchemaPartial", { n: missing.length }), "error");
+      }
+    } catch {
+      addToast(t("tools.exportSchemaFailed"), "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className={styles.menuAnchor} ref={ref}>
+      <button
+        type="button"
+        className={cx(styles.iconButton, open && styles.active)}
+        data-testid="tools-button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        title={t("tools.title")}
+        onClick={toggle}
+      >
+        <ToolIcon />
+      </button>
+      {open && (
+        <div className={styles.toolsDropdown} role="menu" data-testid="tools-menu">
+          <button
+            type="button"
+            role="menuitem"
+            className={styles.toolItem}
+            data-testid="export-schema-json"
+            disabled={busy}
+            onClick={() => void exportSchema()}
+          >
+            <span className={styles.toolItemLabel}>
+              {busy ? t("tools.exportSchemaBusy") : t("tools.exportSchema")}
+            </span>
+            <span className={styles.toolItemHint}>{t("tools.exportSchemaHint")}</span>
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -765,6 +852,16 @@ function ExportIcon() {
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
       <polyline points="7 10 12 15 17 10" />
       <line x1="12" y1="15" x2="12" y2="3" />
+    </svg>
+  );
+}
+
+/** ツール（レンチ）。データの持ち出しなど、画面に紐づかない一括操作の入口 */
+function ToolIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+      <path d="M14.7 6.3a4 4 0 0 0 5 5l-9 9a2.5 2.5 0 0 1-3.5-3.5z" />
+      <path d="M19.7 11.3 21 10a5.5 5.5 0 0 0-7-7l2.3 2.3-1.6 3.9-3.9 1.6L8.5 8.6" />
     </svg>
   );
 }

@@ -23,6 +23,15 @@ const ja = {
   "info.schemaVersion": "データ形式",
   "info.notices": "ほかの OSS とライセンスは同梱の THIRD-PARTY-NOTICES.txt を参照してください。",
   "settings.title": "設定",
+  // ---- ツール（データの持ち出し。静的モードでも使える） ----
+  "tools.title": "ツール",
+  "tools.exportSchema": "スキーマ情報を JSON で書き出す",
+  "tools.exportSchemaBusy": "書き出しています…",
+  "tools.exportSchemaHint":
+    "全テーブルの定義・メタデータ（論理名・タグ・注記・論理制約）・リレーションを1つのJSONにまとめます（カラム辞書の論理名とタグはテーブル側に畳みます）。ページ情報とER図の配置は含みません。",
+  "tools.exportSchemaDone": "スキーマ情報を書き出しました（{n} テーブル）",
+  "tools.exportSchemaPartial": "読み込めなかった {n} 件のテーブルは書き出しに含まれていません",
+  "tools.exportSchemaFailed": "書き出しに失敗しました",
   "nameDisplay.label": "表示名",
   "settings.dataReset": "データリセット",
   "settings.dataResetAction": "スキーマ情報を削除",
@@ -612,6 +621,15 @@ const en: Record<MsgKey, string> = {
   "info.notices":
     "See the bundled THIRD-PARTY-NOTICES.txt for the other open-source components and their licenses.",
   "settings.title": "Settings",
+  // ---- Tools (taking data out; works in static mode too) ----
+  "tools.title": "Tools",
+  "tools.exportSchema": "Export schema as JSON",
+  "tools.exportSchemaBusy": "Exporting…",
+  "tools.exportSchemaHint":
+    "Bundles every table definition, its metadata (logical names, tags, notes, logical constraints) and the relations into a single JSON (dictionary column names and tags are folded into each table). Page information and diagram layouts are not included.",
+  "tools.exportSchemaDone": "Exported the schema ({n} tables)",
+  "tools.exportSchemaPartial": "{n} table(s) could not be loaded and are missing from the export",
+  "tools.exportSchemaFailed": "Export failed",
   "nameDisplay.label": "Name display",
   "settings.dataReset": "Reset data",
   "settings.dataResetAction": "Delete schema data",
