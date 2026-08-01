@@ -1,22 +1,25 @@
 # 動作確認用の DB 群。
 #
 # 既定（`docker compose up -d`）では PostgreSQL（db）だけが起動する。
-# 追加 DB 検証（Phase 7）の SQL Server / Oracle は profiles で分けてあり、
-# 明示的に起動する（重いので普段は落としておく）:
+# 追加 DB は profiles で分けてあり、明示的に起動する（重いので普段は落としておく）:
+#   docker compose --profile mysql  up -d      # MySQL
 #   docker compose --profile mssql  up -d      # SQL Server（+ erd_sample DB を作る init）
 #   docker compose --profile oracle up -d      # Oracle（gvenzl/oracle-free）
 #
-# **どの DB も空で起動する。** スキーマは compose では流さない。
-#   PostgreSQL      ... node migrate.mjs up（postgresql/migrations/000_init.sql が初期スキーマ）
-#   SQL Server / Oracle ... 内省テスト（Sql*IntrospectorTest）が接続後に
-#                           <product>/migrations/000_init.sql を自分で流す。
-#                           手動 GUI 検証で使うときは README の手順で流す
+# **初期スキーマ（<product>/migrations/000_init.sql）の入れ方が PostgreSQL だけ違う。**
+#   PostgreSQL           ... 流さない。`node migrate.mjs up` で入れる（001 以降と同じ経路に載せる）
+#   MySQL / SQL Server / Oracle ... **起動時に自動で流す**（下の各サービスを参照）。
+#                          段階的なマイグレーションを持たないので、compose だけで完結させる
 #
-# initdb.d で初期 DDL を流していた頃は、同じスキーマを作る経路が2つ（compose と migrate.mjs）に
-# なり、000 が「未適用」のまま残った。初期化もマイグレーションの1本目として通し、経路を1つに保つ。
+# PostgreSQL で自動投入しないのは、同じスキーマを作る経路が2つ（initdb.d と migrate.mjs）に
+# なると 000 が「未適用」のまま残り、`up` が既存テーブルとぶつかって失敗するため。
 # 作り直したいときは `docker compose down -v`（ボリュームごと消す）→ `up -d` → `node migrate.mjs up`。
 #
-# ポートは既存のインスタンスとぶつからないよう PostgreSQL は 5442 にしている
+# 自動投入は**初期化フックのある製品はそれに任せる**（MySQL / Oracle は初回起動時のみ実行）。
+# SQL Server にはフックが無いため使い捨ての init サービスから流す（そちらは冪等にしてある）。
+# 内省テストは自動投入とは無関係に、毎回自分で DROP → CREATE する（テストが状態を握るため）。
+#
+# ポートは既存のインスタンスとぶつからないよう PostgreSQL は 5442 / MySQL は 3346 にしている
 # （SQL Server 1433 / Oracle 1521 は既定のまま）。
 services:
   db:
@@ -38,6 +41,34 @@ services:
       timeout: 3s
       retries: 20
 
+  # ---- MySQL（profile: mysql）------------------------------------------------
+  # PostgreSQL と並んで層2（MysqlEnhancer）を持つ製品。CHECK 制約・ENUM 値の取得を実 DB で試せる。
+  # 初期スキーマは公式イメージの初期化フック（初回起動時のみ実行）で自動投入する。
+  # JDBC URL: jdbc:mysql://localhost:3346/erd_sample
+  # ユーザー / パスワード: erd / erd（root も erd）
+  mysql:
+    image: mysql:8
+    container_name: erd-dev-mysql
+    profiles: ["mysql"]
+    # 表・列コメントの日本語をそのまま取り込めるよう、サーバー既定を utf8mb4 にする
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_0900_ai_ci"]
+    environment:
+      MYSQL_ROOT_PASSWORD: erd
+      MYSQL_DATABASE: erd_sample
+      MYSQL_USER: erd
+      MYSQL_PASSWORD: erd
+    ports:
+      - "3346:3306"
+    volumes:
+      - erd-dev-mysql-data:/var/lib/mysql
+      # 初回起動時に MYSQL_DATABASE に対して実行される
+      - ./mysql/migrations/000_init.sql:/docker-entrypoint-initdb.d/000_init.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uerd", "-perd"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
   # ---- SQL Server（Phase 7 検証。profile: mssql）----------------------------
   # 既定 DB（master）には erd_sample が無いため、init サービスで作成する。
   # JDBC URL: jdbc:sqlserver://localhost:1433;databaseName=erd_sample;encrypt=false;trustServerCertificate=true
@@ -57,7 +88,9 @@ services:
       timeout: 5s
       retries: 30
 
-  # erd_sample データベースを作るだけの使い捨て init（healthy を待ってから1回走る）
+  # erd_sample データベースと初期スキーマを作る使い捨て init（healthy を待ってから1回走る）。
+  # SQL Server のイメージには初期化フックが無いため、この方式でしか自動投入できない。
+  # init.sh はテーブルが既にあれば何もしない（up を打ち直しても失敗しない）
   sqlserver-init:
     image: mcr.microsoft.com/mssql/server:2022-latest
     container_name: erd-dev-mssql-init
@@ -65,10 +98,12 @@ services:
     depends_on:
       sqlserver:
         condition: service_healthy
-    entrypoint:
-      - /bin/bash
-      - -c
-      - /opt/mssql-tools18/bin/sqlcmd -S sqlserver -U sa -P "Erd_password1" -C -Q "IF DB_ID('erd_sample') IS NULL CREATE DATABASE erd_sample"
+    environment:
+      MSSQL_SA_PASSWORD: "Erd_password1"
+    volumes:
+      - ./sqlserver/init.sh:/erd/init.sh:ro
+      - ./sqlserver/migrations/000_init.sql:/erd/000_init.sql:ro
+    entrypoint: ["/bin/bash", "/erd/init.sh"]
     restart: "no"
 
   # ---- Oracle（Phase 7 検証。profile: oracle）--------------------------------
@@ -85,6 +120,11 @@ services:
       APP_USER_PASSWORD: erd
     ports:
       - "1521:1521"
+    volumes:
+      # 初期化フックは .sql を "sqlplus / as sysdba" で流すため、そのまま置くと SYS に作られる。
+      # init.sh からアプリユーザー（ERD）で接続し直して流す。DDL 本体はフックに拾わせない場所へ置く
+      - ./oracle/init.sh:/container-entrypoint-initdb.d/000_init.sh:ro
+      - ./oracle/migrations/000_init.sql:/erd/000_init.sql:ro
     healthcheck:
       test: ["CMD", "healthcheck.sh"]
       interval: 10s
@@ -93,3 +133,4 @@ services:
 
 volumes:
   erd-dev-db-data:
+  erd-dev-mysql-data:

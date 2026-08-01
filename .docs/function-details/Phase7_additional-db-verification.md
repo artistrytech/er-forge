@@ -17,6 +17,10 @@ Oracle, SQLite, H2 …）は、ユーザーが JDBC ドライバの jar を追�
 検証は層1に依存しないため製品ごとに繰り返す意味が薄く、`001` が扱う ENUM・部分インデックス・
 式インデックスに至っては、拾う側の層2（`DialectEnhancer`）が PostgreSQL / MySQL にしか無い。
 
+**MySQL はこのフェーズの対象外**（層2を持つため）だが、同じ形の移植版
+（`dev-db/mysql/migrations/000_init.sql`）と `MysqlIntrospectorTest` を用意してあり、層2が
+CHECK 制約を `dialect` に載せるところまで実 DB で確認できる。MySQL 固有の挙動は §2.4 に書く。
+
 | DB | ドライバ | 実行環境 | テスト |
 |---|---|---|---|
 | SQLite | `org.xerial:sqlite-jdbc` | **プロセス内**（docker 不要） | `SqliteIntrospectorTest`（常時実行） |
@@ -79,17 +83,32 @@ Oracle, SQLite, H2 …）は、ユーザーが JDBC ドライバの jar を追�
   Oracle の `NUMBER` は整数用途でも固定小数点として扱われる（`id` も logicalType は decimal）。
 - **12c+ の `GENERATED ... AS IDENTITY`** は `IS_AUTOINCREMENT=YES` で取れる。
 - **`ON DELETE` を書かない FK が `restrict` になる。** Oracle に `NO ACTION` は無く、ドライバは
-  `DELETE_RULE = importedKeyRestrict` を返す。同じ DDL でも SQL Server / SQLite は `no action`
-  になるため、**FK の削除規則は製品差がそのまま内省結果に出る**（26テーブルの移植版を
-  3製品で流して確認した）。逆生成した定義を製品間で比較するときの注意点。
+  `DELETE_RULE = importedKeyRestrict` を返す。同じ DDL でも SQL Server / SQLite は `no action`、
+  MySQL（InnoDB）は Oracle と同じ `restrict` になる。**FK の削除規則は製品差がそのまま内省結果に
+  出る**（26テーブルの移植版を4製品で流して確認した）。逆生成した定義を製品間で比較するときの注意点。
 - **予約語は引用符が要る。** `COMMENT` は Oracle の予約語のため、移植版では `"COMMENT"` と
   書いている。大文字で引用しているので、内省結果は引用しない識別子と同じ大文字になる。
+
+### 2.4 MySQL（Phase 7 の対象外。層2を持つ製品）
+
+- **スキーマが無い。** データベースが catalog になる（SQLite と同じ catalog モードの経路）。
+  内省の名前空間にはデータベース名（`erd_sample`）を渡す。
+- **コメントは接続プロパティが要る。** `useInformationSchema=true` を付けないと `REMARKS` が
+  空になる。Oracle の `remarksReporting` と同じく、接続 UI の「追加プロパティ」（§7.5）で渡す。
+- **FK が裏でインデックスを作る。** InnoDB は FK 列に適当なインデックスが無ければ自動で作るため、
+  内省結果の `indexes` に FK 制約と同じ名前で現れる。他製品には出ない差分なので、逆生成した
+  定義を製品間で比べるときに目立つ。
+- 型: `VARCHAR`→string / `TEXT`→string / `DATETIME`→datetime / `DATE`→date /
+  `DECIMAL`→decimal / `INT`→int。`NUMERIC` は `DECIMAL` の別名で、`TYPE_NAME` も `DECIMAL` になる。
+- **層2（`MysqlEnhancer`）が CHECK 制約を `dialect.checks` に載せる**ことを実 DB で確認した
+  （要 MySQL 8.0.16+）。CHECK を持たないテーブルには `dialect` を作らない。
 
 ## 3. 運用上の含意（接続 UI・ドライバ）
 
 - 新しい DB を使うときは、その JDBC ドライバ jar を `drivers/` に置くだけでよい（設計書 §3.2 / §7.2）。
   ロード済みドライバは `GET /__erd/drivers` に出る。
-- **Oracle のコメント取得**のように、DB によっては接続プロパティが要るものがある。接続フォームの
-  「追加プロパティ」（§7.5）で `oracle.jdbc.remarksReporting=true` のように渡す。
+- **コメント取得に接続プロパティが要る DB がある。** Oracle は `oracle.jdbc.remarksReporting=true`、
+  MySQL は `useInformationSchema=true`。どちらも接続フォームの「追加プロパティ」（§7.5）で渡す。
+  **これを知らないと「コメントが無い DB」に見えてしまう**（K-14 の論理名補完が丸ごと効かない）。
 - Enhancer（層2）が無い DB では、CHECK 制約・部分/式インデックス・ENUM 値は取得されない
   （設計書 §7.4）。必要になった時点で `DialectEnhancer` を追加する（任意）。

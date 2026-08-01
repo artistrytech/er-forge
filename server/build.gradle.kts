@@ -39,12 +39,14 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 
     // JDBC 標準内省（層1）の検証用。H2 と SQLite はプロセス内で完結するため常時実行できる。
-    // SQL Server / Oracle は dev-db の docker compose に接続して検証する（未起動なら skip）。
+    // MySQL / SQL Server / Oracle は dev-db の docker compose に接続して検証する（未起動なら skip）。
+    // MySQL だけは層2（MysqlEnhancer）の検証も兼ねる。
     // これらのドライバは配布物には同梱しない（利用者が逆生成画面からダウンロードして
     // drivers/ に置く。§7.2）。サーバー本体は drivers/*.jar を URLClassLoader で読むため、
     // implementation に入れてはならない。ここで検証したバージョンを DriverCatalog の既定にする。
     testImplementation("com.h2database:h2:2.2.224")
     testImplementation("org.xerial:sqlite-jdbc:3.46.1.3")
+    testImplementation("com.mysql:mysql-connector-j:9.1.0")
     testImplementation("com.microsoft.sqlserver:mssql-jdbc:12.8.1.jre11")
     testImplementation("com.oracle.database.jdbc:ojdbc11:23.5.0.24.07")
 }

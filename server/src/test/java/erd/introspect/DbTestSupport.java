@@ -21,7 +21,7 @@ import java.util.regex.Pattern;
  * 自動テストで同じファイルを共有し、二重管理を避ける。中身は PostgreSQL 版
  * （同梱サンプルの元データ。26テーブル）を各製品の方言へ移植したもの。
  *
- * <p>SQL Server / Oracle のテストは docker compose が起動していないと skip する。
+ * <p>MySQL / SQL Server / Oracle のテストは docker compose が起動していないと skip する。
  * その判定に使えるよう、接続失敗を素直に伝える {@link #tryOpen} を用意する。
  */
 final class DbTestSupport {

@@ -19,7 +19,7 @@
 | `viewer/` | TypeScript / React / Vite。単一 `index.html` に全アセットをインライン化 |
 | `fixtures/` | Java / TS 共通の golden fixture（プリンタ出力の一致を保証） |
 | `distribution/` | 配布 ZIP に同梱する固定ファイル（起動スクリプト・README） |
-| `dev-db/` | 動作確認用の DB（PostgreSQL / SQL Server / Oracle の docker compose）と、DB 製品ごとのスキーマ・マイグレーション（→ [README](dev-db/README.md)） |
+| `dev-db/` | 動作確認用の DB（PostgreSQL / MySQL / SQL Server / Oracle の docker compose）と、DB 製品ごとのスキーマ・マイグレーション（→ [README](dev-db/README.md)） |
 
 ## 開発環境の起動
 
@@ -79,9 +79,10 @@ node migrate.mjs up 000     # 初期スキーマ（約30テーブル。同梱サ
 node migrate.mjs up 001     # ENUM / CHECK / 部分・式インデックスまで適用
 ```
 
-追加 DB の内省検証（Phase 7）として **SQL Server / Oracle**（docker compose の profile 分け）と
-**SQLite**（docker 不要・プロセス内）も用意している。詳細は
-[dev-db/README.md](dev-db/README.md#追加-db-の検証phase-7-sql-server--oracle--sqlite) を参照。
+**MySQL**（層2の検証も兼ねる）、追加 DB の内省検証（Phase 7）として **SQL Server / Oracle**
+（いずれも docker compose の profile 分け）と **SQLite**（docker 不要・プロセス内）も用意している。
+PostgreSQL 以外は**初期スキーマがコンテナの起動時に自動で入る**。詳細は
+[dev-db/README.md](dev-db/README.md) を参照。
 
 ## ビルド
 

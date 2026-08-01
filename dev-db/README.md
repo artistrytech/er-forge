@@ -3,13 +3,15 @@
 逆生成（K-01〜K-15）を実際の DB に対して試すための DB 群と、最小のマイグレーション実行ツール。
 
 - **PostgreSQL**（既定）: 逆生成フロー全体（差分・リネーム・論理名補完・Enhancer）を試す主環境。
+- **MySQL**: PostgreSQL と並んで**層2（`MysqlEnhancer`）を持つ**製品。CHECK 制約・ENUM 値の
+  取得を実 DB で確かめられる。
 - **SQL Server / Oracle**（Phase 7）: 追加 DB の内省検証。層1（JDBC 標準メタデータ）だけで
   内省が成立することを確かめる（→ [追加 DB の検証](../.docs/function-details/Phase7_additional-db-verification.md)）。
 - **SQLite**（Phase 7）: サーバー不要。内省テストがプロセス内で完結する（docker 不要）。
 
 ## ディレクトリ構成
 
-DB 製品ごとに `<product>/migrations/` を持つ。`000_init.sql` が初期スキーマで、**4製品とも
+DB 製品ごとに `<product>/migrations/` を持つ。`000_init.sql` が初期スキーマで、**5製品とも
 同じ26テーブル**（PostgreSQL 版を各方言へ移植したもの）。移植で変えたところは各ファイルの
 先頭のコメントに書いてある。
 
@@ -18,12 +20,31 @@ dev-db/
 ├── postgresql/migrations/
 │   ├── 000_init.sql          初期スキーマ。**同梱サンプルの元データを兼ねる**（下記）
 │   └── 001〜008_*.sql        段階的なスキーマ変更（逆生成の差分を試す。PostgreSQL のみ）
-├── sqlserver/migrations/000_init.sql
-├── oracle/migrations/000_init.sql
+├── mysql/migrations/000_init.sql
+├── sqlserver/
+│   ├── migrations/000_init.sql
+│   └── init.sh               起動時に投入する使い捨て init サービスの中身（冪等）
+├── oracle/
+│   ├── migrations/000_init.sql
+│   └── init.sh               初期化フックから ERD ユーザーで流すためのラッパー
 ├── sqlite/migrations/000_init.sql
 ├── docker-compose.yml
 └── migrate.mjs               マイグレーション実行ツール（PostgreSQL 専用）
 ```
+
+### 初期スキーマの入り方（PostgreSQL だけ違う）
+
+| 製品 | 000_init.sql の適用 |
+|---|---|
+| PostgreSQL | **自動では入らない。** `node migrate.mjs up 000`（001 以降と同じ経路に載せるため） |
+| MySQL / Oracle | **起動時に自動**（イメージの初期化フック。DB を作る初回だけ実行される） |
+| SQL Server | **起動時に自動**（フックが無いため使い捨ての `sqlserver-init` サービスから。冪等） |
+| SQLite | 内省テストが `:memory:` に毎回流す（コンテナ無し） |
+
+PostgreSQL だけ自動投入しないのは、同じスキーマを作る経路が2つ（`initdb.d` と `migrate.mjs`）に
+なると `000` が「未適用」のまま残り、`up` が既存テーブルとぶつかって失敗するため。
+
+内省テストはこの自動投入とは無関係に、毎回自分で DROP → CREATE する（テストが状態を握る）。
 
 `postgresql/migrations/000_init.sql` は **`gradlew generateSampleData` の入力**でもある
 （同梱サンプルデータの元データ）。パーサが PostgreSQL 前提のため、**このファイルは
@@ -33,9 +54,10 @@ PostgreSQL 方言のままにしておくこと**。
 繰り返す意味が薄いうえ、`001` が扱う ENUM・部分インデックス・式インデックスは、拾う側の層2
 （`DialectEnhancer`）が PostgreSQL / MySQL にしか無いためである。
 
-## 起動
+## 起動（PostgreSQL）
 
-**コンテナは空の DB で起動する**（compose は DDL を流さない）。スキーマは migrate.mjs で入れる。
+既定の `docker compose up -d` では PostgreSQL だけが起動する（他は profile 指定が要る）。
+**PostgreSQL は空で起動する**ので、スキーマは migrate.mjs で入れる。
 
 ```sh
 cd dev-db
@@ -107,6 +129,26 @@ node migrate.mjs up 003       # 003 まで適用して止める（段階的に�
 これで「**逆生成しても ER図の配置・論理名・論理制約が失われない**」（フェーズ5の完了条件）を
 実際の DB で確認できる。
 
+## MySQL
+
+PostgreSQL と並んで**層2（`MysqlEnhancer`）を持つ**製品。層1（JDBC 標準メタデータ）に加えて、
+CHECK 制約・ENUM 値が `dialect` に載ることを実 DB で確かめられる。
+
+```sh
+cd dev-db && docker compose --profile mysql up -d   # 初期スキーマは起動時に自動で入る
+cd server && ./gradlew test --tests 'erd.introspect.MysqlIntrospectorTest'
+```
+
+| 項目 | 値 |
+|---|---|
+| JDBC URL | `jdbc:mysql://localhost:3346/erd_sample` |
+| ユーザー / パスワード | `erd` / `erd`（root も `erd`） |
+| 対象スキーマ | `erd_sample`（MySQL にスキーマは無く、データベースが catalog になる） |
+
+- **コメントを取るには接続プロパティが要る。** `useInformationSchema=true` を付けないと
+  `REMARKS` が空になる（Oracle の `remarksReporting` と同じ話。接続 UI の「追加プロパティ」で渡す）。
+- FK を張ると InnoDB が裏でインデックスを作るため、内省結果の `indexes` に FK 制約名で現れる。
+
 ## 追加 DB の検証（Phase 7: SQL Server / Oracle / SQLite）
 
 「JDBC ドライバがあれば原則すべての DB に対応する」（設計書 §1.3）を、代表的な非 PG/MySQL の
@@ -116,9 +158,9 @@ DB で実際に確かめる。**層1（`JdbcIntrospector`）だけで内省が�
 [追加 DB の検証](../.docs/function-details/Phase7_additional-db-verification.md) にまとめてある。
 
 スキーマは3製品とも `<product>/migrations/000_init.sql`（PostgreSQL 版と同じ26テーブルの移植）。
-**テストが接続後に自分で流す**（毎回 DROP → CREATE で冪等。落とす順序は DDL の CREATE TABLE の
-並びから導出するので、テーブルを足しても書き漏らさない）。手動 GUI で試したいときは、その
-ファイルを DB クライアントで実行してからツールの `#/introspect` で下の URL に接続する。
+SQL Server / Oracle はコンテナの起動時に自動で入る。**内省テストはそれとは別に、毎回自分で
+DROP → CREATE する**（テストが状態を握るため。落とす順序は DDL の CREATE TABLE の並びから
+導出するので、テーブルを足しても書き漏らさない）。手動 GUI で試すときは起動しただけで使える。
 
 ### SQLite（docker 不要）
 
@@ -131,7 +173,7 @@ cd server && ./gradlew test --tests 'erd.introspect.SqliteIntrospectorTest'
 ### SQL Server
 
 ```sh
-cd dev-db && docker compose --profile mssql up -d   # sqlserver + erd_sample を作る init
+cd dev-db && docker compose --profile mssql up -d   # erd_sample DB + 初期スキーマまで自動
 cd server && ./gradlew test --tests 'erd.introspect.SqlServerIntrospectorTest'
 ```
 
@@ -144,7 +186,7 @@ cd server && ./gradlew test --tests 'erd.introspect.SqlServerIntrospectorTest'
 ### Oracle
 
 ```sh
-cd dev-db && docker compose --profile oracle up -d   # 初回はイメージ取得＋起動に数分かかる
+cd dev-db && docker compose --profile oracle up -d   # 初回はイメージ取得＋起動に数分かかる（初期スキーマまで自動）
 cd server && ./gradlew test --tests 'erd.introspect.OracleIntrospectorTest'
 ```
 
@@ -154,5 +196,6 @@ cd server && ./gradlew test --tests 'erd.introspect.OracleIntrospectorTest'
 | ユーザー / パスワード | `ERD` / `erd` |
 | 対象スキーマ | `ERD`（Oracle は識別子を大文字に畳む） |
 
-- **テストは DB が起動していなければ自動 skip する**（`assumeTrue`）。Docker を必須ゲートにしない。
-- 使い終わったら `docker compose --profile mssql --profile oracle down -v` で落とす（重いので放置しない）。
+- **テストは DB が起動していなければ自動 skip する**（`assumeTrue`。MySQL も同じ）。Docker を必須ゲートにしない。
+- 使い終わったら `docker compose --profile mysql --profile mssql --profile oracle down -v` で落とす
+  （SQL Server / Oracle は重いので放置しない）。

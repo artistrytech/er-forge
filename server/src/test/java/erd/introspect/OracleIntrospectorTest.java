@@ -119,7 +119,7 @@ class OracleIntrospectorTest {
         assertEquals(List.of("ID"), fk.ref().columns());
         // 移植元（同梱サンプル）は ON DELETE を指定していない。Oracle には NO ACTION が無く、
         // ドライバは DELETE_RULE = importedKeyRestrict を返すため restrict になる
-        // （SQL Server / SQLite は同じ DDL で no action。製品差がそのまま出る）
+        // （MySQL も restrict。SQL Server / SQLite は同じ DDL で no action。製品差がそのまま出る）
         assertEquals("restrict", fk.onDelete());
     }
 
