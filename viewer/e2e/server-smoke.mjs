@@ -95,7 +95,14 @@ async function main() {
     await page.waitForSelector('[data-testid="erd-node"]', { timeout: 20000 });
     check("sample import renders ER diagram", (await page.locator('[data-testid="erd-node"]').count()) > 0);
     check("data files written", existsSync(join(dir, "workspace-default", "data", "manifest.js")));
-    check("mode badge shows server", await page.locator('[data-testid="mode-badge"][data-mode="server"]').isVisible());
+    // 動作モードとバージョンは information（ⓘ）の中。サーバーモードでは jar 側の版も出る
+    await page.click('[data-testid="info-button"]');
+    check("information shows server mode", await page.locator('[data-testid="info-mode"][data-mode="server"]').isVisible());
+    check(
+      "information shows the server version",
+      ((await page.locator('[data-testid="server-version"]').textContent()) ?? "").trim() !== "—",
+    );
+    await page.keyboard.press("Escape");
     check("title shows the workspace name",
         (await page.locator('[data-testid="app-title"]').textContent()) === "販売管理");
     check("logical (dashed) edges exist on some page",

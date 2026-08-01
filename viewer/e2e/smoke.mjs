@@ -86,7 +86,18 @@ async function main() {
     "the table list row uses the same color",
     (await page.locator('[data-testid="lp-item"][data-color="blue"]').count()) >= 1,
   );
-  check("mode badge shows static", await page.locator('[data-testid="mode-badge"][data-mode="static"]').isVisible());
+  // 動作モードとバージョンは information（ⓘ）の中。開いて確かめ、開いたままにしない
+  await page.click('[data-testid="info-button"]');
+  check("information shows static mode", await page.locator('[data-testid="info-mode"][data-mode="static"]').isVisible());
+  check(
+    "information shows the viewer version",
+    ((await page.locator('[data-testid="viewer-version"]').textContent()) ?? "").trim().length > 0,
+  );
+  check(
+    "information shows the copyright",
+    ((await page.locator('[data-testid="info-copyright"]').textContent()) ?? "").includes("artistrytech"),
+  );
+  await page.keyboard.press("Escape");
   // 閲覧中は「編集開始」（ペン）が出る。バッジ表示は廃止
   check("start-edit shown when viewing", await page.locator('[data-testid="session-toggle"][data-editing="false"]').isVisible());
   check("minimap renders nodes", (await page.locator(".react-flow__minimap-node").count()) === 3);

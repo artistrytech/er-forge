@@ -3,7 +3,16 @@ plugins {
     id("com.gradleup.shadow") version "8.3.8"
 }
 
-version = "0.2.0"
+/*
+ * リリースバージョンはリポジトリ直下の VERSION が単一の真実源。
+ * viewer/vite.config.ts も同じファイルを読み、index.html に焼き込む
+ * （静的モードにはサーバーが居ないため、ビューア側は自前で版を持つしかない）。
+ *
+ * リリースビルド（build-dist.bat / build-dist.sh）だけが ERD_RELEASE=1 を立てて確定版になる。
+ * それ以外の手元ビルドは -dev を付け、リリース済みの版と見分けが付くようにする。
+ */
+val releaseBuild = providers.environmentVariable("ERD_RELEASE").orNull == "1"
+version = file("../VERSION").readText().trim() + if (releaseBuild) "" else "-dev"
 
 java {
     toolchain {
@@ -105,7 +114,12 @@ tasks.register<JavaExec>("devServer") {
 tasks.shadowJar {
     archiveFileName = "erd-server.jar"
     manifest {
-        attributes("Main-Class" to "erd.web.Main")
+        // Implementation-* は AppVersion が Package 経由で読む（GET /__erd/health の appVersion）
+        attributes(
+            "Main-Class" to "erd.web.Main",
+            "Implementation-Title" to "erd-server",
+            "Implementation-Version" to project.version.toString(),
+        )
     }
     mergeServiceFiles()
 }
@@ -115,6 +129,8 @@ val npmBuild = tasks.register<Exec>("npmBuild") {
     group = "build"
     description = "Build viewer (single-file index.html) via npm"
     workingDir = file("../viewer")
+    // 版の付け方を jar と揃える（vite.config.ts が同じ VERSION を読む）
+    environment("ERD_RELEASE", if (releaseBuild) "1" else "0")
     val isWindows = System.getProperty("os.name").lowercase().contains("win")
     commandLine(if (isWindows) listOf("cmd", "/c", "npm", "run", "build")
                 else listOf("npm", "run", "build"))
@@ -124,6 +140,7 @@ val npmBuild = tasks.register<Exec>("npmBuild") {
  * 配布 ZIP の組み立て（設計書 §3.1）。
  *   erd.zip
  *   ├── erd-server.jar / index.html / erd.sh / erd.bat / README.md
+ *   ├── THIRD-PARTY-NOTICES.txt （同梱 OSS の著作権・ライセンス表示。distribution/ の固定ファイル）
  *   └── drivers/        （空。README のみ。JDBC ドライバは逆生成画面から
  *                         各自ダウンロードするか、手動で jar を置く。§7.2）
  * 実行: gradlew packageDist → build/dist/erd.zip を GitHub Releases に手動アップロード

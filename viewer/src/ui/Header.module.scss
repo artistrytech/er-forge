@@ -139,35 +139,28 @@
   border-color: var(--error);
 }
 
-/* ---- 動作モード（アイコン） ---- */
+/* ---- 静的モードで編集中の警告（A-02。動作モードは information に畳んだため、
+       「保存されない」ことだけはヘッダに出し続ける） ---- */
 
-.mode-indicator {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-}
-
-.mode-static {
+.static-warning {
+  padding: 4px 8px;
+  border-radius: 6px;
   background: var(--warn-bg);
   color: var(--warn);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
-.mode-server {
-  background: var(--ok-soft);
-  color: var(--ok);
-}
+/* ---- ヘッダのプルダウン（information・設定） ---- */
 
-/* ---- 設定メニュー（歯車 + ドロップダウン） ---- */
-
-.settings-menu {
+.menu-anchor {
   position: relative;
   display: inline-flex;
 }
 
-.settings-dropdown {
+.settings-dropdown,
+.info-dropdown {
   position: absolute;
   top: calc(100% + 6px);
   right: 0;
@@ -230,6 +223,63 @@
 /* 設定メニュー内のボタンは左寄せで並べる（見た目は共有の Button に任せる） */
 .block-button {
   align-self: flex-start;
+}
+
+/* ---- information（読むだけ。操作は置かない） ---- */
+
+.info-dropdown {
+  min-width: 260px;
+  max-width: 320px;
+}
+
+/* 見出し + 値の縦積み。2つ目以降は区切り線を付ける（設定の .settings-block と同じ骨格） */
+.info-block + .info-block {
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.info-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.info-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.info-value {
+  font-size: 12.5px;
+  color: var(--text-strong);
+  font-variant-numeric: tabular-nums;
+}
+
+.info-row .info-value {
+  font-weight: 600;
+}
+
+.info-warn {
+  font-size: 12px;
+  color: var(--warn);
+}
+
+/* 著作権・謝辞。読み流せるよう本文より一段小さく落とす */
+.info-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.info-notices {
+  margin-top: 4px;
+  line-height: 1.5;
 }
 
 .progress-bar {

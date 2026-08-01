@@ -97,6 +97,23 @@ function injectScript(src: string): Promise<void> {
   });
 }
 
+/**
+ * /__erd/health のボディからサーバーのリリースバージョンを取り出す（A-02）。
+ * 古いサーバーは appVersion を返さないため、無ければ null にして表示を落とす。
+ */
+function serverVersionOf(body: string): string | null {
+  try {
+    const parsed: unknown = JSON.parse(body);
+    if (typeof parsed === "object" && parsed !== null) {
+      const v = (parsed as { appVersion?: unknown }).appVersion;
+      if (typeof v === "string" && v !== "") return v;
+    }
+  } catch {
+    // ボディが JSON でなくてもモード判定（疎通）には影響させない
+  }
+  return null;
+}
+
 /** モード判定（A-01）: /__erd/health の疎通。file:// では即座に静的モード */
 function detectMode(): void {
   const set = (serverMode: boolean) => useAppStore.setState({ serverMode });
@@ -109,7 +126,10 @@ function detectMode(): void {
     const xhr = new XMLHttpRequest();
     xhr.open("GET", "/__erd/health", true);
     xhr.timeout = 3000;
-    xhr.onload = () => set(xhr.status === 200);
+    xhr.onload = () => {
+      set(xhr.status === 200);
+      if (xhr.status === 200) useAppStore.setState({ serverVersion: serverVersionOf(xhr.responseText) });
+    };
     xhr.onerror = () => set(false);
     xhr.ontimeout = () => set(false);
     xhr.send();

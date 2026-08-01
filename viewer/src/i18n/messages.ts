@@ -14,6 +14,14 @@ const ja = {
   "mode.serverDesc": "サーバーモード: 変更は data/ のファイルに保存されます。",
   "mode.staticDesc":
     "静的モード: サーバーなしで開いています。変更は保存できません（配置は [配置をエクスポート] から取り出せます）。",
+  "info.title": "情報",
+  "info.version": "バージョン",
+  "info.viewerVersion": "ビューア（index.html）",
+  "info.serverVersion": "サーバー（erd-server.jar）",
+  "info.versionMismatch":
+    "index.html と erd-server.jar のバージョンが異なります。配布 ZIP を展開し直してください。",
+  "info.schemaVersion": "データ形式",
+  "info.notices": "ほかの OSS とライセンスは同梱の THIRD-PARTY-NOTICES.txt を参照してください。",
   "settings.title": "設定",
   "nameDisplay.label": "表示名",
   "settings.dataReset": "データリセット",
@@ -594,6 +602,15 @@ const en: Record<MsgKey, string> = {
   "mode.serverDesc": "Server mode: changes are saved to files under data/.",
   "mode.staticDesc":
     "Static mode: opened without a server. Changes cannot be saved (use [Export layout] to retrieve the layout).",
+  "info.title": "Information",
+  "info.version": "Version",
+  "info.viewerVersion": "Viewer (index.html)",
+  "info.serverVersion": "Server (erd-server.jar)",
+  "info.versionMismatch":
+    "index.html and erd-server.jar are different versions. Extract the release ZIP again.",
+  "info.schemaVersion": "Data format",
+  "info.notices":
+    "See the bundled THIRD-PARTY-NOTICES.txt for the other open-source components and their licenses.",
   "settings.title": "Settings",
   "nameDisplay.label": "Name display",
   "settings.dataReset": "Reset data",

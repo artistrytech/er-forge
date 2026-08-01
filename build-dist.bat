@@ -53,7 +53,11 @@ if not exist "viewer\node_modules" (
 )
 
 rem ---- build all (gradle runs: viewer build -> shadowJar -> ZIP) ----
+rem  ERD_RELEASE=1 marks this as a release build: the version baked into
+rem  index.html and erd-server.jar is the plain VERSION file contents.
+rem  Other builds get a -dev suffix so they are distinguishable.
 echo --- build: viewer -^> erd-server.jar -^> ZIP ---
+set "ERD_RELEASE=1"
 pushd server
 call .\gradlew.bat packageDist --console=plain
 if errorlevel 1 (

@@ -9,7 +9,7 @@
  * 切り替えを**フルリロード**にしているのは、ローダーのキャッシュ・編集状態・キャンバスの
  * 計測値がすべて現在のワークスペースに紐づいているため。部分的な差し替えは必ず取りこぼす。
  */
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useI18n } from "../i18n/useI18n";
 import { apiDelete, apiPost } from "../model/api";
 import { useEditStore } from "../model/editStore";
@@ -24,6 +24,7 @@ import { cx } from "../lib/cx";
 import { Button } from "./Button";
 import { Dialog } from "./Dialog";
 import { hrefs } from "./router";
+import { useDropdown } from "./useDropdown";
 import styles from "./Workspace.module.scss";
 
 /** 未保存の変更（ER図の配置・テーブル編集・カラム論理名編集）があるか */
@@ -54,26 +55,9 @@ export function WorkspaceMenu({ title, className }: { title: string; className?:
   const workspaces = useAppStore((s) => s.workspaces);
   const workspaceId = useAppStore((s) => s.workspaceId);
   const serverMode = useAppStore((s) => s.serverMode) === true;
-  const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [pendingSwitch, setPendingSwitch] = useState<string | null>(null);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    window.addEventListener("mousedown", onDown);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("mousedown", onDown);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
+  const { open, setOpen, toggle, ref } = useDropdown();
 
   const select = (id: string): void => {
     setOpen(false);
@@ -92,7 +76,7 @@ export function WorkspaceMenu({ title, className }: { title: string; className?:
         aria-haspopup="menu"
         aria-expanded={open}
         title={t("workspace.switch")}
-        onClick={() => setOpen((o) => !o)}
+        onClick={toggle}
       >
         <span className={styles.workspaceTitle} data-testid="app-title">
           {title}

@@ -99,8 +99,12 @@ public final class WebServer {
             cfg.jetty.defaultHost = "127.0.0.1";
         });
 
-        javalin.get("/__erd/health", ctx ->
-                ctx.json(Map.of("ok", true, "schemaVersion", SchemaVersions.CURRENT)));
+        // appVersion はビューアの information がサーバー版として表示する（A-02）。
+        // index.html と jar は別々に差し替えられるため、ビューア側の版と食い違うことがある
+        javalin.get("/__erd/health", ctx -> ctx.json(Map.of(
+                "ok", true,
+                "schemaVersion", SchemaVersions.CURRENT,
+                "appVersion", AppVersion.current())));
 
         // ワークスペース管理（どのワークスペースにも属さない）
         javalin.get("/__erd/workspaces", this::listWorkspaces);

@@ -127,12 +127,42 @@ erd.zip
 │   └── README.txt
 ├── index.html              単一HTML（スキーマ情報は含まない）
 ├── erd.sh / erd.bat        起動スクリプト
+├── THIRD-PARTY-NOTICES.txt 同梱 OSS の著作権・ライセンス表示
 └── README.md
 ```
+
+`THIRD-PARTY-NOTICES.txt` は **`distribution/` に置いた固定ファイル**で、`packageDist` がそのまま
+ZIP に入れる。fat JAR と単一 HTML は他者のバイナリを**再配布**しているため（Apache-2.0 の NOTICE
+伝播、EPL のソース入手告知）、この同梱が義務を満たす本体になる。information（A-02）の
+「Powered by」は謝辞であって、これの代わりにはならない。依存を追加・削除したら手で更新する。
 
 **ZIP 名にバージョンは入れない**（`erd.zip` 固定）。展開先の `erd/` を差し替える運用のため、
 ダウンロードしたファイル名が毎回同じであるほうが手順を書きやすい。リリースのバージョンは
 GitHub Releases のタグで示す。
+
+#### リリースバージョンの管理
+
+**リポジトリ直下の `VERSION`（1行）が単一の真実源**。ビルド時に2か所へ焼き込む。
+
+| 対象 | 経路 | 表示 |
+|---|---|---|
+| `index.html` | `viewer/vite.config.ts` が `VERSION` を読み、`__APP_VERSION__` として define | information（A-02） |
+| `erd-server.jar` | `server/build.gradle.kts` が `VERSION` を読み、マニフェストの `Implementation-Version` に入れる | `GET /__erd/health` の `appVersion` |
+
+- **リリースビルド（`build-dist.bat` / `build-dist.sh`）だけが `ERD_RELEASE=1`** を立て、`VERSION` の内容そのものを版にする。それ以外の手元ビルドは `-dev` が付き（例 `0.2.0-dev`）、リリース済みの版と見分けが付く。jar 外実行（`gradlew devServer`）は `dev`
+- **`index.html` と `erd-server.jar` は配布 ZIP の中で別ファイル**なので、片方だけ差し替えられて食い違うことがある。ビューアはサーバーモードで両方を表示し、**リリース版どうしで食い違ったときだけ**注意文を出す（開発ビルドは常に食い違うため比較しない）
+- **`schemaVersion`（データ形式の版。§3.5）とは独立した軸**。連動させない
+- **リリース版をデータファイルに書かない**（`manifest.js` 等）。生成物の差分ノイズになるだけで、データの読み書きには要らない
+
+版の上げ方（`VERSION` の更新）:
+
+| 位 | 上げる場面 |
+|---|---|
+| MAJOR | `schemaVersion` を上げた（古い `index.html` で読めなくなる）／起動方法・配布構成の非互換変更 |
+| MINOR | 機能追加（画面追加、フェーズ機能） |
+| PATCH | 不具合修正・表示調整のみ |
+
+リリース手順は README の「リリース」を参照（`VERSION` 更新 → コミット → タグ `vX.Y.Z` → ZIP 生成 → Releases へアップロード）。**タグと `VERSION` は必ず一致させる。**
 
 **JDBC ドライバは配布物に同梱しない。** 代わりに逆生成画面から Maven 経由でダウンロードする
 （§7.2）。同梱しないのは意図的で、(1) 再配布に伴うライセンス問題（MySQL は GPLv2 + FOSS 例外、
@@ -948,7 +978,7 @@ JDBC を採用したことで、DB ごとの接続フォーム定義は不要に
 
 | メソッド | パス | 用途 |
 |---|---|---|
-| GET | `/__erd/health` | モード判定 |
+| GET | `/__erd/health` | モード判定。`schemaVersion`（データ形式）と `appVersion`（サーバーのリリース版。§3.1）を返す |
 | GET / POST | `/__erd/workspaces` | ワークスペース一覧 / 追加（`{ id?, name }`。ID 省略時は `default`、重複は `409 DUPLICATE_ID`） |
 | PATCH / DELETE | `/__erd/workspaces/:ws` | ID・表示名の変更（フォルダ名も変わる） / 削除（フォルダごと + `.erd/workspace-<id>/`） |
 | GET | `/__erd/drivers` | ロード済み JDBC ドライバ・カタログ・共通設定（`erd/config.js`）・未取得の一覧 |

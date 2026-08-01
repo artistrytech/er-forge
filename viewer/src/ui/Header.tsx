@@ -1,10 +1,12 @@
 /**
  * ヘッダ（A-02 / A-03 / L-04 / P-05）。
- * 右側は「設定（歯車）」「動作モード（アイコン）」と、画面に応じた編集操作（保存・編集開始/終了）で構成する。
+ * 右側は「information（ⓘ）」「設定（歯車）」と、画面に応じた編集操作（保存・編集開始/終了）で構成する。
+ * 動作モードは information の中に文字で置く（常時表示のアイコンは廃止した）。
+ * 代わりに、静的モードで編集を始めたときだけ「保存されません」をヘッダに出す（A-02）。
  * 編集操作は ER図（editStore）・テーブル編集 / カラム辞書の編集（pageEditStore のコントローラ）を
  * ひとつのヘッダ UI に集約する。個別画面はフォームだけを持ち、保存・終了はここから行う。
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useI18n } from "../i18n/useI18n";
 import { apiPatch, apiPost, wpath } from "../model/api";
 import { useEditStore } from "../model/editStore";
@@ -18,7 +20,9 @@ import { Button } from "./Button";
 import { Dialog } from "./Dialog";
 import { Link } from "./Link";
 import { hrefs, useRoute, type Route } from "./router";
+import { useDropdown } from "./useDropdown";
 import { WorkspaceDeleteDialog, WorkspaceMenu } from "./Workspace";
+import { APP_VERSION } from "../version";
 import styles from "./Header.module.scss";
 
 /** 表示中のワークスペース（workspaces.js の一覧から引く） */
@@ -110,9 +114,10 @@ export function Header({ currentDiagramId }: { currentDiagramId?: string }) {
         )}
       </nav>
       <div className={styles.appHeaderRight}>
-        {/* 右側アイコン群の一番左に設定（歯車）。表示名・言語の切替をここに集約する */}
+        {/* 画面によって出入りする編集操作を右端に置き、常設の information・設定はその左に固定する
+            （編集操作の有無でアイコンの位置がずれないようにするため） */}
+        <InfoMenu />
         <SettingsMenu />
-        <ModeIndicator serverMode={serverMode} />
         <EditControls route={route} />
       </div>
     </header>
@@ -159,13 +164,12 @@ function SettingsMenu() {
   const serverMode = useAppStore((s) => s.serverMode) === true;
   const workspace = useCurrentWorkspace();
   const addToast = useAppStore((s) => s.addToast);
-  const [open, setOpen] = useState(false);
   const [idDraft, setIdDraft] = useState(workspace?.id ?? "");
   const [nameDraft, setNameDraft] = useState(workspace?.name ?? "");
   const [savingName, setSavingName] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const { open, setOpen, toggle, ref } = useDropdown();
 
   // メニューを開いた時点の保存済みの値で下書きを同期する
   useEffect(() => {
@@ -174,22 +178,6 @@ function SettingsMenu() {
       setNameDraft(workspace?.name ?? "");
     }
   }, [open, workspace?.id, workspace?.name]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    window.addEventListener("mousedown", onDown);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("mousedown", onDown);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
 
   /**
    * ワークスペースの ID・表示名を変更する。
@@ -257,7 +245,7 @@ function SettingsMenu() {
     (idDraft.trim() !== workspace.id || nameDraft.trim() !== workspace.name);
 
   return (
-    <div className={styles.settingsMenu} ref={ref}>
+    <div className={styles.menuAnchor} ref={ref}>
       <button
         type="button"
         className={cx(styles.iconButton, open && styles.active)}
@@ -265,7 +253,7 @@ function SettingsMenu() {
         aria-haspopup="menu"
         aria-expanded={open}
         title={t("settings.title")}
-        onClick={() => setOpen((o) => !o)}
+        onClick={toggle}
       >
         <GearIcon />
       </button>
@@ -391,22 +379,108 @@ function SettingsMenu() {
   );
 }
 
-// ------------------------------------------------------------------ 動作モード（アイコン）
+// ------------------------------------------------------------------ information（ⓘ）
 
-function ModeIndicator({ serverMode }: { serverMode: boolean | null }) {
+/**
+ * information（A-02）。読むだけの情報を集める場所で、操作は置かない（操作は設定＝歯車）。
+ *
+ * - リリースバージョン。サーバーモードでは index.html と erd-server.jar の**両方**を出す。
+ *   この2つは配布 ZIP の中で別ファイルなので、片方だけ差し替えられて食い違うことがある。
+ *   食い違いはそれ自体が不具合の原因になるため、検出したら注意文を出す
+ * - 動作モード（静的 / サーバー）。以前はヘッダ常設のアイコンだったが、ここへ文字で移した
+ * - データ形式（schemaVersion）。リリース版とは独立した軸で、不具合報告のときに効く
+ */
+/** 開発ビルドの版か（"dev" / "0.2.0-dev"）。リリースビルドだけが確定版になる */
+function isDevVersion(v: string): boolean {
+  return v.endsWith("dev");
+}
+
+function InfoMenu() {
   const { t } = useI18n();
+  const serverMode = useAppStore((s) => s.serverMode);
+  const serverVersion = useAppStore((s) => s.serverVersion);
+  const schemaVersion = useAppStore((s) => s.manifest?.schemaVersion ?? null);
+  const { open, toggle, ref } = useDropdown();
+
   const server = serverMode === true;
+  // 判定中（null）を静的と言い切らない。モード判定は非同期（A-01）
+  const mode = serverMode === null ? "unknown" : server ? "server" : "static";
+  // 突き合わせるのは**リリース版どうし**のときだけ。開発ビルドは片側が "dev" / "x.y.z-dev" に
+  // なり、必ず食い違って見えるため（古いサーバーは appVersion 自体を返さない）
+  const releases = serverVersion !== null && !isDevVersion(APP_VERSION) && !isDevVersion(serverVersion);
+  const mismatch = server && releases && serverVersion !== APP_VERSION;
+
   return (
-    <span
-      className={cx(styles.modeIndicator, server ? styles.modeServer : styles.modeStatic)}
-      data-testid="mode-badge"
-      data-mode={server ? "server" : "static"}
-      title={`${t("mode.label")}: ${server ? t("mode.server") : t("mode.static")}\n${
-        server ? t("mode.serverDesc") : t("mode.staticDesc")
-      }`}
-    >
-      {server ? <ServerIcon /> : <StaticIcon />}
-    </span>
+    <div className={styles.menuAnchor} ref={ref}>
+      <button
+        type="button"
+        className={cx(styles.iconButton, open && styles.active)}
+        data-testid="info-button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        title={t("info.title")}
+        onClick={toggle}
+      >
+        <InfoIcon />
+      </button>
+      {open && (
+        <div className={styles.infoDropdown} role="menu" data-testid="info-menu">
+          <div className={styles.infoBlock}>
+            <span className={styles.settingsLabel}>{t("info.version")}</span>
+            {server ? (
+              <>
+                <div className={styles.infoRow}>
+                  <span className="muted">{t("info.viewerVersion")}</span>
+                  <span className={styles.infoValue} data-testid="viewer-version">
+                    {APP_VERSION}
+                  </span>
+                </div>
+                <div className={styles.infoRow}>
+                  <span className="muted">{t("info.serverVersion")}</span>
+                  <span className={styles.infoValue} data-testid="server-version">
+                    {serverVersion ?? "—"}
+                  </span>
+                </div>
+              </>
+            ) : (
+              <span className={styles.infoValue} data-testid="viewer-version">
+                {APP_VERSION}
+              </span>
+            )}
+            {mismatch && <span className={styles.infoWarn}>{t("info.versionMismatch")}</span>}
+          </div>
+
+          <div className={styles.infoBlock}>
+            <span className={styles.settingsLabel}>{t("mode.label")}</span>
+            <span className={styles.infoValue} data-testid="info-mode" data-mode={mode}>
+              {mode === "unknown" ? "…" : server ? t("mode.server") : t("mode.static")}
+            </span>
+            {mode !== "unknown" && (
+              <span className="muted">{server ? t("mode.serverDesc") : t("mode.staticDesc")}</span>
+            )}
+          </div>
+
+          {schemaVersion !== null && (
+            <div className={styles.infoBlock}>
+              <span className={styles.settingsLabel}>{t("info.schemaVersion")}</span>
+              <span className={styles.infoValue} data-testid="info-schema-version">
+                v{schemaVersion}
+              </span>
+            </div>
+          )}
+
+          {/* 著作権表示は LICENSE と文字列を一致させる（年も固定。ビルド年を自動で入れない）。
+              Powered by は謝辞で、ライセンス表示の代わりにはならない。義務を満たすのは
+              配布 ZIP 同梱の THIRD-PARTY-NOTICES.txt のほう（そちらへ誘導する）。
+              固有名詞だけの2行は翻訳しない */}
+          <div className={styles.infoFooter}>
+            <span data-testid="info-copyright">© 2026 artistrytech · MIT License</span>
+            <span>Powered by React · React Flow · Javalin · ELK</span>
+            <span className={styles.infoNotices}>{t("info.notices")}</span>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -463,16 +537,23 @@ function EditControls({ route }: { route: Route }) {
                 onClick={() => (status === "failed" ? retry() : save())}
               />
             )}
+            {/* 静的モードは保存先が無い。動作モードの常設表示を information に畳んだため、
+                「保存されない」ことだけは編集中のヘッダに出し続ける（A-02） */}
             {serverMode === false && (
-              <button
-                type="button"
-                className={styles.iconButton}
-                data-testid="export-button"
-                title={t("edit.exportButton")}
-                onClick={() => openExport(erdId)}
-              >
-                <ExportIcon />
-              </button>
+              <>
+                <span className={styles.staticWarning} data-testid="static-warning">
+                  {t("session.notSaved")}
+                </span>
+                <button
+                  type="button"
+                  className={styles.iconButton}
+                  data-testid="export-button"
+                  title={t("edit.exportButton")}
+                  onClick={() => openExport(erdId)}
+                >
+                  <ExportIcon />
+                </button>
+              </>
             )}
             <EndEditButton onClick={() => requestEnd(dirty, () => (location.hash = hrefs.erd(erdId)))} />
           </>
@@ -688,22 +769,12 @@ function ExportIcon() {
   );
 }
 
-function ServerIcon() {
+function InfoIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-      <rect x="3" y="4" width="18" height="7" rx="1.5" />
-      <rect x="3" y="13" width="18" height="7" rx="1.5" />
-      <line x1="7" y1="7.5" x2="7.01" y2="7.5" />
-      <line x1="7" y1="16.5" x2="7.01" y2="16.5" />
-    </svg>
-  );
-}
-
-function StaticIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-      <polyline points="14 2 14 8 20 8" />
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" />
+      <line x1="12" y1="11" x2="12" y2="16.5" />
+      <line x1="12" y1="7.5" x2="12.01" y2="7.5" />
     </svg>
   );
 }

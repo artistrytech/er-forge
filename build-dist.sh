@@ -58,7 +58,10 @@ if [ ! -d "viewer/node_modules" ]; then
 fi
 
 # ---- build all (gradle runs: viewer build -> shadowJar -> ZIP) ----
+# ERD_RELEASE=1 はリリースビルドの印。index.html と erd-server.jar に焼き込む版が
+# VERSION の内容そのままになる（他のビルドは -dev が付き、見分けが付く）
 echo "--- build: viewer -> erd-server.jar -> ZIP ---"
+export ERD_RELEASE=1
 (cd server && chmod +x ./gradlew && ./gradlew packageDist --console=plain)
 
 trap - EXIT

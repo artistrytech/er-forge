@@ -1,0 +1,121 @@
+THIRD-PARTY NOTICES
+===================
+
+ER図管理ツール
+Copyright (c) 2026 artistrytech
+MIT License
+
+本ツール本体のライセンスは MIT License です（全文は開発リポジトリの LICENSE を参照）。
+配布物には以下のオープンソースソフトウェアが含まれています。著作権は各権利者に帰属し、
+それぞれのライセンス条件に従って再配布しています。
+
+ライセンス全文と NOTICE は、各アーティファクト（jar / npm パッケージ）に含まれる
+LICENSE / NOTICE ファイル、または下記の配布元を参照してください。
+
+このファイルは手で維持しています。依存を追加・削除したときは、ここも更新してください
+（server/build.gradle.kts の dependencies と viewer/package.json の dependencies が対象）。
+
+
+------------------------------------------------------------------------
+index.html（ビューア。ビルド時にバンドルされます）
+------------------------------------------------------------------------
+
+React / React DOM / Scheduler / use-sync-external-store
+  MIT License
+  Copyright (c) Meta Platforms, Inc. and affiliates
+  https://github.com/facebook/react
+
+React Flow (@xyflow/react / @xyflow/system)
+  MIT License
+  Copyright (c) 2019-2024 webkid GmbH
+  https://github.com/xyflow/xyflow
+
+Zustand
+  MIT License
+  Copyright (c) 2019 Paul Henschel
+  https://github.com/pmndrs/zustand
+
+Zod
+  MIT License
+  Copyright (c) 2020 Colin McDonnell
+  https://github.com/colinhacks/zod
+
+classcat
+  MIT License
+  Copyright (c) Jorge Bucaran
+  https://github.com/jorgebucaran/classcat
+
+d3-color / d3-dispatch / d3-drag / d3-ease / d3-interpolate / d3-selection /
+d3-timer / d3-transition / d3-zoom
+  ISC License
+  Copyright 2010-2023 Mike Bostock
+  https://github.com/d3
+
+
+------------------------------------------------------------------------
+erd-server.jar（サーバー本体。fat JAR に同梱されます）
+------------------------------------------------------------------------
+
+Javalin
+  Apache License 2.0
+  Copyright 2017 David Åse
+  https://github.com/javalin/javalin
+
+Eclipse Jetty （jetty-server / -http / -io / -util / -servlet / -security /
+-webapp / -xml、websocket-* および jetty-jakarta-servlet-api）
+  Eclipse Public License 2.0 / Apache License 2.0（デュアルライセンス）
+  Copyright (c) Eclipse Foundation, Inc. and others
+  https://github.com/jetty/jetty.project
+
+Jackson (jackson-databind / jackson-core / jackson-annotations)
+  Apache License 2.0
+  Copyright (c) FasterXML, LLC
+  https://github.com/FasterXML/jackson
+
+Kotlin standard library (kotlin-stdlib / -jdk7 / -jdk8) および
+JetBrains Java Annotations
+  Apache License 2.0
+  Copyright 2010-2024 JetBrains s.r.o.
+  https://github.com/JetBrains/kotlin
+
+SLF4J (slf4j-api / slf4j-simple)
+  MIT License
+  Copyright (c) 2004-2023 QOS.ch Sarl
+  https://www.slf4j.org/
+
+Eclipse Layout Kernel / ELK (org.eclipse.elk.core / .graph / .alg.common /
+.alg.layered)
+  Eclipse Public License 2.0
+  Copyright (c) Kiel University and others
+  https://github.com/eclipse/elk
+
+Eclipse Modeling Framework / EMF (org.eclipse.emf.common / .ecore / .ecore.xmi)
+  Eclipse Public License 1.0
+  Copyright (c) Eclipse Foundation, Inc. and others
+  https://projects.eclipse.org/projects/modeling.emf.emf
+
+Guava および関連アノテーション (guava / failureaccess / listenablefuture /
+error_prone_annotations / j2objc-annotations)
+  Apache License 2.0
+  Copyright (c) Google LLC
+  https://github.com/google/guava
+
+JSpecify
+  Apache License 2.0
+  Copyright (c) The JSpecify Authors
+  https://github.com/jspecify/jspecify
+
+
+------------------------------------------------------------------------
+注記
+------------------------------------------------------------------------
+
+ソースコードの入手（EPL-1.0 / EPL-2.0 の対象コンポーネント）
+  Eclipse Jetty・ELK・EMF のソースコードは、上記の各プロジェクトのリポジトリ、
+  または Maven Central の sources アーティファクトから入手できます。
+  バージョンは開発リポジトリの server/build.gradle.kts で確認できます。
+
+JDBC ドライバは同梱していません
+  drivers/ は初期状態では空です。逆生成画面から取得したドライバ、または手動で
+  置いたドライバは、それぞれの提供元のライセンス条件（MySQL は GPLv2 + FOSS 例外、
+  Oracle は OFUTC など）に従います。本ファイルの対象外です。

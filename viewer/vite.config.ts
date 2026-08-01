@@ -6,8 +6,24 @@
  * インライン化は自前プラグインで行う（vite-plugin-singlefile が
  * Vite 7/8 + iife 出力で JS を空のまま埋め込む問題を踏んだため）。
  */
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
+
+/**
+ * リリースバージョン（information に表示する）。
+ * リポジトリ直下の VERSION が単一の真実源で、server/build.gradle.kts も同じファイルを読む。
+ * ここで定数に焼き込むのは、静的モード（file://）ではサーバーに問い合わせる手段がないため。
+ *
+ * リリースビルド（build-dist.bat / build-dist.sh）だけが ERD_RELEASE=1 で確定版になる。
+ * 手元ビルドは -dev が付く。
+ */
+function appVersion(): string {
+  const file = fileURLToPath(new URL("../VERSION", import.meta.url));
+  const base = readFileSync(file, "utf8").trim();
+  return process.env.ERD_RELEASE === "1" ? base : `${base}-dev`;
+}
 
 function inlineSingleFile(): Plugin {
   return {
@@ -66,6 +82,9 @@ export default defineConfig({
   plugins: [react(), inlineSingleFile()],
   base: "./",
   publicDir: false,
+  define: {
+    __APP_VERSION__: JSON.stringify(appVersion()),
+  },
   // CSS Modules: *.module.scss のローカルクラスは camelCase で参照する
   // （例: .erd-node-name → styles.erdNodeName）。cssCodeSplit:false のため
   // module 化しても出力は単一 CSS のままで、inlineSingleFile がインライン化する。

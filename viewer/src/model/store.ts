@@ -36,6 +36,13 @@ export interface AppState {
   nameDisplay: NameDisplay;
   /** null = 判定中 */
   serverMode: boolean | null;
+  /**
+   * サーバー（erd-server.jar）のリリースバージョン。/__erd/health が返す。
+   * null = 静的モード、または取得できなかった。
+   * index.html と jar は別々に差し替えられるため、ビューア側の APP_VERSION と
+   * 食い違うことがある。information はその不一致を表示する（A-02）。
+   */
+  serverVersion: string | null;
 
   /** ワークスペース一覧（workspaces.js。プルダウンの中身） */
   workspaces: WorkspaceRef[];
@@ -179,6 +186,7 @@ export const useAppStore = create<AppState>((set) => ({
     detectLang(typeof navigator !== "undefined" ? navigator.languages ?? [] : []),
   nameDisplay: readStoredNameDisplay() ?? "both",
   serverMode: null,
+  serverVersion: null,
 
   fatal: null,
   manifest: null,

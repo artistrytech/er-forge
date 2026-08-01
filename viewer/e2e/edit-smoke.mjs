@@ -215,6 +215,9 @@ async function main() {
     check("static mode: editing starts (no lock)", true);
     check("static mode: export button shown (no save)",
         await staticPage.locator('[data-testid="export-button"]').isVisible());
+    // 動作モードは information に畳んだので、編集中は「保存されません」をヘッダに出す（A-02）
+    check("static mode: unsaved warning shown while editing",
+        await staticPage.locator('[data-testid="static-warning"]').isVisible());
 
     await dragNode(staticPage, "public.users", 200, 0);
     await staticPage.click('[data-testid="export-button"]');

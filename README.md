@@ -1,7 +1,15 @@
 # ER図管理ツール（開発リポジトリ）
 
-設計書は [.docs/1_architecture.md](.docs/1_architecture.md) と
-[.docs/2_functions.md](.docs/2_functions.md) を参照。
+**テーブル定義書とER図にまつわる「よくある困りごと」を、まとめて解決するツール。**
+
+| よくある課題 | このツールなら |
+|---|---|
+| **メンテナンスが追い付かず陳腐化する**。DB は変わっているのに定義書は昔のまま | 実 DB に接続して**スキーマを逆生成**し、差分をプレビューして取り込める。人が書くのは論理名・注記など**人にしか書けない情報**だけ。実体とドキュメントがずれない |
+| **特定のソフトやツールがないと閲覧できない**。Excel、専用エディタ、有償ライセンス…… | 成果物は**単一の `index.html`**。ブラウザで開くだけで誰でも見られる。閲覧だけなら Java もサーバーも不要 |
+| **1ツールでは機能が足りず情報が分散する**。ER図はA、定義書はB、補足メモはC | **ER図・テーブルカタログ・論理名・論理制約・タグ・注記**を1つのワークスペースで扱う。同じデータを2つのビューから見る形なので、二重管理が起きない |
+| **Gitで差分を追えない**。バイナリ形式なのでレビューもマージもできない | データは**決定論的に整形したテキスト**として出力。同じ内容なら常に同じバイト列になるので、`git diff` が読めるし、プルリクエストで普通にレビューできる |
+
+**成果物をリポジトリに置き、コードと同じワークフローで育てていく**——それがこのツールの立ち位置。
 
 ## 構成
 
@@ -32,15 +40,15 @@ cd viewer && npm run dev
 
 | | 内容 |
 |---|---|
-| プロジェクトディレクトリ | `dev/`（Git 管理外）。設計書 §3.3 の `erd/` にあたる |
-| データ | `dev/workspace-<id>/data/`（ワークスペース単位。→ 設計書 §3.7） |
+| プロジェクトディレクトリ | `dev/`（Git 管理外）。配布物での `erd/` にあたる |
+| データ | `dev/workspace-<id>/data/`（ワークスペース単位） |
 | 初回起動 | ワークスペースが無ければ作成画面 → ブートストラップ画面が出る。**サンプルを取り込めばすぐ触れる** |
 | JDBC ドライバ | `dev/drivers/*.jar` に置く（逆生成を試す場合。→ [dev-db/](dev-db/README.md)）。設定は `dev/config.js`（全ワークスペース共通） |
 | サーバーのポート | `5321`（使用中なら自動で繰り上がる）。`ERD_PORT` で変更できる |
 | トークン | `erd-dev` に固定（`ERD_TOKEN`）。dev の URL を固定するためであり、配布物は毎回ランダム |
 
 **仕組み**: ビューアはデータを常に `<script src="workspace-<id>/data/**.js">` の相対パスで読む
-（設計書 §4.3。読み込み経路はモードによらず1本）。そこで vite dev が `/workspace-*/data/`・
+（読み込み経路はモードによらず1本）。そこで vite dev が `/workspace-*/data/`・
 `/workspaces.js`・`/__erd` を Java サーバーへプロキシする。`GET /__erd/health` が通るので
 サーバーモードになる（A-01）。
 
@@ -70,8 +78,7 @@ node migrate.mjs up 001     # ENUM / CHECK / 部分・式インデックスま�
 
 追加 DB の内省検証（Phase 7）として **SQL Server / Oracle**（docker compose の profile 分け）と
 **SQLite**（docker 不要・プロセス内）も用意している。詳細は
-[dev-db/README.md](dev-db/README.md#追加-db-の検証phase-7-sql-server--oracle--sqlite) と
-[追加 DB の検証](.docs/function-details/Phase7_additional-db-verification.md) を参照。
+[dev-db/README.md](dev-db/README.md#追加-db-の検証phase-7-sql-server--oracle--sqlite) を参照。
 
 ## ビルド
 
@@ -92,21 +99,33 @@ cd server && ./gradlew test
 
 ## リリース
 
-Windows ではリポジトリ直下の **`build-dist.bat`**、macOS / Linux では **`./build-dist.sh`** を
-実行するだけでよい（npm install → viewer ビルド → shadowJar → ZIP 組み立てまで自動。
-`--no-pause` で自動化にも使える）。
+手順:
 
-手動で行う場合:
+1. リポジトリ直下の **`VERSION`** を更新してコミットする（例 `0.3.0`）
+2. **タグを打つ**: `git tag v0.3.0`（**タグと `VERSION` は必ず一致させる**）
+3. Windows なら **`build-dist.bat`**、macOS / Linux なら **`./build-dist.sh`** を実行する
+   （npm install → viewer ビルド → shadowJar → ZIP 組み立てまで自動。`--no-pause` で自動化にも使える）
+4. `server/build/dist/erd.zip` を GitHub Releases に手動アップロードする
+
+手動でビルドする場合:
 
 ```sh
-cd server && ./gradlew packageDist
+cd server && ERD_RELEASE=1 ./gradlew packageDist
 ```
 
-`server/build/dist/erd.zip` が生成される
-（ビューアのビルド → shadowJar → `distribution/` との合成まで自動で行う）。
-これを GitHub Releases に手動アップロードする。ZIP 名にバージョンは含めない
-（リリースのバージョンは GitHub Releases のタグで示す）。バージョンは
-`server/build.gradle.kts` の `version` で管理する。
+ZIP 名にバージョンは含めない（リリースのバージョンは GitHub Releases のタグで示す）。
+
+### バージョン
+
+**リポジトリ直下の `VERSION`（1行）が単一の真実源**。ビルド時に `index.html`（vite の define）と
+`erd-server.jar`（マニフェストの `Implementation-Version`）の両方へ焼き込まれ、画面右上の
+**information（ⓘ）** に表示される。サーバーモードでは jar 側の版も `GET /__erd/health` から取得して
+並べ、食い違っていれば注意文を出す（`index.html` だけ差し替えたときに気づける）。
+
+**リリースビルド（`build-dist.*`）だけが `ERD_RELEASE=1`** を立て、`VERSION` そのままの版になる。
+それ以外の手元ビルドは `-dev` が付く（例 `0.2.0-dev`）。`gradlew devServer` のような jar 外実行は `dev`。
+
+データ形式の版（`schemaVersion`）とは**独立した軸**で、連動させない。
 
 JDBC ドライバは配布物に同梱しない。利用者は逆生成画面から主要 DB のドライバを
 Maven からダウンロードできる（設定は全ワークスペース共通の `erd/config.js` の `drivers`、既定バージョンは
