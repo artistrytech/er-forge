@@ -121,7 +121,7 @@
 `npm run build`（フロント）と `./gradlew shadowJar`（バック）の成果物を手動で ZIP 化し、**GitHub Releases に手動アップロード**する。
 
 ```
-erd.zip
+ERForge-<version>.zip       例 ERForge-0.3.0.zip（リリースビルド以外は ERForge-0.3.0-dev.zip）
 ├── erd-server.jar          fat JAR（Javalin + Jetty + Jackson + ELK + core）
 ├── drivers/                空（README のみ）。JDBC ドライバは各自が取得する
 │   └── README.txt
@@ -145,9 +145,14 @@ ZIP に入れる。fat JAR と単一 HTML は他者のバイナリを**再配布
 伝播、EPL のソース入手告知）、この同梱が義務を満たす本体になる。information（A-02）の
 「Powered by」は謝辞であって、これの代わりにはならない。依存を追加・削除したら手で更新する。
 
-**ZIP 名にバージョンは入れない**（`erd.zip` 固定）。展開先の `erd/` を差し替える運用のため、
-ダウンロードしたファイル名が毎回同じであるほうが手順を書きやすい。リリースのバージョンは
-GitHub Releases のタグで示す。
+**ZIP 名は `ERForge-<version>.zip`**（アプリ名 + 版）。手元のダウンロードフォルダにも
+`build/dist/` にも複数の版が並ぶため、**ファイル名だけでどの版か判別できること**を優先する。
+版は `VERSION`（§3.1 の唯一の真実源）から `packageDist` が組み立て、リリースビルド以外は
+`-dev` が付くので、開発中の ZIP を誤って配ることも防げる。
+
+> 以前は「展開先を差し替えるだけの運用なのでファイル名は固定（`erd.zip`）」としていたが、
+> 取り違えの危険のほうが大きいと判断して改めた。手順書に名前を直書きしたい場合は、
+> GitHub Releases の latest へのリンクを使う。
 
 #### リリースバージョンの管理
 

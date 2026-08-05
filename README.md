@@ -187,7 +187,8 @@ cd server && ./gradlew test
 2. **タグを打つ**: `git tag v0.3.0`（**タグと `VERSION` は必ず一致させる**）
 3. Windows なら **`build-dist.bat`**、macOS / Linux なら **`./build-dist.sh`** を実行する
    （npm install → viewer ビルド → shadowJar → ZIP 組み立てまで自動。`--no-pause` で自動化にも使える）
-4. `server/build/dist/erd.zip` を GitHub Releases に手動アップロードする
+4. `server/build/dist/ERForge-<VERSION>.zip`（例 `ERForge-0.3.0.zip`）を GitHub Releases に手動アップロードする
+   （ファイル名は `VERSION` から組み立てられます。ビルド完了時に絶対パスが表示されます）
 
 手動でビルドする場合は、次を実行してください。
 

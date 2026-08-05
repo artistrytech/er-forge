@@ -3,7 +3,7 @@
 #  ER diagram tool - release build (macOS / Linux)
 #  build-dist.bat の POSIX shell 版。動作は同じ。
 #
-#  配布 ZIP を作る: server/build/dist/erd.zip
+#  配布 ZIP を作る: server/build/dist/ERForge-<VERSION>.zip
 #    1. viewer/ の npm install（初回のみ）
 #    2. ビューアのビルド（単一 index.html）
 #    3. erd-server.jar（shadowJar）
@@ -68,7 +68,10 @@ trap - EXIT
 
 echo
 echo "=== DONE ==="
-echo "output: $(pwd)/server/build/dist/erd.zip"
+# ZIP 名は build.gradle.kts が VERSION（唯一の真実源）から組み立てる。
+# ここは ERD_RELEASE=1 のリリースビルドなので -dev は付かない
+VERSION=$(tr -d ' \t\r\n' < VERSION)
+echo "output: $(pwd)/server/build/dist/ERForge-$VERSION.zip"
 echo "Upload this ZIP to GitHub Releases manually."
 if [ -z "$NOPAUSE" ]; then
     printf 'Press Enter to continue...'

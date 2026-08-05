@@ -2,7 +2,7 @@
 rem ============================================================
 rem  ER diagram tool - release build (Windows only)
 rem
-rem  Builds the distribution ZIP: server\build\dist\erd.zip
+rem  Builds the distribution ZIP: server\build\dist\ERForge-<VERSION>.zip
 rem    1. npm install for viewer/ (first run only)
 rem    2. viewer build (single index.html)
 rem    3. erd-server.jar (shadowJar)
@@ -68,7 +68,11 @@ popd
 
 echo.
 echo === DONE ===
-for %%f in ("server\build\dist\erd.zip") do echo output: %%~ff
+rem  The ZIP name is composed by build.gradle.kts from VERSION (single source
+rem  of truth). This is a release build (ERD_RELEASE=1), so there is no -dev suffix.
+set "ERD_VERSION="
+for /f "usebackq delims=" %%v in ("VERSION") do if not defined ERD_VERSION set "ERD_VERSION=%%v"
+for %%f in ("server\build\dist\ERForge-%ERD_VERSION%.zip") do echo output: %%~ff
 echo Upload this ZIP to GitHub Releases manually.
 if not defined NOPAUSE pause
 exit /b 0

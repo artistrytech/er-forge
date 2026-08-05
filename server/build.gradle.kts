@@ -141,17 +141,18 @@ val npmBuild = tasks.register<Exec>("npmBuild") {
 
 /**
  * 配布 ZIP の組み立て（設計書 §3.1）。
- *   erd.zip
+ *   ERForge-<version>.zip
  *   ├── erd-server.jar / index.html / erd.sh / erd.bat / README.md
  *   ├── THIRD-PARTY-NOTICES.txt （同梱 OSS の著作権・ライセンス表示。distribution/ の固定ファイル）
  *   ├── .gitignore / .gitattributes （展開先 erd/ の Git 運用設定。distribution/ の固定ファイル。
  *                         Ant の既定除外に入っているため settings.gradle.kts で除外を外している）
  *   └── drivers/        （空。README のみ。JDBC ドライバは逆生成画面から
  *                         各自ダウンロードするか、手動で jar を置く。§7.2）
- * 実行: gradlew packageDist → build/dist/erd.zip を GitHub Releases に手動アップロード
+ * 実行: gradlew packageDist → build/dist/ERForge-<version>.zip を GitHub Releases に手動アップロード
  *
- * ファイル名にバージョンは入れない（展開先の erd/ を差し替える運用のため、
- * ダウンロードしたファイル名が毎回同じであるほうが手順を書きやすい）。
+ * ファイル名にはアプリ名と版を入れる。手元にもダウンロード先にも複数の版が並ぶため、
+ * ファイル名だけでどの版か分かる必要がある。版は VERSION（唯一の真実源）由来で、
+ * リリースビルド以外は -dev が付く（例 ERForge-0.1.0-dev.zip）。
  *
  * ドライバを同梱しないのは意図的: (1) 再配布に伴うライセンス問題（MySQL は GPL、
  * Oracle は proprietary）を避け、(2) ZIP を小さく保つ。既定バージョンは DriverCatalog、
@@ -161,7 +162,8 @@ tasks.register<Zip>("packageDist") {
     group = "build"
     description = "Assemble the release ZIP under build/dist"
     dependsOn(tasks.shadowJar, npmBuild)
-    archiveFileName = "erd.zip"
+    archiveBaseName = "ERForge"
+    archiveVersion = project.version.toString()
     destinationDirectory = layout.buildDirectory.dir("dist")
     from(tasks.shadowJar.flatMap { it.archiveFile })
     from("../viewer/dist/index.html")
