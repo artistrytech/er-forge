@@ -22,7 +22,7 @@ import java.util.stream.Stream;
  * <pre>
  * 1. manifest.js のみを先にパースして schemaVersion を読む
  * 2. 適用すべき移行の列を決める
- * 3. data/** を .erd/backup/<timestamp>/ にコピー
+ * 3. data/** を .local/backup/<timestamp>/ にコピー
  * 4. 全ファイルをモデルとして読み込む
  * 5. 移行関数を順に適用
  * 6. schemaVersion を CURRENT にする
@@ -58,12 +58,12 @@ public final class MigrationRunner {
      * @throws NewerDataException データがサーバーより新しい形式のとき（データには触れない）
      */
     public Result run(Path projectRoot) {
-        return run(projectRoot, projectRoot.resolve(".erd").resolve("backup"));
+        return run(projectRoot, projectRoot.resolve(".local").resolve("backup"));
     }
 
     /**
      * バックアップの置き場所を指定して移行する。ワークスペース（{@code erd/workspace-<id>/}）は
-     * Git 管理下にあるため、バックアップは {@code .erd/workspace-<id>/backup/} 側へ逃がす。
+     * Git 管理下にあるため、バックアップは {@code erd/.local/workspace-<id>/backup/} 側へ逃がす。
      *
      * @throws NewerDataException データがサーバーより新しい形式のとき（データには触れない）
      */

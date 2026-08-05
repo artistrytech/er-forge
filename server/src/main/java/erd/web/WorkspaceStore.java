@@ -28,6 +28,9 @@ final class WorkspaceStore {
 
     static final String REGISTRY = "workspaces.js";
 
+    /** 個人データの置き場（erd/ 直下。Git 管理外。§3.3）。 */
+    static final String PRIVATE = ".local";
+
     private final DataFileParser parser = new DataFileParser();
     private final DataFilePrinter printer = new DataFilePrinter();
 
@@ -44,14 +47,17 @@ final class WorkspaceStore {
     }
 
     /**
-     * Git 管理外の個人データ（接続情報・バックアップ）。{@code .erd/workspace-<id>/}。
-     * erd/ の親に置く（§3.3）。接続先はワークスペースごとに違うため分割は必須で、
+     * Git 管理外の個人データ（接続情報・バックアップ）。{@code erd/.local/workspace-<id>/}。
+     * <b>erd/ の内側</b>に置く（§3.3）。配布 ZIP 同梱の {@code erd/.gitignore} が
+     * {@code .local/} を除外するため、利用者が自分のリポジトリの .gitignore に
+     * 手を入れなくてよい。サーバーは許可したルートしか配信しないので（§8.5）、
+     * erd/ の中にあっても HTTP からは取得できない。
+     *
+     * <p>接続先はワークスペースごとに違うため分割は必須で、
      * バックアップも分けないと復元が別のワークスペースを壊す。
      */
     static Path privateDir(Path root, String id) {
-        Path parent = root.getParent();
-        Path base = parent != null ? parent.resolve(".erd") : root.resolve(".erd");
-        return base.resolve(Workspace.folderName(id));
+        return root.resolve(PRIVATE).resolve(Workspace.folderName(id));
     }
 
     // ------------------------------------------------------------------- list
@@ -118,7 +124,7 @@ final class WorkspaceStore {
 
     /**
      * ID・表示名の変更。ID を変えるとフォルダ名も変わる（Git 上は削除＋追加の差分になる）。
-     * 個人データ（{@code .erd/workspace-<id>/}）も一緒に移す。
+     * 個人データ（{@code .local/workspace-<id>/}）も一緒に移す。
      */
     Workspace rename(Path root, String oldId, String newId, String newName) {
         if (!oldId.equals(newId)) {

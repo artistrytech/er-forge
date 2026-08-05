@@ -437,7 +437,7 @@ const ja = {
   "introspect.templates": "テンプレート:",
   "introspect.user": "ユーザー",
   "introspect.password": "パスワード",
-  "introspect.savePassword": "パスワードも保存する（.erd/connection.local.json）",
+  "introspect.savePassword": "パスワードも保存する（.local/connection.local.json）",
   "introspect.saveConnection": "接続情報を保存",
   "introspect.connectionSaved": "接続情報を保存しました",
   "introspect.test": "接続テスト",
@@ -551,7 +551,7 @@ const ja = {
   "introspect.applyAnyway": "確認のうえ適用する",
   "introspect.guardTitle": "適用前の確認",
   "introspect.guardBody":
-    "接続先とフィルタ設定を確認してください。適用すると data/schema/** が書き換わります（適用前のバックアップは .erd/backup/ に残ります）。",
+    "接続先とフィルタ設定を確認してください。適用すると data/schema/** が書き換わります（適用前のバックアップは .local/backup/ に残ります）。",
   "introspect.doneTitle": "適用しました",
   "introspect.appliedSummary":
     "逆生成を適用しました（追加 {added} / リネーム {renamed} / 変更 {modified} / 削除 {removed}）",
@@ -977,7 +977,7 @@ const en: Record<MsgKey, string> = {
   "introspect.templates": "Templates:",
   "introspect.user": "User",
   "introspect.password": "Password",
-  "introspect.savePassword": "Also save the password (.erd/connection.local.json)",
+  "introspect.savePassword": "Also save the password (.local/connection.local.json)",
   "introspect.saveConnection": "Save connection",
   "introspect.connectionSaved": "Connection saved",
   "introspect.test": "Test connection",
@@ -1092,7 +1092,7 @@ const en: Record<MsgKey, string> = {
   "introspect.applyAnyway": "Apply anyway",
   "introspect.guardTitle": "Confirm before applying",
   "introspect.guardBody":
-    "Check the connection target and filters. Applying rewrites data/schema/** (a backup is kept in .erd/backup/).",
+    "Check the connection target and filters. Applying rewrites data/schema/** (a backup is kept in .local/backup/).",
   "introspect.doneTitle": "Applied",
   "introspect.appliedSummary":
     "Introspection applied (added {added} / renamed {renamed} / modified {modified} / removed {removed})",

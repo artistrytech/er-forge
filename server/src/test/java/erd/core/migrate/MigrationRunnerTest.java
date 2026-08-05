@@ -142,7 +142,7 @@ class MigrationRunnerTest {
             assertTrue(java.util.Arrays.equals(before.get(name), after.get(name)),
                     "データを一切書き換えないこと: " + name);
         }
-        assertTrue(!Files.exists(root.resolve(".erd")), "バックアップも作らないこと");
+        assertTrue(!Files.exists(root.resolve(".local")), "バックアップも作らないこと");
     }
 
     @Test

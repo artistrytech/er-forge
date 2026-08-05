@@ -34,7 +34,7 @@ class WebServerTest {
         void run(String origin) throws Exception;
     }
 
-    /** 配布物と同じ配置（`<repo>/erd/` の下がサーバーのルート。`.erd/` はその隣）。 */
+    /** 配布物と同じ配置（`<repo>/erd/` の下がサーバーのルート。個人データは `erd/.local/`）。 */
     private static Path erdRoot(Path tmp) throws Exception {
         Path root = tmp.resolve("erd");
         Files.createDirectories(root);
@@ -123,13 +123,13 @@ class WebServerTest {
     }
 
     @Test
-    @DisplayName("ID 変更はフォルダと .erd/ を移し、削除は個人データごと消す")
+    @DisplayName("ID 変更はフォルダと .local/ を移し、削除は個人データごと消す")
     void renameAndDelete(@TempDir Path tmp) throws Exception {
         Path root = erdRoot(tmp);
         withServer(root, origin -> {
             assertEquals(200, send("POST", t(origin, "/__erd/workspaces"),
                     "{\"id\":\"old\",\"name\":\"旧\"}").statusCode());
-            Path privateDir = root.getParent().resolve(".erd/workspace-old");
+            Path privateDir = root.resolve(".local/workspace-old");
             Files.createDirectories(privateDir);
             Files.writeString(privateDir.resolve("connection.local.json"), "{}");
             Files.writeString(root.resolve("workspace-old/data/marker.js"), "// marker\n");
@@ -140,13 +140,13 @@ class WebServerTest {
             assertFalse(Files.exists(root.resolve("workspace-old")));
             assertTrue(Files.isRegularFile(root.resolve("workspace-new/data/marker.js")));
             assertTrue(Files.isRegularFile(
-                    root.getParent().resolve(".erd/workspace-new/connection.local.json")));
+                    root.resolve(".local/workspace-new/connection.local.json")));
             assertTrue(Files.readString(root.resolve("workspaces.js"), StandardCharsets.UTF_8)
                     .contains("{ id: \"new\", name: \"新\" },"));
 
             assertEquals(200, send("DELETE", t(origin, "/__erd/workspaces/new"), null).statusCode());
             assertFalse(Files.exists(root.resolve("workspace-new")));
-            assertFalse(Files.exists(root.getParent().resolve(".erd/workspace-new")));
+            assertFalse(Files.exists(root.resolve(".local/workspace-new")));
         });
     }
 

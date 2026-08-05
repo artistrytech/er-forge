@@ -443,7 +443,7 @@ resolve(relation):
 ```
 1. data.schemaVersion を読む（manifest.js のみを先にパースする）
 2. 適用すべき移行の列を決める（v1→v2, v2→v3, … を順に）
-3. data/** の全体を .erd/backup/<timestamp>/ にコピー（§8.6 と同じ仕組み）
+3. data/** の全体を .local/backup/<timestamp>/ にコピー（§8.6 と同じ仕組み）
 4. 全ファイルをモデルとして読み込む（旧バージョンのリーダーで）
 5. 移行関数を順に適用する（Migration#apply(ProjectModel) → ProjectModel）
 6. manifest.schemaVersion を CURRENT_VERSION にする

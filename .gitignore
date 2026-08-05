@@ -2,8 +2,10 @@
 build/
 bin/
 node_modules/
-.erd/
 *.class
+
+# 個人データの旧置き場（v0.1.0 で erd/.local/ に移した）。手元に残っている分の掃き出し用
+.erd/
 viewer/dist/
 
 # 開発用サーバー（gradlew devServer）のプロジェクトディレクトリ。生成物であり、コミットしない

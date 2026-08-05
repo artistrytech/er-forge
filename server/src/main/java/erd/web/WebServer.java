@@ -720,7 +720,7 @@ public final class WebServer {
         }
     }
 
-    /** {@code .erd/workspace-<id>/}（Git 管理外。接続設定・バックアップ）。 */
+    /** {@code erd/.local/workspace-<id>/}（Git 管理外。接続設定・バックアップ）。 */
     private Path privateDir(Context ctx) {
         return WorkspaceStore.privateDir(root, ctx.pathParam("ws"));
     }

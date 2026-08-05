@@ -26,7 +26,7 @@
   - **例外**: 静的モードで編集した配置を持ち出すための「配置のエクスポート」（`ERD.diagram({...})` の生コードをダイアログに表示・コピー）は提供する。静的モードにおける唯一の保存手段であるため（§9.7）
 - **DDL ファイル（`CREATE TABLE`）からの取り込み**。スキーマの入力元は JDBC 接続と GUI の手動編集に限定する
 - **逆生成の実行履歴の保持**
-- **`.gitignore` の自動検査 / 自動追記**（利用者が手動で設定する）
+- **利用者のリポジトリの `.gitignore` の自動検査 / 自動追記**。代わりに配布 ZIP に `.gitignore` / `.gitattributes` を同梱して `erd/` 直下に配り（§3.1）、**ツールが作るファイルはすべて `erd/` の中に収める**ことで、利用者側の設定作業をゼロにする
 
 ### 1.3 対応DB
 
@@ -45,7 +45,7 @@
 #### 1.4.1 言語対応（i18n）
 
 - **日本語 / 英語**の2言語に対応する。
-- 初期言語は**ユーザーの環境設定に従う**（ブラウザの `navigator.languages` を評価し、`ja` で始まるなら日本語、それ以外は英語）。GUI から明示的に切り替えることもでき、選択は個人設定として保持する（静的モードではメモリ、サーバーモードでは `.erd/`）。
+- 初期言語は**ユーザーの環境設定に従う**（ブラウザの `navigator.languages` を評価し、`ja` で始まるなら日本語、それ以外は英語）。GUI から明示的に切り替えることもでき、選択は個人設定として保持する（静的モードではメモリ、サーバーモードでは `erd/.local/`）。
 - UI 文字列はすべて翻訳リソース化し、コード中に直接記述しない。**翻訳リソースはバンドルに内包する**（`file://` では `fetch` による遅延ロードができないため）。
 - **翻訳対象は UI 文字列のみ。** DB 由来の識別子・コメント、ユーザーが入力した論理名・注記は翻訳しない（データそのものであり、言語切替で見た目が変わってはならない）。
 - 日時・数値の書式は選択言語のロケールに従う。
@@ -108,7 +108,7 @@
 - コード分割禁止（`inlineDynamicImports: true`）
 - `build.target: 'es2019'`
 - ビューア本体から **Web Worker / 動的 `import()` / `fetch` を使用しない**
-- `localStorage` に依存しない（`file://` の opaque origin で不安定。個人設定（言語・表示設定）は静的モードではメモリ保持、サーバーモードでは `.erd/` に保存する）
+- `localStorage` に依存しない（`file://` の opaque origin で不安定。個人設定（言語・表示設定）は静的モードではメモリ保持、サーバーモードでは `erd/.local/` に保存する）
 - **翻訳リソース（ja / en）はバンドルに内包する**（遅延ロード禁止）
 - **画面遷移は `#` ハッシュ URL のみで表現する**（`history.pushState` は `file://` で使用不可）。すべての遷移要素を `<a href="#/...">` として実装し、ブラウザ標準のリンク挙動を保つ（§1.4.2）
 
@@ -127,9 +127,18 @@ erd.zip
 │   └── README.txt
 ├── index.html              単一HTML（スキーマ情報は含まない）
 ├── erd.sh / erd.bat        起動スクリプト
+├── .gitignore              展開先 erd/ 用。.local/ と drivers/*.jar を除外する（§10）
+├── .gitattributes          展開先 erd/ 用。binary 指定と改行コード
 ├── THIRD-PARTY-NOTICES.txt 同梱 OSS の著作権・ライセンス表示
 └── README.md
 ```
+
+`.gitignore` / `.gitattributes` を **同梱する**のは、利用者に手で書かせると抜けるため。
+`erd/` 配下の Git 運用はツール側の都合なので、ツールが持って配る。**この 2 つで設定が完結する
+（利用者側のリポジトリの `.gitignore` には一切追記させない）**ことを不変条件とし、そのために
+個人データも `erd/.local/` に置く（§3.3）。`erd/` の外に出るファイルを作ってはならない。
+なお Gradle（Ant）の Copy / Zip は `.gitignore`・`.gitattributes` を**既定で除外する**ため、
+`server/settings.gradle.kts` で `DirectoryScanner.removeDefaultExclude` を呼んで外している。
 
 `THIRD-PARTY-NOTICES.txt` は **`distribution/` に置いた固定ファイル**で、`packageDist` がそのまま
 ZIP に入れる。fat JAR と単一 HTML は他者のバイナリを**再配布**しているため（Apache-2.0 の NOTICE
@@ -201,36 +210,58 @@ Oracle は proprietary な OFUTC）を避け、(2) 配布 ZIP を小さく保つ
 │   │           └── billing.js
 │   ├── workspace-billing/    ← 別の DB（構成は同じ）
 │   │   └── data/…
-│   ├── erd-server.jar        ← Git 管理しない
-│   ├── drivers/              ← Git 管理しない（jar は全ワークスペース共通）
-│   └── erd.sh / erd.bat      ← Git 管理しない
-└── .erd/                     ← Git 管理しない
-    └── workspace-sales/          ワークスペースごとに分ける
-        ├── connection.local.json     JDBC URL・認証情報
-        └── backup/                   逆生成の適用前バックアップ（直近3世代。§8.5）
-            └── 20260711-093012/      data/** の全体コピー
+│   ├── erd-server.jar        ← Git 管理する（全員が同じ版を使う）
+│   ├── .gitignore            ← Git 管理する（配布 ZIP に同梱。drivers/*.jar のみ除外）
+│   ├── .gitattributes        ← Git 管理する（配布 ZIP に同梱）
+│   ├── drivers/              ← README.txt は Git 管理する。jar は各自（全ワークスペース共通）
+│   │   └── README.txt
+│   ├── erd.sh / erd.bat      ← Git 管理する
+│   └── .local/               ← Git 管理しない（個人データ。同梱の .gitignore が除外）
+│       └── workspace-sales/      ワークスペースごとに分ける
+│           ├── connection.local.json  JDBC URL・認証情報
+│           └── backup/               逆生成の適用前バックアップ（直近3世代。§8.5）
+│               └── 20260711-093012/  data/** の全体コピー
+└──（ツールは erd/ の外に一切ファイルを作らない）
 ```
+
+**`erd/` という名前は規約であって要件ではない。** 利用者は好きな名前・好きな階層に展開できる。
+サーバーはカレントディレクトリをルートとして起動し（`Main`。起動スクリプトが自分の置き場所へ `cd` する）、
+ビューアの参照はすべて相対で、同梱の `.gitignore` / `.gitattributes` も自分の置かれた
+ディレクトリからの相対で効くためである。**この性質を壊さないこと** — 具体的には、
+ルートからの絶対パスや、展開先の名前を前提にしたパターン（`erd/index.html binary` のような書き方）を
+設定ファイルにも実装にも持ち込まない。以下、本書では展開先を `erd/` と表記する。
+
+**個人データを `erd/` の内側（`.local/`）に置く**のは、同梱の `erd/.gitignore` だけで Git 運用が
+完結するようにするため（§3.1）。`erd/` の外に置くと、利用者が自分のリポジトリの `.gitignore` に
+追記しない限り認証情報がコミット対象として現れてしまい、事故の入口になる。
+`erd/` の内側に置いても HTTP からは取得できない — サーバーは `erd/` を丸ごと静的配信しておらず、
+明示的に定義したルート（`/`・`/index.html`・`/workspaces.js`・`/workspace-*/data/**`）しか配信しない（§8.5）。
 
 **接続情報とバックアップをワークスペースごとに分けるのは必須である。** 接続先 DB が違うのに1つの
 `connection.local.json` を共有すると取り違えが起きるうえ、バックアップからの復元（INV-5 の最後の砦）は
 `data/` を丸ごと置き換えるため、混ざると別のワークスペースを破壊する。
 
-`.gitignore`（**利用者が手動で設定する**。ツールは検査も自動追記も行わない）:
+**`erd/` の中身は原則すべて Git 管理する**（`erd-server.jar`・起動スクリプトを含む）。
+メンバーが `git pull` するだけで、全員が同じ版のツールとデータを使える状態にするため。
+バージョンアップは新しい ZIP で `erd/` を上書きし、その差分をコミットする。
+
+`erd/.gitignore`（**配布 ZIP に同梱**。利用者はそのままコミットする）:
 
 ```
-erd/erd-server.jar
-erd/drivers/
-erd/erd.sh
-erd/erd.bat
-.erd/
+.local/
+drivers/*.jar
 ```
 
-`.gitattributes`:
+`erd/.gitattributes`（**配布 ZIP に同梱**）:
 
 ```
-erd/index.html binary
-erd/workspace-*/data/** text eol=lf
+index.html binary
+erd-server.jar binary
+workspace-*/data/** text eol=lf
 ```
+
+**プロジェクト側の `.gitignore` / `.gitattributes` に追記させることは一切ない。**
+ツールが作るファイルはすべて `erd/` の中に収まるため、同梱の 2 ファイルで設定が完結する。
 
 ### 3.7 ワークスペース（マルチデータベース構成）
 
@@ -241,7 +272,7 @@ erd/workspace-*/data/** text eol=lf
 | ID | `[A-Za-z0-9][A-Za-z0-9_-]{0,31}`。省略時は `default`。フォルダ名は `workspace-<id>` |
 | 重複判定 | **大文字小文字を区別しない**（Windows のパス仕様に合わせる。`Sales` と `sales` は同一） |
 | 表示名 | 必須。`erd/workspaces.js` に持つ（§5.13） |
-| ID の変更 | **可能**。フォルダ名と `.erd/workspace-<id>/` を移し、URL を張り替える。Git 上は「削除＋追加」の差分になるため GUI で警告する |
+| ID の変更 | **可能**。フォルダ名と `erd/.local/workspace-<id>/` を移し、URL を張り替える。Git 上は「削除＋追加」の差分になるため GUI で警告する |
 | 存在の正 | **フォルダの走査**。`workspaces.js` はその索引であり、走査結果と食い違えばサーバーが再生成する |
 | 切り替え | アプリタイトル横のプルダウン。**フルリロード**で切り替える（ローダーのキャッシュ・編集状態・キャンバスの計測値がワークスペースに紐づくため） |
 | 削除 | 設定メニューの「ワークスペース削除」。フォルダごと消す。確認に **ID の打ち込み**を求める |
@@ -465,7 +496,7 @@ ERD.manifest({
 
 ### 5.4 `config.js`（設定。2か所にある）
 
-**human-owned の設定。** チーム全員で共有すべき設定であり、Git 管理する（個人設定は `.erd/` へ）。サーバーは逆生成でこのファイルを書き換えない（GUI からの明示的な編集でのみ更新する）。書式は同じで、置き場所と持つ項目が違う。
+**human-owned の設定。** チーム全員で共有すべき設定であり、Git 管理する（個人設定は `erd/.local/` へ）。サーバーは逆生成でこのファイルを書き換えない（GUI からの明示的な編集でのみ更新する）。書式は同じで、置き場所と持つ項目が違う。
 
 | 置き場所 | 持つもの | 理由 |
 |---|---|---|
@@ -747,7 +778,7 @@ ERD.diagram({
 - **エッジのキーは `<テーブルID>#<種別>:<制約名>`**（`fk` = 物理 FK、`lfk` = 論理外部制約）。種別を挟むのは両者で制約名が衝突しうるため（§5.5）。制約名を変更した場合はこのキーも書き換える（waypoints を失わないため）。
 - ノードはテーブル名のみを描画するため、**折りたたみ状態（`collapsed`）は持たない**。`w` は名前が長い場合の幅の明示指定にのみ使う（省略時は内容に合わせて自動）。
 - 同一テーブルを複数ページに配置してよい。
-- **ビューポート / ズーム / 選択状態は保存しない**（個人状態は `.erd/` へ）。
+- **ビューポート / ズーム / 選択状態は保存しない**（個人状態は `erd/.local/` へ）。
 
 ### 5.10 テーブルのリネーム耐性
 
@@ -877,7 +908,7 @@ for (Driver d : ServiceLoader.load(Driver.class, cl)) {
 |---|---|---|
 | 使うドライバの座標・バージョン・Maven リポジトリ | `erd/config.js` の `drivers`（Git 管理・全ワークスペース共通） | ✅ チーム共有 |
 | jar の実体 | `drivers/*.jar`（`.gitignore`） | ❌ 各自ダウンロード |
-| 接続情報・パスワード | `.erd/`（Git 管理外） | ❌ 個人 |
+| 接続情報・パスワード | `erd/.local/`（Git 管理外） | ❌ 個人 |
 
 - 既定で提示するドライバと既定バージョンは `DriverCatalog`（build.gradle.kts の testImplementation と揃える）
 - `config.js` の `drivers`:
@@ -980,7 +1011,7 @@ JDBC を採用したことで、DB ごとの接続フォーム定義は不要に
 |---|---|---|
 | GET | `/__erd/health` | モード判定。`schemaVersion`（データ形式）と `appVersion`（サーバーのリリース版。§3.1）を返す |
 | GET / POST | `/__erd/workspaces` | ワークスペース一覧 / 追加（`{ id?, name }`。ID 省略時は `default`、重複は `409 DUPLICATE_ID`） |
-| PATCH / DELETE | `/__erd/workspaces/:ws` | ID・表示名の変更（フォルダ名も変わる） / 削除（フォルダごと + `.erd/workspace-<id>/`） |
+| PATCH / DELETE | `/__erd/workspaces/:ws` | ID・表示名の変更（フォルダ名も変わる） / 削除（フォルダごと + `erd/.local/workspace-<id>/`） |
 | GET | `/__erd/drivers` | ロード済み JDBC ドライバ・カタログ・共通設定（`erd/config.js`）・未取得の一覧 |
 | PUT | `/__erd/drivers/config` | **全ワークスペース共通**のドライバ設定（`erd/config.js`）の更新 |
 | POST | `/__erd/drivers/download` | ドライバ座標を Maven から取得し `drivers/` に置いて登録する |
@@ -989,7 +1020,7 @@ JDBC を採用したことで、DB ごとの接続フォーム定義は不要に
 | GET | `/__erd/w/:ws/project` | リビジョン、各ファイルの `baseHash`、`schemaVersion`、ブートストラップの要否 |
 | POST | `/__erd/w/:ws/bootstrap` | 空ワークスペースの初期化（`{ mode: "sample" }` でサンプルデータを書き出す。§3.6） |
 | POST | `/__erd/w/:ws/reset` | データリセット（そのワークスペースのスキーマ情報のみを削除。`config.js` は残す） |
-| GET / PUT | `/__erd/w/:ws/connection` | 接続設定（`.erd/workspace-<ws>/connection.local.json`）の取得 / 保存（K-05。パスワードは明示的オプトイン） |
+| GET / PUT | `/__erd/w/:ws/connection` | 接続設定（`erd/.local/workspace-<ws>/connection.local.json`）の取得 / 保存（K-05。パスワードは明示的オプトイン） |
 | POST | `/__erd/w/:ws/connection/test` | 接続テスト（製品名・バージョン・ネームスペース一覧を返す） |
 | POST | `/__erd/w/:ws/introspect` | 逆生成を実行し、**差分プレビューを返すのみ**（書き込みしない）。プレビューセッションを発行する |
 | GET | `/__erd/w/:ws/introspect/:sessionId` | 発行済みプレビューの再取得（ブラウザのリロード対策）。TTL 30分、失効時は `410`。**他のワークスペースのセッションは失効扱い** |
@@ -1040,13 +1071,14 @@ JDBC を採用したことで、DB ごとの接続フォーム定義は不要に
 
 - `127.0.0.1` バインド、トークン必須、`Origin` ヘッダ検証、CORS 無効
 - ファイル書き込みは `erd/workspace-<id>/data/` 配下に限定する（パストラバーサル禁止。ワークスペース ID も書式検証する）
-- DB 認証情報は既定でメモリ保持のみ。保存する場合は `.erd/connection.local.json`（Git 管理外）とし、パスワード保存は明示的なオプトインとする
+- DB 認証情報は既定でメモリ保持のみ。保存する場合は `erd/.local/workspace-<id>/connection.local.json`（Git 管理外）とし、パスワード保存は明示的なオプトインとする
+- **静的配信はディレクトリ公開ではなく、明示的に定義したルートだけ**（`/`・`/index.html`・`/workspaces.js`・`/workspace-<id>/data/<path>`）。`erd/` にファイルを置いても、それだけでは HTTP に露出しない。これが個人データ（`erd/.local/`）と JDBC ドライバを `erd/` の内側に置ける根拠であり、**新しい静的ルートを足すときはこの前提を壊していないか確認する**（`erd/` 全体を配信するルートを足してはならない）
 
 ### 8.6 複数ファイルに跨る書き込みのアトミック性
 
 逆生成の適用（K-11）は `schema/**`（複数）+ `manifest.js` + `index.js` + リネーム時は `diagrams/**`（複数）を**同時に**書き換える。1ファイルずつ置換すると「manifest だけ新しく schema は古い」中間状態が生じ、その隙間にファイル監視 → SSE → 再読込が走るとビューアが壊れた状態を読む。
 
-- **適用前に `data/**` の全体を `.erd/workspace-<id>/backup/<timestamp>/` へコピーする**（Git 管理外。直近3世代をローテーション）
+- **適用前に `data/**` の全体を `erd/.local/workspace-<id>/backup/<timestamp>/` へコピーする**（Git 管理外。直近3世代をローテーション）
 - 完成形を一時ディレクトリに生成 → 検証 → `ATOMIC_MOVE` で順次置換 → 削除対象を削除
 - **置換中は SSE の配信を抑止し、完了後に単一のリビジョンとしてまとめて通知する**
 - 途中で失敗した場合はバックアップから復元し、**適用前の状態に完全に戻す**（部分適用された壊れた状態を残さない）
@@ -1154,12 +1186,16 @@ React Flow の標準機能（d3-zoom ベース）を使用する。
 
 ## 10. Git 運用規約
 
+**原則: `erd/` の中身はすべて Git 管理する。** 例外は JDBC ドライバの jar だけ。
+
 | 対象 | Git 管理 | 備考 |
 |---|---|---|
 | `erd/index.html` | ✓ | メンバーが pull だけで閲覧できるようにするため。`.gitattributes` で `binary` 指定し diff ノイズを抑制 |
 | `erd/workspace-*/data/**`・`erd/workspaces.js`・`erd/config.js` | ✓ | レビュー対象。差分が読める形式であること（`config.js` / `dictionary.js` を含む） |
-| `erd/erd-server.jar`, `erd/drivers/**` | ✗ | Release から取得する |
-| `.erd/**` | ✗ | 接続設定・個人設定（言語・ビューポート）・適用前バックアップ |
+| `erd/erd-server.jar`・`erd/erd.sh`・`erd/erd.bat` | ✓ | 全員が同じ版で動かすため。更新は新しい ZIP で上書きしてコミットする |
+| `erd/.gitignore`・`erd/.gitattributes`・`erd/drivers/README.txt` | ✓ | 配布 ZIP に同梱している固定ファイル |
+| `erd/drivers/*.jar` | ✗ | ライセンスの都合で同梱せず、各自が逆生成画面から取得する（§7.2） |
+| `erd/.local/**` | ✗ | 接続設定・個人設定（言語・ビューポート）・適用前バックアップ。同梱の `.gitignore` が除外済み |
 
 - コミット単位の推奨: 「逆生成の適用」「ER図の配置変更」「論理名・論理制約の整備」は別コミットに分ける
 - ダイアグラムはページ単位でファイルが分かれるため、複数人が別ページを編集してもコンフリクトしない

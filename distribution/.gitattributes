@@ -1,0 +1,8 @@
+# ER 図管理ツール（erd/ 配下）。配布 ZIP に同梱しているので、そのまま Git 管理してください。
+
+# ビューアと本体はバイナリ扱い（巨大な 1 行 HTML の diff ノイズを抑える）
+index.html binary
+erd-server.jar binary
+
+# データは全環境で LF に揃える（保存のたびに改行差分が出るのを防ぐ）
+workspace-*/data/** text eol=lf

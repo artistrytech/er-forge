@@ -96,7 +96,7 @@ PostgreSQL / MySQL では DB 固有の情報も取得でき、SQL Server / Oracl
 | `server/` | Java 17 / Gradle。core（モデル・決定論的プリンタ・index 生成・移行）と web（Javalin） |
 | `viewer/` | TypeScript / React / Vite。単一の `index.html` に全アセットをインライン化 |
 | `fixtures/` | Java / TS 共通の golden fixture。プリンタ出力の一致を保証 |
-| `distribution/` | 配布 ZIP に同梱する固定ファイル（起動スクリプト・README） |
+| `distribution/` | 配布 ZIP に同梱する固定ファイル（起動スクリプト・README・展開先 `erd/` の `.gitignore` / `.gitattributes`） |
 | `dev-db/` | 動作確認用の DB（PostgreSQL / MySQL / SQL Server / Oracle の docker compose）と、DB 製品ごとのスキーマ・マイグレーション（→ [README](dev-db/README.md)） |
 
 ## 開発環境の起動

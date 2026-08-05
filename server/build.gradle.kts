@@ -144,6 +144,8 @@ val npmBuild = tasks.register<Exec>("npmBuild") {
  *   erd.zip
  *   ├── erd-server.jar / index.html / erd.sh / erd.bat / README.md
  *   ├── THIRD-PARTY-NOTICES.txt （同梱 OSS の著作権・ライセンス表示。distribution/ の固定ファイル）
+ *   ├── .gitignore / .gitattributes （展開先 erd/ の Git 運用設定。distribution/ の固定ファイル。
+ *                         Ant の既定除外に入っているため settings.gradle.kts で除外を外している）
  *   └── drivers/        （空。README のみ。JDBC ドライバは逆生成画面から
  *                         各自ダウンロードするか、手動で jar を置く。§7.2）
  * 実行: gradlew packageDist → build/dist/erd.zip を GitHub Releases に手動アップロード

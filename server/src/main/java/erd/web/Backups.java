@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.stream.Stream;
 
 /**
- * 適用前バックアップ（§8.5 / K-11 §6.4）。{@code .erd/backup/<timestamp>/} に data/** の全体を
+ * 適用前バックアップ（§8.5 / K-11 §6.4）。{@code erd/.local/workspace-<id>/backup/<timestamp>/} に data/** の全体を
  * コピーし、直近3世代だけ残す。Git 管理外。
  *
  * <p>これは INV-5（全ファイルが成功するか、1ファイルも変わらないか）の最後の砦である。
@@ -25,7 +25,7 @@ final class Backups {
     private static final DateTimeFormatter STAMP = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss");
     private static final int KEEP = 3;
 
-    /** data/** を .erd/backup/<timestamp>/ にコピーし、そのディレクトリを返す。 */
+    /** data/** を <個人データ>/backup/<timestamp>/ にコピーし、そのディレクトリを返す。 */
     static Path create(Path erdDir, Path dataDir) throws IOException {
         Path root = erdDir.resolve("backup");
         Files.createDirectories(root);

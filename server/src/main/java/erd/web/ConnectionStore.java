@@ -13,7 +13,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * 接続情報の保存（K-05 / §8.5）。{@code .erd/connection.local.json}（Git 管理外）。
+ * 接続情報の保存（K-05 / §8.5）。{@code erd/.local/workspace-<id>/connection.local.json}（Git 管理外）。
  *
  * <p>DB 認証情報は既定でメモリ保持のみ。<b>パスワードの保存は明示的なオプトイン</b>
  * （{@code savePassword: true}）でのみ行う。

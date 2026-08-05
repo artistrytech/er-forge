@@ -27,7 +27,8 @@
 
 ■ 注意
 
-このディレクトリ（の jar）は Git 管理しないでください（.gitignore に erd/drivers/ を追加）。
+このディレクトリの jar は Git 管理しません（同梱の erd/.gitignore が drivers/*.jar を
+除外済みです）。この README.txt は Git 管理します。
 共有するのは「どのドライバを使うか」という設定（config.js）だけで、jar の実体は各自が持ちます。
 
 同梱していないのは意図的です。各ドライバのライセンス（MySQL は GPLv2 + FOSS 例外、

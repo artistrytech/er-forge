@@ -147,7 +147,7 @@ class IntrospectServiceTest {
             writeInitialData(dataDir, conn);
             String before = Hashes.fingerprint(dataDir);
 
-            preview(root.resolve(".erd"), dataDir, "svc1");
+            preview(root.resolve(".local"), dataDir, "svc1");
 
             assertEquals(before, Hashes.fingerprint(dataDir));
         }
@@ -163,11 +163,11 @@ class IntrospectServiceTest {
             String diagramHash = Hashes.sha256(diagram);
             long diagramMtime = Files.getLastModifiedTime(diagram).toMillis();
 
-            Map<String, Object> preview = preview(root.resolve(".erd"), dataDir, "svc2");
+            Map<String, Object> preview = preview(root.resolve(".local"), dataDir, "svc2");
             List<String> ids = selectableIds(preview);
             assertTrue(ids.contains("table:public.users/displayName"));
 
-            IntrospectService.Outcome outcome = service.apply(WS, root.resolve(".erd"), dataDir,
+            IntrospectService.Outcome outcome = service.apply(WS, root.resolve(".local"), dataDir,
                     applyBody(preview, ids));
             assertInstanceOf(IntrospectService.Ok.class, outcome);
 
@@ -182,7 +182,7 @@ class IntrospectServiceTest {
             assertEquals(diagramMtime, Files.getLastModifiedTime(diagram).toMillis());
 
             // 適用後に再度プレビューすると差分ゼロ（T-1 の end-to-end）
-            Map<String, Object> again = preview(root.resolve(".erd"), dataDir, "svc2");
+            Map<String, Object> again = preview(root.resolve(".local"), dataDir, "svc2");
             assertTrue(selectableIds(again).isEmpty());
         }
     }
@@ -208,8 +208,8 @@ class IntrospectServiceTest {
                 st.execute("ALTER TABLE \"public\".\"users\" ADD COLUMN \"nickname\" VARCHAR(64)");
             }
 
-            Map<String, Object> preview = preview(root.resolve(".erd"), dataDir, "svc3");
-            IntrospectService.Outcome outcome = service.apply(WS, root.resolve(".erd"), dataDir,
+            Map<String, Object> preview = preview(root.resolve(".local"), dataDir, "svc3");
+            IntrospectService.Outcome outcome = service.apply(WS, root.resolve(".local"), dataDir,
                     applyBody(preview, selectableIds(preview)));
             assertInstanceOf(IntrospectService.Ok.class, outcome);
 
@@ -225,14 +225,14 @@ class IntrospectServiceTest {
         Path dataDir = root.resolve("data");
         try (Connection conn = db("svc4")) {
             writeInitialData(dataDir, conn);
-            Map<String, Object> preview = preview(root.resolve(".erd"), dataDir, "svc4");
+            Map<String, Object> preview = preview(root.resolve(".local"), dataDir, "svc4");
 
             // git pull / エディタでの直接編集を模す
             Path file = dataDir.resolve("dictionary.js");
             Files.writeString(file, "ERD.dictionary({\n  columns: {\n    id: \"ID\",\n  },\n});\n");
             String after = Hashes.fingerprint(dataDir);
 
-            IntrospectService.Outcome outcome = service.apply(WS, root.resolve(".erd"), dataDir,
+            IntrospectService.Outcome outcome = service.apply(WS, root.resolve(".local"), dataDir,
                     applyBody(preview, selectableIds(preview)));
 
             assertInstanceOf(IntrospectService.Stale.class, outcome);
@@ -250,8 +250,8 @@ class IntrospectServiceTest {
                 st.execute("DROP TABLE \"public\".\"orders\"");
             }
 
-            Map<String, Object> preview = preview(root.resolve(".erd"), dataDir, "svc5");
-            IntrospectService.Outcome outcome = service.apply(WS, root.resolve(".erd"), dataDir,
+            Map<String, Object> preview = preview(root.resolve(".local"), dataDir, "svc5");
+            IntrospectService.Outcome outcome = service.apply(WS, root.resolve(".local"), dataDir,
                     applyBody(preview, selectableIds(preview)));
             IntrospectService.Ok ok = assertInstanceOf(IntrospectService.Ok.class, outcome);
 
@@ -267,7 +267,7 @@ class IntrospectServiceTest {
             assertEquals(1, ((List<?>) body.get("orphanNodes")).size());
 
             // 適用前バックアップ（§8.5）が残っている
-            assertTrue(Files.isDirectory(root.resolve(".erd/backup")));
+            assertTrue(Files.isDirectory(root.resolve(".local/backup")));
         }
     }
 }
