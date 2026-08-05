@@ -1,7 +1,6 @@
 package erd.introspect;
 
 import erd.core.model.Column;
-import erd.core.model.ForeignKey;
 import erd.core.model.LogicalType;
 import erd.core.model.TableSchema;
 import org.junit.jupiter.api.AfterEach;
