@@ -48,7 +48,7 @@ export function SearchDialog() {
   const tabs: Tab[] = ["detail", "erd", "columns"];
 
   return (
-    <Dialog title={t("nav.search")} onClose={close} wide>
+    <Dialog title={t("nav.search")} onClose={close} size="wide">
       <input
         ref={inputRef}
         type="search"

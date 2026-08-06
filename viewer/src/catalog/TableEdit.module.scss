@@ -1,0 +1,8 @@
+/* テーブル編集画面（O-03 ほか）固有のスタイル。フォームの骨格（.edit-form /
+   .form-grid / .error-banner）は global の共有プリミティブに残す。 */
+
+/* カラムの個別設定。詳細画面（TableInfo）と同じ考え方で高さの上限を設け、
+   下の論理制約・カーディナリティまでを見失わないようにする */
+.columns-scroll {
+  max-height: min(58vh, 560px);
+}

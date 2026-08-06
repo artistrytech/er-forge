@@ -9,10 +9,11 @@ interface DialogProps {
   title: ReactNode;
   onClose: () => void;
   children: ReactNode;
-  wide?: boolean;
+  /** 既定（560px）/ wide（860px）/ full（画面いっぱいに近い大きさ） */
+  size?: "wide" | "full";
 }
 
-export function Dialog({ title, onClose, children, wide }: DialogProps) {
+export function Dialog({ title, onClose, children, size }: DialogProps) {
   const { t } = useI18n();
   const ref = useRef<HTMLDivElement>(null);
 
@@ -38,7 +39,7 @@ export function Dialog({ title, onClose, children, wide }: DialogProps) {
   return (
     <div className="dialog-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div
-        className={"dialog" + (wide ? " dialog-wide" : "")}
+        className={"dialog" + (size === undefined ? "" : ` dialog-${size}`)}
         role="dialog"
         aria-modal="true"
         tabIndex={-1}

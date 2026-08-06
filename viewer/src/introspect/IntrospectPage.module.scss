@@ -77,11 +77,19 @@
   opacity: 0.65;
 }
 
-.sticky-actions {
+/* 選択件数と [戻る] [適用] を画面下端に貼り付ける。
+   スクロール中は画面の底に着くため、そのままだと差分ツリーがバーの上辺で唐突に切れ、
+   下の余白も消えてしまう。バー自身に上下の余白を持たせ、上辺には影を落として
+   「この下にまだ続きがある」ことを示す。 */
+/* .form-actions と併用するため、余白の上書きは :global で詳細度を上げて確実に勝たせる */
+.sticky-actions:global(.form-actions) {
   position: sticky;
   bottom: 0;
   align-items: center;
   background: var(--bg);
+  margin-top: 24px;
+  padding: 12px 0 20px;
+  box-shadow: 0 -8px 12px -8px rgb(0 0 0 / 18%);
 }
 
 /* .spacer は共有プリミティブなので :global で狙う */

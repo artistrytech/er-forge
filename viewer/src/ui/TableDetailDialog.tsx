@@ -22,7 +22,7 @@ export function TableDetailDialog({ tableId }: { tableId: string }) {
     : tableId;
 
   return (
-    <Dialog title={title} onClose={closeDialog} wide>
+    <Dialog title={title} onClose={closeDialog} size="full">
       <p className="dialog-detail-link">
         <Link className="button-link" href={hrefs.table(tableId)} onClick={closeDialog}>
           {t("table.openDetail")}

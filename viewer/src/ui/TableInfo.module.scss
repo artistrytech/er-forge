@@ -64,6 +64,17 @@
   box-shadow: inset 3px 0 0 0 var(--c-border);
 }
 
+/* カラム一覧の高さの上限。ここを超えたら表の中だけがスクロールし、ヘッダは
+   ScrollTable が固定する。制約・被参照までを一画面で見渡せることを優先した値 */
+.columns-scroll {
+  max-height: min(58vh, 560px);
+}
+
+/* 注記はノートアイコン1つ分。列幅を食わせない */
+.notes-cell {
+  width: 56px;
+}
+
 /* カラムのタグ（P-12）。テーブルのタグと同じ見た目にする */
 .column-tags {
   display: flex;

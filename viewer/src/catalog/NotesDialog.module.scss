@@ -1,0 +1,49 @@
+/* カラム注記のモーダルと、一覧側の呼び出しボタン。 */
+
+.area {
+  width: 100%;
+  min-height: 180px;
+  padding: 9px 12px;
+  border: 1px solid var(--input-border);
+  border-radius: 7px;
+  background: var(--input-bg);
+  color: inherit;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.7;
+  resize: vertical;
+}
+
+/* 一覧のセル。入力欄に見せず、押すと本文が開くことが分かる控えめなボタンにする。
+   抜粋は 1行に収め、はみ出しは省略記号で切る（行の高さを揃えるため） */
+.cell-button {
+  display: block;
+  width: 100%;
+  max-width: 260px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.cell-button:hover:not(:disabled) {
+  border-color: var(--input-border);
+  background: var(--input-bg);
+}
+
+.cell-button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.empty {
+  color: var(--text-faint);
+}

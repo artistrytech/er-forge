@@ -1,0 +1,19 @@
+/* 縦スクロールする表の器。枠・角丸・横スクロールは global の .table-scroll が持ち、
+   ここは縦方向とヘッダ固定だけを足す。 */
+
+.scroll {
+  overflow-y: auto;
+}
+
+/* 親（flex コンテナ）の残りいっぱいに広げる。カラム辞書は仮想化にビューポート高が要る */
+.fill {
+  flex: 1;
+  min-height: 0;
+}
+
+.head th {
+  position: sticky;
+  top: 0;
+  /* 行内のチップ・入力欄より上に置く（濃色ヘッダの下に潜らせない） */
+  z-index: 2;
+}

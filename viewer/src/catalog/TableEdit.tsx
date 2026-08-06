@@ -33,12 +33,15 @@ import {
   LogicalFkDialog,
   LogicalUniqueDialog,
 } from "./ConstraintDialog";
+import { NotesCell, NotesDialog } from "./NotesDialog";
 import { ColorSelect } from "../ui/ColorSelect";
 import { Dialog } from "../ui/Dialog";
 import { Link } from "../ui/Link";
 import { NotFound } from "../ui/NotFound";
+import { ScrollTable } from "../ui/ScrollTable";
 import { TagInput } from "../ui/TagInput";
 import { hrefs } from "../ui/router";
+import styles from "./TableEdit.module.scss";
 
 interface ServerIssue {
   path: string;
@@ -68,6 +71,8 @@ export function TableEdit({ tableId }: { tableId: string }) {
   const [conflict, setConflict] = useState(false);
   /** 論理制約の作成・編集ダイアログ（uid=null は新規追加。P-06 / P-07） */
   const [editing, setEditing] = useState<{ kind: "unique" | "fk"; uid: number | null } | null>(null);
+  /** 注記を編集中のカラム（P-04）。本文はモーダルでマルチライン入力する */
+  const [notesColumn, setNotesColumn] = useState<string | null>(null);
 
   // committed の読み込み: ファイルを読み直してから baseHash を取る（§8.4 の読み込み時点ハッシュ）
   const reload = useCallback(async () => {
@@ -75,6 +80,7 @@ export function TableEdit({ tableId }: { tableId: string }) {
     setDraft(null);
     setLoadFailed(false);
     setEditing(null);
+    setNotesColumn(null);
     invalidateTable(tableId);
     const table = await loadTable(tableId);
     if (!table) {
@@ -338,100 +344,97 @@ export function TableEdit({ tableId }: { tableId: string }) {
           {t("tableEdit.columnsHint")}{" "}
           <Link href={hrefs.columns()}>{t("nav.columns")}</Link>
         </p>
-        <div className="table-scroll">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>{t("table.colName")}</th>
-                <th>{t("table.colType")}</th>
-                <th>{t("table.colLogicalName")}</th>
-                <th>{t("table.tags")}</th>
-                <th>{t("tableEdit.color")}</th>
-                <th>{t("table.colNotes")}</th>
+        {/* 詳細画面と同じく、カラムが多いテーブルでフォームが縦に伸びきらないよう
+            表の中だけをスクロールさせる（ヘッダは ScrollTable が固定する） */}
+        <ScrollTable
+          className={styles.columnsScroll}
+          testId="edit-columns"
+          head={
+            <tr>
+              <th>{t("table.colName")}</th>
+              <th>{t("table.colType")}</th>
+              <th>{t("table.colLogicalName")}</th>
+              <th>{t("table.tags")}</th>
+              <th>{t("tableEdit.color")}</th>
+              <th>{t("table.colNotes")}</th>
+            </tr>
+          }
+        >
+          {table.columns.map((c) => {
+            const cm = draft.columns[c.name] ?? EMPTY_COLUMN_DRAFT;
+            const dictEntry = dictionary?.columns?.[c.name];
+            const dictValue = dictEntry?.displayName;
+            // 共通設定（カラム辞書）の値。タグは消せない・色は上書きできる、を見せる
+            const commonTags = dictEntry?.tags ?? [];
+            const dictColor = dictEntry?.color ?? "";
+            return (
+              <tr key={c.name} data-color={colorAttr(cm.color !== "" ? cm.color : dictColor)}>
+                <td className="mono">{c.name}</td>
+                <td className="mono muted">{c.type ?? c.logicalType ?? ""}</td>
+                <td>
+                  <input
+                    type="text"
+                    value={cm.displayName}
+                    placeholder={
+                      dictValue !== undefined
+                        ? t("tableEdit.dictValue", { value: dictValue })
+                        : ""
+                    }
+                    onChange={(e) => updateColumn(c.name, { displayName: e.target.value })}
+                  />
+                  {cm.displayName.trim() !== "" && dictValue !== undefined && (
+                    <span className="badge badge-warn" title={t("tableEdit.dictValue", { value: dictValue })}>
+                      {t("tableEdit.overridesDict")}
+                    </span>
+                  )}
+                </td>
+                <td>
+                  {/* 共通タグは readonly。ここで消せてしまうと「一律に付ける」が成立しない
+                      （個別に消す手段は将来の課題。P-12） */}
+                  {commonTags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="badge badge-dict"
+                      title={t("tableEdit.commonTag")}
+                      data-testid={`column-common-tag-${c.name}`}
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                  <TagInput
+                    value={cm.tags}
+                    candidates={tagCandidates}
+                    disabled={!sessionReady || saving}
+                    compact
+                    testId={`column-tags-${c.name}`}
+                    onChange={(tags) => updateColumn(c.name, { tags })}
+                  />
+                </td>
+                <td>
+                  <ColorSelect
+                    value={cm.color}
+                    disabled={!sessionReady || saving}
+                    testId={`column-color-${c.name}`}
+                    onChange={(color) => updateColumn(c.name, { color })}
+                  />
+                  {cm.color === "" && isColorToken(dictColor) && (
+                    <span className="badge badge-dict" title={t("tableEdit.commonColor")}>
+                      {t(`color.${dictColor}` as const)}
+                    </span>
+                  )}
+                </td>
+                {/* 注記は行内に入力欄を置かずモーダルで書く（複数行で書けるように。P-04） */}
+                <td>
+                  <NotesCell
+                    value={cm.notes}
+                    columnName={c.name}
+                    onOpen={() => setNotesColumn(c.name)}
+                  />
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {table.columns.map((c) => {
-                const cm = draft.columns[c.name] ?? {
-                  displayName: "",
-                  tags: [],
-                  color: "",
-                  notes: "",
-                };
-                const dictEntry = dictionary?.columns?.[c.name];
-                const dictValue = dictEntry?.displayName;
-                // 共通設定（カラム辞書）の値。タグは消せない・色は上書きできる、を見せる
-                const commonTags = dictEntry?.tags ?? [];
-                const dictColor = dictEntry?.color ?? "";
-                return (
-                  <tr key={c.name} data-color={colorAttr(cm.color !== "" ? cm.color : dictColor)}>
-                    <td className="mono">{c.name}</td>
-                    <td className="mono muted">{c.type ?? c.logicalType ?? ""}</td>
-                    <td>
-                      <input
-                        type="text"
-                        value={cm.displayName}
-                        placeholder={
-                          dictValue !== undefined
-                            ? t("tableEdit.dictValue", { value: dictValue })
-                            : ""
-                        }
-                        onChange={(e) => updateColumn(c.name, { displayName: e.target.value })}
-                      />
-                      {cm.displayName.trim() !== "" && dictValue !== undefined && (
-                        <span className="badge badge-warn" title={t("tableEdit.dictValue", { value: dictValue })}>
-                          {t("tableEdit.overridesDict")}
-                        </span>
-                      )}
-                    </td>
-                    <td>
-                      {/* 共通タグは readonly。ここで消せてしまうと「一律に付ける」が成立しない
-                          （個別に消す手段は将来の課題。P-12） */}
-                      {commonTags.map((tag) => (
-                        <span
-                          key={tag}
-                          className="badge badge-dict"
-                          title={t("tableEdit.commonTag")}
-                          data-testid={`column-common-tag-${c.name}`}
-                        >
-                          {tag}
-                        </span>
-                      ))}
-                      <TagInput
-                        value={cm.tags}
-                        candidates={tagCandidates}
-                        disabled={!sessionReady || saving}
-                        compact
-                        testId={`column-tags-${c.name}`}
-                        onChange={(tags) => updateColumn(c.name, { tags })}
-                      />
-                    </td>
-                    <td>
-                      <ColorSelect
-                        value={cm.color}
-                        disabled={!sessionReady || saving}
-                        testId={`column-color-${c.name}`}
-                        onChange={(color) => updateColumn(c.name, { color })}
-                      />
-                      {cm.color === "" && isColorToken(dictColor) && (
-                        <span className="badge badge-dict" title={t("tableEdit.commonColor")}>
-                          {t(`color.${dictColor}` as const)}
-                        </span>
-                      )}
-                    </td>
-                    <td>
-                      <input
-                        type="text"
-                        value={cm.notes}
-                        onChange={(e) => updateColumn(c.name, { notes: e.target.value })}
-                      />
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+            );
+          })}
+        </ScrollTable>
 
         {/* ---- 論理制約（P-06 / P-07） ---- */}
         <h3>{t("tableEdit.sectionLogical")}</h3>
@@ -497,6 +500,18 @@ export function TableEdit({ tableId }: { tableId: string }) {
         {/* ---- カーディナリティ（P-11） ---- */}
         <CardinalitySection table={table} draft={draft} onChange={update} />
       </fieldset>
+
+      {notesColumn !== null && (
+        <NotesDialog
+          columnName={notesColumn}
+          value={(draft.columns[notesColumn] ?? EMPTY_COLUMN_DRAFT).notes}
+          onClose={() => setNotesColumn(null)}
+          onSubmit={(notes) => {
+            updateColumn(notesColumn, { notes });
+            setNotesColumn(null);
+          }}
+        />
+      )}
 
       {editing?.kind === "unique" && (
         <LogicalUniqueDialog

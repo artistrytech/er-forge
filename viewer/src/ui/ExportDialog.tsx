@@ -54,7 +54,7 @@ export function ExportDialog({ diagramId }: { diagramId: string }) {
   };
 
   return (
-    <Dialog title={t("export.title")} onClose={closeExport} wide>
+    <Dialog title={t("export.title")} onClose={closeExport} size="wide">
       <p className={styles.exportHint}>{t("export.hint", { file: `data/diagrams/${diagramId}.js` })}</p>
       <textarea
         ref={areaRef}

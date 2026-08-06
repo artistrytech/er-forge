@@ -34,6 +34,7 @@ import { cx } from "../lib/cx";
 import { renderPlan, ROW_HEIGHT, useVisibleRange } from "../lib/virtualRows";
 import { ColorSelect } from "../ui/ColorSelect";
 import { Dialog } from "../ui/Dialog";
+import { ScrollTable } from "../ui/ScrollTable";
 import { TagInput } from "../ui/TagInput";
 import { hrefs, type ColumnMatch } from "../ui/router";
 import { ColumnDetailDialog } from "./ColumnDetailDialog";
@@ -349,123 +350,125 @@ export function ColumnsPage({
         )}
       </div>
 
-      {/* 仮想化のビューポート。行は固定高（ROW_HEIGHT）で、範囲外はスペーサー行で埋める */}
-      <div className={cx("table-scroll", styles.scroll)} ref={scrollRef} data-testid="columns-scroll">
-        <table className="data-table columns-table">
-          <thead className={styles.head}>
-            <tr>
-              <th className={styles.nameCell}>{t("columnsPage.colName")}</th>
-              <th>{t("columnsPage.colLogical")}</th>
-              <th>{t("table.tags")}</th>
-              <th className={styles.colorCell}>{t("tableEdit.color")}</th>
-              <th className={styles.detailCell} />
-            </tr>
-          </thead>
-          <tbody>
-            {plan.map((item, i) => {
-              if (item.kind === "spacer") {
-                // key は plan 内の位置（前後2つしか無く、行の入れ替わりでも安定する）
-                return (
-                  <tr key={`spacer-${i}`} aria-hidden="true">
-                    <td colSpan={5} style={{ height: item.rows * ROW_HEIGHT, padding: 0 }} />
-                  </tr>
-                );
-              }
-              const r = visible[item.index]!;
-              const value = draft[r.name] ?? EMPTY_DRAFT;
-              return (
-                <tr
-                  key={r.name}
-                  className={cx(styles.row, dirtyKeys.has(r.name) && "row-dirty")}
-                  data-testid="columns-row"
-                  // 入力中の行を掴んでおく（仮想化で消えると入力・IME 変換が飛ぶ）
-                  onFocus={() => setActiveRow(r.name)}
+      {/* 仮想化のビューポート。行は固定高（ROW_HEIGHT）で、範囲外はスペーサー行で埋める。
+          器とヘッダ固定は ScrollTable と共用し、仮想化だけこの画面が持つ */}
+      <ScrollTable
+        fill
+        scrollRef={scrollRef}
+        testId="columns-scroll"
+        tableClassName="columns-table"
+        head={
+          <tr>
+            <th className={styles.nameCell}>{t("columnsPage.colName")}</th>
+            <th>{t("columnsPage.colLogical")}</th>
+            <th>{t("table.tags")}</th>
+            <th className={styles.colorCell}>{t("tableEdit.color")}</th>
+            <th className={styles.detailCell} />
+          </tr>
+        }
+      >
+        {plan.map((item, i) => {
+          if (item.kind === "spacer") {
+            // key は plan 内の位置（前後2つしか無く、行の入れ替わりでも安定する）
+            return (
+              <tr key={`spacer-${i}`} aria-hidden="true">
+                <td colSpan={5} style={{ height: item.rows * ROW_HEIGHT, padding: 0 }} />
+              </tr>
+            );
+          }
+          const r = visible[item.index]!;
+          const value = draft[r.name] ?? EMPTY_DRAFT;
+          return (
+            <tr
+              key={r.name}
+              className={cx(styles.row, dirtyKeys.has(r.name) && "row-dirty")}
+              data-testid="columns-row"
+              // 入力中の行を掴んでおく（仮想化で消えると入力・IME 変換が飛ぶ）
+              onFocus={() => setActiveRow(r.name)}
+            >
+              <td className={cx("mono", styles.nameCell)}>
+                {r.name}
+                {/* 孤立エントリ（どのテーブルにも無い）だけは一覧に警告を残す。
+                    理由の説明は詳細ダイアログで出す */}
+                {r.occurrences === 0 && (
+                  <button
+                    type="button"
+                    className={styles.orphanBadge}
+                    title={t("columnsPage.orphan")}
+                    aria-label={t("columnsPage.orphan")}
+                    data-testid={`orphan-${r.name}`}
+                    onClick={() => setDetail(r.name)}
+                  >
+                    ⚠
+                  </button>
+                )}
+              </td>
+              <td>
+                {canEdit ? (
+                  <input
+                    type="text"
+                    value={value.displayName}
+                    placeholder={`（${t("table.notSet")}）`}
+                    data-testid={`display-name-${r.name}`}
+                    onChange={(e) => update(r.name, { displayName: e.target.value })}
+                  />
+                ) : (
+                  <span className={value.displayName === "" ? "muted" : ""}>
+                    {value.displayName === "" ? `（${t("table.notSet")}）` : value.displayName}
+                  </span>
+                )}
+              </td>
+              <td className={styles.tagCell}>
+                {canEdit ? (
+                  <TagInput
+                    value={value.tags}
+                    candidates={tagCandidates}
+                    compact
+                    nowrap
+                    testId={`tags-${r.name}`}
+                    onChange={(tags) => update(r.name, { tags })}
+                  />
+                ) : (
+                  value.tags.map((tag) => (
+                    <span key={tag} className={styles.tag}>
+                      {tag}
+                    </span>
+                  ))
+                )}
+              </td>
+              <td className={styles.colorCell}>
+                {canEdit ? (
+                  <ColorSelect
+                    value={value.color}
+                    testId={`color-cell-${r.name}`}
+                    onChange={(color) => update(r.name, { color })}
+                  />
+                ) : (
+                  value.color !== "" && (
+                    <span
+                      className={styles.swatch}
+                      data-color={colorAttr(value.color)}
+                      title={value.color}
+                    />
+                  )
+                )}
+              </td>
+              <td className={styles.detailCell}>
+                <button
+                  type="button"
+                  className={styles.detailButton}
+                  title={t("columnsPage.detail.open")}
+                  aria-label={t("columnsPage.detail.open")}
+                  data-testid={`detail-${r.name}`}
+                  onClick={() => setDetail(r.name)}
                 >
-                  <td className={cx("mono", styles.nameCell)}>
-                    {r.name}
-                    {/* 孤立エントリ（どのテーブルにも無い）だけは一覧に警告を残す。
-                        理由の説明は詳細ダイアログで出す */}
-                    {r.occurrences === 0 && (
-                      <button
-                        type="button"
-                        className={styles.orphanBadge}
-                        title={t("columnsPage.orphan")}
-                        aria-label={t("columnsPage.orphan")}
-                        data-testid={`orphan-${r.name}`}
-                        onClick={() => setDetail(r.name)}
-                      >
-                        ⚠
-                      </button>
-                    )}
-                  </td>
-                  <td>
-                    {canEdit ? (
-                      <input
-                        type="text"
-                        value={value.displayName}
-                        placeholder={`（${t("table.notSet")}）`}
-                        data-testid={`display-name-${r.name}`}
-                        onChange={(e) => update(r.name, { displayName: e.target.value })}
-                      />
-                    ) : (
-                      <span className={value.displayName === "" ? "muted" : ""}>
-                        {value.displayName === "" ? `（${t("table.notSet")}）` : value.displayName}
-                      </span>
-                    )}
-                  </td>
-                  <td className={styles.tagCell}>
-                    {canEdit ? (
-                      <TagInput
-                        value={value.tags}
-                        candidates={tagCandidates}
-                        compact
-                        nowrap
-                        testId={`tags-${r.name}`}
-                        onChange={(tags) => update(r.name, { tags })}
-                      />
-                    ) : (
-                      value.tags.map((tag) => (
-                        <span key={tag} className={styles.tag}>
-                          {tag}
-                        </span>
-                      ))
-                    )}
-                  </td>
-                  <td className={styles.colorCell}>
-                    {canEdit ? (
-                      <ColorSelect
-                        value={value.color}
-                        testId={`color-cell-${r.name}`}
-                        onChange={(color) => update(r.name, { color })}
-                      />
-                    ) : (
-                      value.color !== "" && (
-                        <span
-                          className={styles.swatch}
-                          data-color={colorAttr(value.color)}
-                          title={value.color}
-                        />
-                      )
-                    )}
-                  </td>
-                  <td className={styles.detailCell}>
-                    <button
-                      type="button"
-                      className={styles.detailButton}
-                      title={t("columnsPage.detail.open")}
-                      aria-label={t("columnsPage.detail.open")}
-                      data-testid={`detail-${r.name}`}
-                      onClick={() => setDetail(r.name)}
-                    >
-                      🔍
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+                  🔍
+                </button>
+              </td>
+            </tr>
+          );
+        })}
+      </ScrollTable>
 
       {detailRow !== undefined && (
         <ColumnDetailDialog

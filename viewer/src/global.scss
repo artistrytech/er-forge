@@ -250,6 +250,14 @@ body {
   width: 860px;
 }
 
+/* 画面いっぱいに近い大きさ（ER図から開くテーブル詳細）。カラム表・制約・被参照を
+   一度に見渡せることを優先する。上限はバックドロップの余白ぶんだけ内側に収める */
+.dialog-full {
+  width: 100%;
+  max-width: 1600px;
+  height: 100%;
+}
+
 .dialog-header {
   display: flex;
   align-items: center;

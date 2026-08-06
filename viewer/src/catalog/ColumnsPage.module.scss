@@ -1,27 +1,14 @@
 /* カラム辞書の一覧。行の骨格・入力欄は global の .columns-table / .columns-toolbar が持つ。
 
-   この画面だけ**表がページではなく自前のスクロール器の中で縦スクロールする**。
-   仮想化（lib/virtualRows.ts）にはビューポートの高さが要るためで、副産物として
-   見出し・絞り込み・表ヘッダが常に見える。 */
+   表の器とヘッダ固定は ui/ScrollTable（`fill`）に出してある。この画面は表を**ページの
+   高さいっぱい**に広げる: 仮想化（lib/virtualRows.ts）にビューポートの高さが要るためで、
+   副産物として見出し・絞り込み・表ヘッダが常に見える。 */
 
 .page {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
-}
-
-.scroll {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-}
-
-.head th {
-  position: sticky;
-  top: 0;
-  /* 行内のチップ・入力欄より上に置く（濃色ヘッダの下に潜らせない） */
-  z-index: 2;
 }
 
 /* ---- 行高の固定（仮想化の前提。ROW_HEIGHT = 44px と一致させること） ---- */

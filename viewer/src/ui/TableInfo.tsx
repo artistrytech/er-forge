@@ -18,6 +18,8 @@ import { isTableKind, parseEdgeId, type Relation, type Table } from "../model/ty
 import { cx } from "../lib/cx";
 import { hrefs } from "./router";
 import { Link } from "./Link";
+import { NotePopover } from "./NotePopover";
+import { ScrollTable } from "./ScrollTable";
 import styles from "./TableInfo.module.scss";
 
 /** 参照先テーブルへのリンク（存在しなければ物理名のみ） */
@@ -101,71 +103,75 @@ export function TableInfo({ tableId, onNavigate }: TableInfoProps) {
       )}
 
       <h3>{t("table.columns")}</h3>
-      <div className="table-scroll">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>{t("table.colPk")}</th>
-              <th>{t("table.colName")}</th>
-              <th>{t("table.colLogicalName")}</th>
-              <th>{t("table.colType")}</th>
-              <th>{t("table.colNullable")}</th>
-              <th>{t("table.colDefault")}</th>
-              <th>{t("table.colComment")}</th>
-              <th>{t("table.tags")}</th>
-              <th>{t("table.colNotes")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {table.columns.map((c) => {
-              const logical = resolveColumnName(table, c.name, dictionary);
-              const meta = table.meta?.columns?.[c.name];
-              // 色は個別 → 辞書、タグは辞書 ∪ 個別。表示では出どころを区別しない（P-12 / P-13）
-              const color = resolveColumnColor(table, c.name, dictionary).color;
-              const tags = resolveColumnTags(table, c.name, dictionary).tags;
-              return (
-                <tr key={c.name} className={styles.columnRow} data-color={colorAttr(color)}>
-                  <td className="center">
-                    {pk.has(c.name) && <span className={cx(styles.keyBadge, styles.keyPk)}>PK</span>}
-                    {fkCols.has(c.name) && <span className={cx(styles.keyBadge, styles.keyFk)}>FK</span>}
-                  </td>
-                  <td className="mono">{c.name}</td>
-                  <td>
-                    {logical.source === "physical" ? (
-                      <span className="muted">（{t("table.notSet")}）</span>
-                    ) : (
-                      <>
-                        {logical.name}
-                        {logical.source === "dictionary" && <span className="badge badge-dict">辞書</span>}
-                      </>
-                    )}
-                  </td>
-                  <td className="mono">
-                    {c.type ?? c.logicalType ?? ""}
-                    {c.autoIncrement === true && <span className="badge">{t("table.autoIncrement")}</span>}
-                    {c.generated === true && <span className="badge">{t("table.generated")}</span>}
-                  </td>
-                  <td className="center">{c.nullable === true ? t("common.yes") : t("common.no")}</td>
-                  <td className="mono">{c.default !== undefined ? String(c.default) : ""}</td>
-                  <td>{c.comment ?? ""}</td>
-                  <td>
-                    {tags.length > 0 && (
-                      <span className={styles.columnTags}>
-                        {tags.map((tag) => (
-                          <span key={tag} className={styles.tag}>
-                            {tag}
-                          </span>
-                        ))}
+      {/* カラム数が多いテーブルでページが縦に伸びきらないよう、表だけを（ヘッダを固定して）
+          スクロールさせる。仮想化はしない（カラム辞書と違って行の高さが揃わないため） */}
+      <ScrollTable
+        className={styles.columnsScroll}
+        testId="table-columns"
+        head={
+          <tr>
+            <th>{t("table.colPk")}</th>
+            <th>{t("table.colName")}</th>
+            <th>{t("table.colLogicalName")}</th>
+            <th>{t("table.colType")}</th>
+            <th>{t("table.colNullable")}</th>
+            <th>{t("table.colDefault")}</th>
+            <th>{t("table.colComment")}</th>
+            <th>{t("table.tags")}</th>
+            <th className={styles.notesCell}>{t("table.colNotes")}</th>
+          </tr>
+        }
+      >
+        {table.columns.map((c) => {
+          const logical = resolveColumnName(table, c.name, dictionary);
+          const meta = table.meta?.columns?.[c.name];
+          // 色は個別 → 辞書、タグは辞書 ∪ 個別。表示では出どころを区別しない（P-12 / P-13）
+          const color = resolveColumnColor(table, c.name, dictionary).color;
+          const tags = resolveColumnTags(table, c.name, dictionary).tags;
+          return (
+            <tr key={c.name} className={styles.columnRow} data-color={colorAttr(color)}>
+              <td className="center">
+                {pk.has(c.name) && <span className={cx(styles.keyBadge, styles.keyPk)}>PK</span>}
+                {fkCols.has(c.name) && <span className={cx(styles.keyBadge, styles.keyFk)}>FK</span>}
+              </td>
+              <td className="mono">{c.name}</td>
+              <td>
+                {logical.source === "physical" ? (
+                  <span className="muted">（{t("table.notSet")}）</span>
+                ) : (
+                  <>
+                    {logical.name}
+                    {logical.source === "dictionary" && <span className="badge badge-dict">辞書</span>}
+                  </>
+                )}
+              </td>
+              <td className="mono">
+                {c.type ?? c.logicalType ?? ""}
+                {c.autoIncrement === true && <span className="badge">{t("table.autoIncrement")}</span>}
+                {c.generated === true && <span className="badge">{t("table.generated")}</span>}
+              </td>
+              <td className="center">{c.nullable === true ? t("common.yes") : t("common.no")}</td>
+              <td className="mono">{c.default !== undefined ? String(c.default) : ""}</td>
+              <td>{c.comment ?? ""}</td>
+              <td>
+                {tags.length > 0 && (
+                  <span className={styles.columnTags}>
+                    {tags.map((tag) => (
+                      <span key={tag} className={styles.tag}>
+                        {tag}
                       </span>
-                    )}
-                  </td>
-                  <td>{meta?.notes ?? ""}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+                    ))}
+                  </span>
+                )}
+              </td>
+              {/* 注記は本文を並べると行の高さがばらつくので、印だけ出してポップアップで読ませる */}
+              <td className={cx("center", styles.notesCell)}>
+                <NotePopover text={meta?.notes ?? ""} testId={`column-notes-${c.name}`} />
+              </td>
+            </tr>
+          );
+        })}
+      </ScrollTable>
 
       {/* 制約は種類ごとに見出しを立て、1件 = 1枠で区切る（「制約」の下に種類を入れ子に
           していたが、階層を深くしても読みやすくならないため平坦に並べる） */}

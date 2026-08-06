@@ -63,7 +63,7 @@ export function ColumnDetailDialog({
     );
 
   return (
-    <Dialog title={<span className="mono">{row.name}</span>} onClose={onClose} wide>
+    <Dialog title={<span className="mono">{row.name}</span>} onClose={onClose} size="wide">
       {/* ---- 共通設定（この画面で編集する値） ---- */}
       <h3 className={styles.heading}>{t("columnsPage.detail.common")}</h3>
       <dl className={styles.grid}>
