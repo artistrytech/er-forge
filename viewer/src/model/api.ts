@@ -36,6 +36,45 @@ export function apiRequest(
   });
 }
 
+/** バイナリを受け取る POST（閲覧用 ZIP の書き出し。A-11）。 */
+export interface ApiBlobResponse {
+  status: number;
+  blob: Blob;
+  /** Content-Disposition の filename*（サーバーが決めた名前。日本語も通る） */
+  fileName: string;
+}
+
+export function apiPostBlob(path: string, body: unknown): Promise<ApiBlobResponse> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${path}?t=${encodeURIComponent(apiToken())}`, true);
+    xhr.setRequestHeader("Content-Type", "application/json");
+    xhr.responseType = "blob";
+    xhr.onload = () =>
+      resolve({
+        status: xhr.status,
+        blob: xhr.response as Blob,
+        fileName: fileNameOf(xhr.getResponseHeader("Content-Disposition")),
+      });
+    xhr.onerror = () => reject(new Error("network error"));
+    xhr.send(JSON.stringify(body));
+  });
+}
+
+/** RFC 5987 の `filename*=UTF-8''...` を優先し、無ければ `filename="..."` を使う。 */
+function fileNameOf(disposition: string | null): string {
+  if (disposition === null) return "";
+  const encoded = /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1];
+  if (encoded !== undefined) {
+    try {
+      return decodeURIComponent(encoded);
+    } catch {
+      // 壊れていたら plain 側へ落ちる
+    }
+  }
+  return /filename="([^"]*)"/i.exec(disposition)?.[1] ?? "";
+}
+
 export const apiGet = (path: string) => apiRequest("GET", path);
 export const apiPost = (path: string, body: unknown) => apiRequest("POST", path, body);
 export const apiPut = (path: string, body: unknown) => apiRequest("PUT", path, body);

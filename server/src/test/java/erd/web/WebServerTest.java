@@ -6,6 +6,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.ByteArrayInputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -13,6 +14,10 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -201,6 +206,51 @@ class WebServerTest {
             assertEquals(403, send("POST", origin + "/__erd/workspaces",
                     "{\"id\":\"x\",\"name\":\"X\"}").statusCode());
             assertEquals(403, send("GET", origin + "/__erd/workspaces", null).statusCode());
+            assertEquals(403, send("POST", origin + "/__erd/export/viewer", "{}").statusCode());
+        });
+    }
+
+    @Test
+    @DisplayName("A-11: 閲覧用 ZIP を返す（ファイル名は prefix 由来。CLI と同じ中身）")
+    void exportsViewerZip(@TempDir Path tmp) throws Exception {
+        Path root = erdRoot(tmp);
+        Files.writeString(root.resolve("index.html"), "<!doctype html>", StandardCharsets.UTF_8);
+        Files.createDirectories(root.resolve("workspace-sales/data"));
+        Files.writeString(root.resolve("workspace-sales/data/manifest.js"), "ERD.manifest({});\n");
+        withServer(root, origin -> {
+            HttpRequest req = HttpRequest.newBuilder(URI.create(t(origin, "/__erd/export/viewer")))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(
+                            "{\"prefix\":\"売上 ER図\",\"workspaces\":[\"sales\"]}", StandardCharsets.UTF_8))
+                    .build();
+            HttpResponse<byte[]> res = http.send(req, HttpResponse.BodyHandlers.ofByteArray());
+
+            assertEquals(200, res.statusCode());
+            assertEquals("application/zip", res.headers().firstValue("Content-Type").orElse(""));
+            // 日本語のファイル名は filename* 側で渡す（RFC 5987）
+            String disposition = res.headers().firstValue("Content-Disposition").orElse("");
+            assertTrue(disposition.contains("filename*=UTF-8''"), disposition);
+            assertTrue(disposition.contains("%E5%A3%B2%E4%B8%8A"), disposition);
+
+            List<String> names = new ArrayList<>();
+            try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(res.body()))) {
+                for (ZipEntry e = zip.getNextEntry(); e != null; e = zip.getNextEntry()) {
+                    names.add(e.getName());
+                }
+            }
+            assertEquals(List.of("index.html", "workspaces.js",
+                    "workspace-sales/data/manifest.js"), names);
+
+            // ファイル名にできない prefix は 400（サーバーが正。ビューア側の検査は即時表示のため）
+            HttpResponse<String> bad = send("POST", t(origin, "/__erd/export/viewer"),
+                    "{\"prefix\":\"a/b\"}");
+            assertEquals(400, bad.statusCode());
+            assertEquals("INVALID_PREFIX", mapper.readTree(bad.body()).path("code").asText());
+
+            HttpResponse<String> unknown = send("POST", t(origin, "/__erd/export/viewer"),
+                    "{\"workspaces\":[\"nope\"]}");
+            assertEquals(400, unknown.statusCode());
+            assertEquals("UNKNOWN_WORKSPACE", mapper.readTree(unknown.body()).path("code").asText());
         });
     }
 }

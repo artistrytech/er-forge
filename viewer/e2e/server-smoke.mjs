@@ -13,7 +13,7 @@
  */
 import { chromium } from "playwright";
 import { spawn } from "node:child_process";
-import { mkdtempSync, copyFileSync, existsSync, rmSync } from "node:fs";
+import { mkdtempSync, copyFileSync, existsSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -131,7 +131,39 @@ async function main() {
     await page.waitForSelector('[data-testid="erd-node"]', { timeout: 15000 });
     check("switching back restores the first workspace", page.url().includes("#/w/default"));
 
-    // 7) データリセット: このワークスペースのスキーマ情報だけが消え、完了通知が出る
+    // 7) 閲覧用 ZIP（A-11）: ツールメニュー → 名前と対象を選んでダウンロード。
+    //    CLI と同じ処理を呼ぶので、提示されるコマンドと結果が食い違わないことも見る
+    await page.click('[data-testid="tools-button"]');
+    await page.click('[data-testid="export-viewer-zip"]');
+    await page.waitForSelector('[data-testid="viewer-export-command"]');
+    check("command starts as the shortest form",
+        (await page.inputValue('[data-testid="viewer-export-command"]')).endsWith("export"));
+
+    await page.locator('[data-testid="viewer-export-prefix"]').fill("");
+    await page.locator('[data-testid="viewer-export-prefix"]').pressSequentially("販売 ER図");
+    await page.click('[data-testid="viewer-export-workspace"][data-workspace-id="billing"]');
+    check("command reflects the choices",
+        (await page.inputValue('[data-testid="viewer-export-command"]')) ===
+          'erd.bat export --prefix="販売 ER図" --workspaces=default');
+
+    const [download] = await Promise.all([
+      page.waitForEvent("download", { timeout: 20000 }),
+      page.click('[data-testid="viewer-export-run"]'),
+    ]);
+    const zipPath = join(dir, "exported.zip");
+    await download.saveAs(zipPath);
+    check("downloaded name carries the prefix (RFC 5987)",
+        download.suggestedFilename().startsWith("販売 ER図-"));
+    // エントリ名は ZIP のヘッダに素で並ぶので、そのまま含有を見れば足りる
+    const zip = readFileSync(zipPath).toString("latin1");
+    const hasEntry = (name) => zip.includes(Buffer.from(name, "utf8").toString("latin1"));
+    check("zip has the viewer and the selected data",
+        hasEntry("index.html") && hasEntry("workspace-default/data/manifest.js"));
+    check("zip excludes the unselected workspace", !hasEntry("workspace-billing/"));
+    check("zip excludes private data and the server itself",
+        !hasEntry(".local/") && !hasEntry("erd-server.jar") && !hasEntry("drivers/"));
+
+    // 8) データリセット: このワークスペースのスキーマ情報だけが消え、完了通知が出る
     //（リロードを挟むため、通知は sessionStorage 経由でリロード後に出る）
     await page.click('[data-testid="settings-button"]');
     await page.click('[data-testid="data-reset"]');
@@ -146,7 +178,7 @@ async function main() {
     check("reset does not report an external change",
         (await page.locator('[data-testid="toast"]').count()) === 1);
 
-    // 8) ワークスペース削除: ID の打ち込みが一致するまで実行できない
+    // 9) ワークスペース削除: ID の打ち込みが一致するまで実行できない
     //（リセット直後はブートストラップ画面。ヘッダが無いのでこの画面の導線から削除する）
     await page.click('[data-testid="workspace-delete"]');
     await page.waitForSelector('[data-testid="workspace-delete-input"]');

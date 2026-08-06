@@ -16,9 +16,14 @@ import io.javalin.Javalin;
 import io.javalin.http.Context;
 import io.javalin.http.sse.SseClient;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.net.BindException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -119,6 +124,9 @@ public final class WebServer {
 
         // 座標計算のみ（書き込みをしないためワークスペースに依存しない）
         javalin.post("/__erd/layout/auto", this::layoutAuto);
+
+        // 閲覧用 ZIP（A-11）。複数ワークスペースを跨ぐため /w/{ws} には属さない
+        javalin.post("/__erd/export/viewer", this::exportViewer);
 
         javalin.get("/__erd/w/{ws}/project", this::project);
         javalin.post("/__erd/w/{ws}/bootstrap", this::bootstrap);
@@ -549,6 +557,69 @@ public final class WebServer {
         }
         res.put("baseHash", config.baseHash(root));
         ctx.json(res);
+    }
+
+    /**
+     * A-11 / §3.2: 閲覧用 ZIP をレスポンスとして流す（サーバー側にファイルを残さない）。
+     *
+     * <p>ボディは {@code {prefix, workspaces:[...]}}。中身の線引きもファイル名の規則も
+     * {@link ViewerExport} に一本化してあり、CLI（{@code erd export}）と完全に同じものが出る。
+     */
+    private void exportViewer(Context ctx) throws Exception {
+        if (!authorized(ctx)) {
+            ctx.status(403).json(Map.of("error", "forbidden"));
+            return;
+        }
+        JsonNode body = ctx.body().isEmpty() ? mapper.createObjectNode() : mapper.readTree(ctx.body());
+        String prefix = body.path("prefix").isTextual()
+                ? body.path("prefix").asText() : ViewerExport.DEFAULT_PREFIX;
+        List<String> workspaces = new ArrayList<>();
+        for (JsonNode id : body.path("workspaces")) {
+            if (id.isTextual()) workspaces.add(id.asText());
+        }
+
+        String error = ViewerExport.prefixError(prefix);
+        if (error != null) {
+            ctx.status(400).json(Map.of("code", "INVALID_PREFIX", "message", error));
+            return;
+        }
+        List<String> resolved;
+        try {
+            resolved = ViewerExport.resolveWorkspaces(root, workspaces);
+        } catch (IllegalArgumentException e) {
+            ctx.status(400).json(Map.of("code", "UNKNOWN_WORKSPACE", "message", e.getMessage()));
+            return;
+        }
+        if (resolved.isEmpty()) {
+            ctx.status(400).json(Map.of("code", "NO_WORKSPACE",
+                    "message", "There is no workspace to export."));
+            return;
+        }
+
+        String fileName = ViewerExport.fileName(prefix);
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        try {
+            ViewerExport.writeTo(root, resolved, buffer);
+        } catch (IOException e) {
+            ctx.status(500).json(Map.of("code", "EXPORT_FAILED", "message", String.valueOf(e.getMessage())));
+            return;
+        }
+        ctx.contentType("application/zip");
+        ctx.header("Content-Disposition", contentDisposition(fileName));
+        ctx.result(buffer.toByteArray());
+    }
+
+    /**
+     * 日本語などを含むファイル名でも壊れないようにする（RFC 5987）。ASCII だけに落とした
+     * 名前を filename に、実際の名前を filename* に入れる（古いブラウザは前者を使う）。
+     */
+    private static String contentDisposition(String fileName) {
+        StringBuilder ascii = new StringBuilder();
+        for (char c : fileName.toCharArray()) {
+            ascii.append(c < 0x80 && c != '"' && c != '\\' ? c : '_');
+        }
+        String encoded = URLEncoder.encode(fileName, StandardCharsets.UTF_8).replace("+", "%20");
+        return "attachment; filename=\"" + ascii + "\"; filename*=UTF-8''" + encoded;
     }
 
     /** 共通のドライバ設定（{@code erd/config.js}）の更新。 */

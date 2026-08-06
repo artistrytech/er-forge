@@ -6,7 +6,12 @@
  * （`file://` ではクリップボード API が塞がれていることがある。ExportDialog 参照）。
  */
 export function downloadText(fileName: string, text: string, mime: string): void {
-  const url = URL.createObjectURL(new Blob([text], { type: `${mime};charset=utf-8` }));
+  downloadBlob(fileName, new Blob([text], { type: `${mime};charset=utf-8` }));
+}
+
+/** サーバーが作ったファイル（閲覧用 ZIP。A-11）をそのまま保存させる。 */
+export function downloadBlob(fileName: string, blob: Blob): void {
+  const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
   a.download = fileName;

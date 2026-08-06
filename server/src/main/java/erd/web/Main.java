@@ -9,13 +9,18 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Locale;
 
 /**
- * サーバーモードのエントリポイント（§8.1）。
+ * エントリポイント（§8.1）。カレントディレクトリをプロジェクトルート（erd/）として扱う。
  *
- * <p>サブコマンド・フラグは持たない（全操作は GUI。§1.2）。カレントディレクトリを
- * プロジェクトルート（erd/）として扱う。テスト・自動化用に環境変数のみ許す:
+ * <p>サブコマンドは <b>run</b>（既定。サーバー起動）と <b>export</b>（閲覧用 ZIP の書き出し。§3.2）
+ * の 2 つだけ。<b>編集操作にフラグは足さない</b>（全操作は GUI。§1.2）。export を CLI に置くのは、
+ * 「サーバーを起動せずに成果物を作る」という、GUI では表現できない操作だからである。
+ * 引数なしは run と同じ（起動スクリプトのダブルクリックで従来どおり起動する）。
+ *
+ * <p>テスト・自動化用に環境変数も許す:
  * ERD_PORT（基点ポート）/ ERD_NO_BROWSER（自動オープン抑止）/ ERD_TOKEN（トークン固定）。
  */
 public final class Main {
@@ -24,7 +29,106 @@ public final class Main {
 
     public static void main(String[] args) {
         Path root = Path.of("").toAbsolutePath();
+        String command = args.length == 0 ? "run" : args[0].toLowerCase(Locale.ROOT);
+        String[] options = args.length == 0 ? new String[0]
+                : java.util.Arrays.copyOfRange(args, 1, args.length);
+        switch (command) {
+            case "run" -> {
+                requireNoOptions(options);
+                run(root);
+            }
+            case "export" -> export(root, options);
+            case "help", "-h", "--help" -> usage(System.out);
+            default -> fail("Unknown command: " + args[0]);
+        }
+    }
 
+    private static void usage(java.io.PrintStream out) {
+        out.println("Usage: erd [run|export] [options]");
+        out.println("  run     Start the server and open the browser (default; same as no argument)");
+        out.println("  export  Write a viewer-only ZIP (index.html + data) into this directory,");
+        out.println("          for sharing with people who do not use Git or Java");
+        out.println();
+        out.println("Options for export:");
+        out.println("  --prefix=<name>       File name prefix (default: " + ViewerExport.DEFAULT_PREFIX + ").");
+        out.println("                        The file is named <prefix>-<timestamp>.zip");
+        out.println("  --workspaces=<a,b>    Workspaces to include (default: all)");
+    }
+
+    /** 使い方を出して終了する（引数の誤りは黙って進めない）。 */
+    private static void fail(String message) {
+        System.err.println(message);
+        usage(System.err);
+        System.exit(2);
+    }
+
+    private static void requireNoOptions(String[] options) {
+        if (options.length > 0) fail("Too many arguments: " + String.join(" ", options));
+    }
+
+    /**
+     * 閲覧用の静的リソースを ZIP にまとめる（サーバーは起動しない）。
+     *
+     * <p>受け付けるのは {@code --prefix=<name>} と {@code --workspaces=<a,b>} だけ。
+     * 空白区切り（{@code --prefix foo}）も同じものとして扱う（GUI が提示する形は = のほう）。
+     */
+    private static void export(Path root, String[] options) {
+        String prefix = ViewerExport.DEFAULT_PREFIX;
+        List<String> workspaces = List.of();
+        for (int i = 0; i < options.length; i++) {
+            String option = options[i];
+            String name = option;
+            String value = null;
+            int eq = option.indexOf('=');
+            if (eq >= 0) {
+                name = option.substring(0, eq);
+                value = option.substring(eq + 1);
+            } else if (i + 1 < options.length && !options[i + 1].startsWith("--")) {
+                value = options[++i];
+            }
+            switch (name) {
+                case "--prefix" -> {
+                    if (value == null) {
+                        fail("Missing value: --prefix=<name>");
+                        return;
+                    }
+                    prefix = value;
+                }
+                case "--workspaces" -> {
+                    if (value == null) {
+                        fail("Missing value: --workspaces=<a,b>");
+                        return;
+                    }
+                    workspaces = java.util.Arrays.stream(value.split(","))
+                            .map(String::trim).filter(s -> !s.isEmpty()).toList();
+                }
+                default -> {
+                    fail("Unknown option: " + option);
+                    return;
+                }
+            }
+        }
+
+        String error = ViewerExport.prefixError(prefix);
+        if (error != null) {
+            System.err.println("Invalid --prefix: " + error);
+            System.exit(2);
+            return;
+        }
+        try {
+            Path zip = ViewerExport.create(root, prefix, workspaces);
+            System.out.println("Exported: " + zip);
+            System.out.println("Extract it anywhere and open index.html in a browser (no Java needed).");
+        } catch (IllegalArgumentException e) {
+            System.err.println("Invalid --workspaces: " + e.getMessage());
+            System.exit(2);
+        } catch (Exception e) {
+            System.err.println("Export failed: " + e.getMessage());
+            System.exit(1);
+        }
+    }
+
+    private static void run(Path root) {
         // データ形式の自動移行（§3.5）を全ワークスペースに対して行う
         for (String id : WorkspaceStore.scan(root)) {
             migrate(root, id);

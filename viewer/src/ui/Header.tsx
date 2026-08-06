@@ -25,6 +25,7 @@ import { cx } from "../lib/cx";
 import { downloadText } from "../lib/download";
 import { Button } from "./Button";
 import { Dialog } from "./Dialog";
+import { ViewerExportDialog } from "./ViewerExportDialog";
 import { Link } from "./Link";
 import { hrefs, useRoute, type Route } from "./router";
 import { useDropdown } from "./useDropdown";
@@ -175,8 +176,10 @@ function NavLink({
 function ToolsMenu() {
   const { t } = useI18n();
   const addToast = useAppStore((s) => s.addToast);
+  const serverMode = useAppStore((s) => s.serverMode) === true;
   const { open, setOpen, toggle, ref } = useDropdown();
   const [busy, setBusy] = useState(false);
+  const [exportingViewer, setExportingViewer] = useState(false);
 
   const exportSchema = async (): Promise<void> => {
     setBusy(true);
@@ -236,8 +239,26 @@ function ToolsMenu() {
             </span>
             <span className={styles.toolItemHint}>{t("tools.exportSchemaHint")}</span>
           </button>
+          {/* 閲覧用 ZIP はサーバーが組み立てる（index.html 自身を含むため静的モードでは作れない） */}
+          <button
+            type="button"
+            role="menuitem"
+            className={styles.toolItem}
+            data-testid="export-viewer-zip"
+            disabled={!serverMode}
+            onClick={() => {
+              setExportingViewer(true);
+              setOpen(false);
+            }}
+          >
+            <span className={styles.toolItemLabel}>{t("tools.exportViewer")}</span>
+            <span className={styles.toolItemHint}>
+              {serverMode ? t("tools.exportViewerHint") : t("tools.exportViewerStatic")}
+            </span>
+          </button>
         </div>
       )}
+      {exportingViewer && <ViewerExportDialog onClose={() => setExportingViewer(false)} />}
     </div>
   );
 }
