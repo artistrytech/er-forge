@@ -35,7 +35,7 @@ const ja = {
   "tools.exportViewer": "閲覧用 ZIP を書き出す",
   "tools.exportViewerHint":
     "ビューア（index.html）とデータをまとめた ZIP を作ります。受け取った人は展開して開くだけで閲覧できます（Git も Java も不要）。接続情報とドライバは含みません。",
-  "tools.exportViewerStatic": "サーバーモードでのみ使えます（ビューア本体を読めるのがサーバーだけのため）",
+  "tools.exportViewerStatic": "サーバーモードでのみ使えます",
 
   // ---- 閲覧用 ZIP の書き出し（A-11。CLI の erd export と同じ処理） ----
   "viewerExport.title": "閲覧用 ZIP を書き出す",
@@ -663,7 +663,7 @@ const en: Record<MsgKey, string> = {
   "tools.exportViewer": "Export viewer ZIP",
   "tools.exportViewerHint":
     "Bundles the viewer (index.html) and the data into a ZIP. The recipient just extracts it and opens the file — no Git, no Java. Connection settings and JDBC drivers are not included.",
-  "tools.exportViewerStatic": "Server mode only (only the server can read the viewer itself)",
+  "tools.exportViewerStatic": "Server mode only",
 
   // ---- Viewer ZIP export (A-11; same code path as the erd export command) ----
   "viewerExport.title": "Export viewer ZIP",
