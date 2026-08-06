@@ -22,6 +22,9 @@ const ja = {
     "index.html と erd-server.jar のバージョンが異なります。配布 ZIP を展開し直してください。",
   "info.schemaVersion": "データ形式",
   "info.notices": "ほかの OSS とライセンスは同梱の THIRD-PARTY-NOTICES.txt を参照してください。",
+  // ---- アプリ情報（ヘッダ左端のアイコンから開く。製品名 ERForge は翻訳しない） ----
+  "about.title": "ERForge について",
+  "about.repository": "GitHub リポジトリ",
   "settings.title": "設定",
   // ---- ツール（データの持ち出し。静的モードでも使える） ----
   "tools.title": "ツール",
@@ -653,6 +656,9 @@ const en: Record<MsgKey, string> = {
   "info.schemaVersion": "Data format",
   "info.notices":
     "See the bundled THIRD-PARTY-NOTICES.txt for the other open-source components and their licenses.",
+  // ---- About (opened from the app icon at the left end of the header) ----
+  "about.title": "About ERForge",
+  "about.repository": "GitHub repository",
   "settings.title": "Settings",
   // ---- Tools (taking data out; works in static mode too) ----
   "tools.title": "Tools",

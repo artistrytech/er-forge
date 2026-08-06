@@ -1,0 +1,43 @@
+/* アプリ情報のダイアログ（ヘッダ左端のアプリアイコンから開く）。 */
+
+.about {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  padding: 8px 0 4px;
+}
+
+/* ロゴは元画像（480px 幅）を上限に、狭いときだけ縮める */
+.about-logo {
+  width: 100%;
+  max-width: 360px;
+  height: auto;
+}
+
+.about-link-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.about-link-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.about-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--accent);
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.about-link:hover {
+  text-decoration: underline;
+}

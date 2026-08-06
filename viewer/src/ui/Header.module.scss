@@ -13,9 +13,38 @@
   flex-wrap: wrap;
 }
 
+/* アプリアイコン＋タイトルはひとかたまり（ヘッダ全体の gap 20px より詰めて並べる） */
+.app-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 /* タイトル（＝ワークスペース切替ボタン）の文字サイズ。見た目はボタン側が継承する */
 .app-title {
   font-size: 15px;
+}
+
+/* アプリアイコン（押すとアプリ情報のダイアログ）。画像そのものを見せるため枠は付けない */
+.app-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  cursor: pointer;
+}
+
+.app-icon-button:hover {
+  background: var(--accent-soft);
+}
+
+.app-icon {
+  display: block;
+  width: 28px;
+  height: 28px;
 }
 
 .app-nav {

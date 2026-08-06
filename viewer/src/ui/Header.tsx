@@ -7,6 +7,7 @@
  * ひとつのヘッダ UI に集約する。個別画面はフォームだけを持ち、保存・終了はここから行う。
  */
 import { useEffect, useState } from "react";
+import appIconUrl from "../assets/app-icon.png";
 import { useI18n } from "../i18n/useI18n";
 import { apiPatch, apiPost, wpath } from "../model/api";
 import { useEditStore } from "../model/editStore";
@@ -23,6 +24,7 @@ import { isValidWorkspaceId, type WorkspaceRef } from "../model/workspace";
 import type { Lang } from "../i18n/messages";
 import { cx } from "../lib/cx";
 import { downloadText } from "../lib/download";
+import { AboutDialog } from "./AboutDialog";
 import { Button } from "./Button";
 import { Dialog } from "./Dialog";
 import { ViewerExportDialog } from "./ViewerExportDialog";
@@ -99,8 +101,12 @@ export function Header({ currentDiagramId }: { currentDiagramId?: string }) {
           <div className={styles.progressBarFill} style={{ width: `${Math.round(progress * 100)}%` }} />
         </div>
       )}
-      {/* タイトル = 現在のワークスペース名。名前そのものが切替プルダウンのボタン */}
-      <WorkspaceMenu title={titleText} className={styles.appTitle} />
+      {/* 左端はアプリの顔（アイコン）＋ タイトル = 現在のワークスペース名。
+          タイトルの文字そのものがワークスペース切替プルダウンのボタンになっている */}
+      <div className={styles.appBrand}>
+        <AppIconButton />
+        <WorkspaceMenu title={titleText} className={styles.appTitle} />
+      </div>
       <nav className={styles.appNav}>
         <NavLink href={navHref.erd} active={onErd} disabled={editingRoute && !erdEditing}>
           {t("nav.erd")}
@@ -161,6 +167,33 @@ function NavLink({
     <Link className={className} href={href}>
       {children}
     </Link>
+  );
+}
+
+// ------------------------------------------------------------------ アプリアイコン（ヘッダ左端）
+
+/**
+ * ヘッダ左端のアプリアイコン。押すとアプリ情報（ロゴ・配布元）のダイアログを開く。
+ * 右側のアイコン群（ツール・information・設定）とは役割が違うので、見た目も画像のまま置く。
+ */
+function AppIconButton() {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        className={styles.appIconButton}
+        data-testid="app-icon-button"
+        title={t("about.title")}
+        aria-label={t("about.title")}
+        onClick={() => setOpen(true)}
+      >
+        {/* ロゴはボタンのラベル（aria-label）で読ませるので alt は空にする */}
+        <img className={styles.appIcon} src={appIconUrl} alt="" />
+      </button>
+      {open && <AboutDialog onClose={() => setOpen(false)} />}
+    </>
   );
 }
 
