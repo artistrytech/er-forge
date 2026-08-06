@@ -25,14 +25,16 @@
   font-size: 15px;
 }
 
-/* アプリアイコン（押すとアプリ情報のダイアログ）。画像そのものを見せるため枠は付けない */
+/* アプリアイコン（押すとアプリ情報のダイアログ）。画像そのものを見せるため枠は付けない。
+   大きさはヘッダの高さいっぱい: min-height 56px − 上下 padding 6px×2 = 44px が上限で、
+   その内訳が padding 2px×2 + 画像 40px。ヘッダの高さ・padding を変えたら合わせて直すこと */
 .app-icon-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 3px;
+  padding: 2px;
   border: none;
-  border-radius: 8px;
+  border-radius: 10px;
   background: none;
   cursor: pointer;
 }
@@ -43,8 +45,8 @@
 
 .app-icon {
   display: block;
-  width: 28px;
-  height: 28px;
+  width: 40px;
+  height: 40px;
 }
 
 .app-nav {
