@@ -1,9 +1,15 @@
 package erd.web;
 
+import erd.core.io.DataFilePrinter;
+import erd.core.model.Workspace;
+
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -49,9 +55,12 @@ final class ViewerExport {
     private static final Pattern RESERVED =
             Pattern.compile("^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\\..*)?$");
 
-    /** ルート直下から入れるファイル（無いものは黙って飛ばす。index.html だけは必須）。 */
+    /**
+     * ルート直下からそのまま入れるファイル（無いものは黙って飛ばす。index.html だけは必須）。
+     * {@code workspaces.js} はここに含めない — 選択に合わせて作り直す（{@link #registry}）。
+     */
     private static final List<String> ROOT_FILES =
-            List.of("index.html", WorkspaceStore.REGISTRY, "THIRD-PARTY-NOTICES.txt");
+            List.of("index.html", "THIRD-PARTY-NOTICES.txt");
 
     private ViewerExport() {}
 
@@ -135,9 +144,13 @@ final class ViewerExport {
         try (ZipOutputStream zos = new ZipOutputStream(out)) {
             for (Entry e : entries) {
                 ZipEntry entry = new ZipEntry(e.name());
-                entry.setLastModifiedTime(Files.getLastModifiedTime(e.file()));
+                entry.setLastModifiedTime(e.time());
                 zos.putNextEntry(entry);
-                Files.copy(e.file(), zos);
+                if (e.file() != null) {
+                    Files.copy(e.file(), zos);
+                } else {
+                    zos.write(e.content());
+                }
                 zos.closeEntry();
             }
         }
@@ -149,20 +162,29 @@ final class ViewerExport {
             throw new IOException("index.html not found in " + root
                     + " (run this from the directory where the tool was extracted)");
         }
-        // レジストリ（workspaces.js）を走査結果に合わせてから固める。静的モードはこの 1 本で
-        // ワークスペースを発見するため、古い / 無いまま詰めると「開いても何も出ない ZIP」になる。
-        // サーバー起動時と同じ同期処理であり、差分が出たらコミット対象になる（生成物）
-        new WorkspaceStore().list(root);
-
         List<Entry> entries = new ArrayList<>();
         for (String name : ROOT_FILES) {
             Path file = root.resolve(name);
-            if (Files.isRegularFile(file)) entries.add(new Entry(name, file));
+            if (Files.isRegularFile(file)) entries.add(Entry.of(name, file));
         }
+        entries.add(Entry.of(WorkspaceStore.REGISTRY, registry(root, workspaces)));
         for (String id : workspaces) {
             collectData(root, id, entries);
         }
         return entries;
+    }
+
+    /**
+     * ZIP に入れる {@code workspaces.js} を<b>選択に合わせて作り直す</b>。
+     *
+     * <p>静的モードはこの 1 本だけでワークスペースを発見する（ディレクトリを走査できない）。
+     * ディスク上のものをそのまま入れると、<b>書き出さなかったワークスペースまでプルダウンに並び</b>、
+     * 選ぶとデータが無くて壊れる。表示名はディスク側の値を引き継ぐ。
+     */
+    private static byte[] registry(Path root, List<String> workspaces) {
+        List<Workspace> all = new WorkspaceStore().list(root);
+        List<Workspace> selected = all.stream().filter(w -> workspaces.contains(w.id())).toList();
+        return new DataFilePrinter().printWorkspaces(selected).getBytes(StandardCharsets.UTF_8);
     }
 
     /** {@code workspace-<id>/data/**} を丸ごと（順序を固定して）拾う。 */
@@ -173,7 +195,7 @@ final class ViewerExport {
         try (Stream<Path> walk = Files.walk(dataDir)) {
             List<Path> files = walk.filter(Files::isRegularFile).sorted().toList();
             for (Path file : files) {
-                out.add(new Entry(entryName(base.resolve(dataDir.relativize(file))), file));
+                out.add(Entry.of(entryName(base.resolve(dataDir.relativize(file))), file));
             }
         }
     }
@@ -183,5 +205,15 @@ final class ViewerExport {
         return relative.toString().replace('\\', '/');
     }
 
-    private record Entry(String name, Path file) {}
+    /** ZIP の 1 エントリ。元のファイルをそのまま入れるか（file）、作った内容を入れるか（content）。 */
+    private record Entry(String name, Path file, byte[] content, FileTime time) {
+
+        static Entry of(String name, Path file) throws IOException {
+            return new Entry(name, file, null, Files.getLastModifiedTime(file));
+        }
+
+        static Entry of(String name, byte[] content) {
+            return new Entry(name, null, content, FileTime.from(Instant.now()));
+        }
+    }
 }

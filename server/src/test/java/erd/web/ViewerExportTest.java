@@ -29,7 +29,14 @@ class ViewerExportTest {
     private static Path erdRoot(Path tmp) throws IOException {
         Path root = tmp.resolve("erd");
         write(root.resolve("index.html"), "<!doctype html><title>viewer</title>");
-        write(root.resolve("workspaces.js"), "ERD.workspaces([{ id: \"sales\", name: \"売上\" },]);\n");
+        write(root.resolve("workspaces.js"), """
+                ERD.workspaces({
+                  workspaces: [
+                    { id: "billing", name: "課金" },
+                    { id: "sales", name: "売上" },
+                  ],
+                });
+                """);
         write(root.resolve("THIRD-PARTY-NOTICES.txt"), "notices");
         write(root.resolve("config.js"), "ERD.config({ drivers: {} });\n");
         write(root.resolve("erd-server.jar"), "jar");
@@ -73,8 +80,8 @@ class ViewerExportTest {
         assertEquals(root, zip.getParent());
         assertEquals(List.of(
                 "index.html",
-                "workspaces.js",
                 "THIRD-PARTY-NOTICES.txt",
+                "workspaces.js",
                 "workspace-billing/data/manifest.js",
                 "workspace-sales/data/manifest.js",
                 "workspace-sales/data/schema/public/users.js"),
@@ -90,11 +97,37 @@ class ViewerExportTest {
 
         assertEquals(List.of(
                 "index.html",
-                "workspaces.js",
                 "THIRD-PARTY-NOTICES.txt",
+                "workspaces.js",
                 "workspace-sales/data/manifest.js",
                 "workspace-sales/data/schema/public/users.js"),
                 entries(zip));
+    }
+
+    @Test
+    @DisplayName("workspaces.js は選択に合わせて作り直す（外したものをプルダウンに出さない）")
+    void registryListsOnlySelectedWorkspaces(@TempDir Path tmp) throws Exception {
+        Path root = erdRoot(tmp);
+
+        String selected = read(ViewerExport.create(root, PREFIX, List.of("sales")), "workspaces.js");
+        assertTrue(selected.contains("\"sales\""), selected);
+        assertFalse(selected.contains("billing"), "外したワークスペースが残っている: " + selected);
+        // 表示名はディスク側の値を引き継ぐ
+        assertTrue(selected.contains("売上"), selected);
+
+        // 全選択なら全部載る（元のレジストリと同じ内容になる）
+        String all = read(ViewerExport.create(root, PREFIX, List.of()), "workspaces.js");
+        assertTrue(all.contains("\"sales\""), all);
+        assertTrue(all.contains("\"billing\""), all);
+        assertEquals(Files.readString(root.resolve("workspaces.js"), StandardCharsets.UTF_8), all);
+    }
+
+    private static String read(Path zip, String entry) throws IOException {
+        try (ZipFile file = new ZipFile(zip.toFile())) {
+            ZipEntry found = file.getEntry(entry);
+            assertNotNull(found, entry + " が ZIP に無い");
+            return new String(file.getInputStream(found).readAllBytes(), StandardCharsets.UTF_8);
+        }
     }
 
     @Test

@@ -214,13 +214,18 @@ Oracle は proprietary な OFUTC）を避け、(2) 配布 ZIP を小さく保つ
 
 | 入れる | 入れない |
 |---|---|
-| `index.html`・`workspaces.js`・`workspace-*/data/**` | `erd-server.jar`・`erd.sh` / `erd.bat`（閲覧に不要） |
+| `index.html`・`workspaces.js`・選んだ `workspace-*/data/**` | `erd-server.jar`・`erd.sh` / `erd.bat`（閲覧に不要） |
 | `THIRD-PARTY-NOTICES.txt`（`index.html` の再配布に伴う告知義務。§3.1） | **`.local/`（DB 接続情報。社外に出す ZIP に入れては絶対にならない）** |
 | | `drivers/`（再配布のライセンス問題。§7.2）・ルートの `config.js`（ドライバ設定で閲覧に不使用） |
 | | `.gitignore` / `.gitattributes`（渡した先で Git 管理しない） |
 
 除外の線引きは**テストで固定する**（`ViewerExportTest`）。ここは「うっかり入った」が
 そのまま情報漏洩になる場所なので、実装の副作用で中身が変わらないようにする。
+
+**`workspaces.js` は選択に合わせて作り直す**（ディスク上のものをコピーしない）。静的モードは
+ディレクトリを走査できず、このファイル 1 本だけでワークスペースを発見するため、そのまま入れると
+**書き出さなかったワークスペースまでプルダウンに並び、選ぶとデータが無くて壊れる**。
+表示名はディスク側の値を引き継ぐ。
 
 **GUI（ツールメニュー → 閲覧用 ZIP を書き出す）からも同じことができる**（A-11）。
 GUI は `POST /__erd/export/viewer` を呼んでブラウザにダウンロードさせるだけで、
