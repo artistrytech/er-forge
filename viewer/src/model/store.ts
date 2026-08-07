@@ -24,6 +24,9 @@ export type Fatal =
 /** 詳細ダイアログで開ける制約の種類（リレーション以外。テーブル詳細の虫眼鏡から開く） */
 export type ConstraintKind = "unique" | "index" | "logicalUnique";
 
+/** 左パネルのレーン（アイコンレール: ページ / 全て / 検索） */
+export type PanelLane = "pages" | "all" | "search";
+
 /** ER図上の一時的なダイアログ（URL を持たない。設計書 §4.4） */
 export type DialogState =
   | { type: "table"; id: string }
@@ -95,6 +98,16 @@ export interface AppState {
    * ER用・テーブル用の左パネルは2つ同時にマウントされるため、状態はここで共有する。
    */
   pageInfoEditing: boolean;
+  /**
+   * テーブル画面側の左パネルの選択状態（レーン / 「ページ」レーンで選択中のページ）。
+   *
+   * #/tables を開いたときに開く 1 件（回答E）を**パネルが見せている一覧と一致させる**ために、
+   * App からも参照できるようここへ置く。ER用パネルのレーン・選択ページはルートに追従するか
+   * インスタンス内で完結するため、ここには載せない。
+   * ページの null は「まだ選んでいない」で、既定の先頭ページは参照側（useTablesPanelPage）が解決する。
+   */
+  tablesPanelLane: PanelLane;
+  tablesPanelPage: string | null;
 
   setLang(lang: Lang): void;
   setNameDisplay(mode: NameDisplay): void;
@@ -112,6 +125,8 @@ export interface AppState {
   setPageInfoEditing(editing: boolean): void;
   setLastTableId(id: string | null): void;
   setLastDiagramId(id: string | null): void;
+  setTablesPanelLane(lane: PanelLane): void;
+  setTablesPanelPage(id: string | null): void;
 }
 
 /**
@@ -208,6 +223,8 @@ export const useAppStore = create<AppState>((set) => ({
   toasts: [],
   recentTables: [],
   pageInfoEditing: false,
+  tablesPanelLane: "pages",
+  tablesPanelPage: null,
   workspaces: [],
   workspaceId: null,
   lastWorkspaceId: readSession(LAST_WORKSPACE_KEY),
@@ -256,6 +273,8 @@ export const useAppStore = create<AppState>((set) => ({
       return { lastDiagramId };
     });
   },
+  setTablesPanelLane: (tablesPanelLane) => set({ tablesPanelLane }),
+  setTablesPanelPage: (tablesPanelPage) => set({ tablesPanelPage }),
   addToast: (text, variant = "info") => {
     const id = ++toastSeq;
     set((s) => ({ toasts: [...s.toasts, { id, text, variant }] }));

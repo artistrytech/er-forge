@@ -69,6 +69,23 @@ async function main() {
   });
   page.on("pageerror", (e) => errors.push("pageerror: " + e.message));
 
+  const V = '[data-testid="panel-slot"]:not([data-hidden]) '; // 両パネル常時マウントのため表示中に限定
+
+  // 0) 前回のテーブルが無い状態の #/tables は、左パネル「ページ」レーンが見せている
+  //    アクティブなページの先頭テーブルを開く（全テーブルの先頭 = 未配置の audit_logs だと、
+  //    左の一覧に無いテーブルの詳細が出てしまう）
+  await page.goto("file:///" + DIST + "#/w/default/tables");
+  await page.waitForFunction(() => location.hash.startsWith("#/w/default/tables/"));
+  check(
+    "bare #/tables opens the first table of the active page",
+    page.url().endsWith("#/w/default/tables/public.orders"),
+  );
+  await page.waitForSelector(V + '[data-testid="lp-item"]');
+  check(
+    "the opened table is the one highlighted in the pages lane",
+    (await page.locator(V + '[data-testid="lp-item"][data-active="true"]').count()) === 1,
+  );
+
   // 1) 起動 → ホーム → 最初のER図ページへリダイレクト
   await page.goto("file:///" + DIST);
   await page.waitForSelector('[data-testid="erd-node"]', { timeout: 10000 });
@@ -186,7 +203,6 @@ async function main() {
   await page.click('a[href="#/w/default/tables"]');
   // 素の #/tables は先頭テーブルへ振り替わる（回答E: 未選択状態は作らない）
   await page.waitForFunction(() => location.hash.startsWith("#/w/default/tables/"));
-  const V = '[data-testid="panel-slot"]:not([data-hidden]) '; // 両パネル常時マウントのため表示中に限定
   await page.click(V + '[data-testid="lane-all"]');
   await page.waitForSelector(V + '[data-testid="lp-item"]');
   check("all-tables lane lists 6 tables", (await page.locator(V + '[data-testid="lp-item"]').count()) === 6);

@@ -19,7 +19,7 @@ import { ExportDialog } from "./ui/ExportDialog";
 import { Header } from "./ui/Header";
 import { Link } from "./ui/Link";
 import { NotFound } from "./ui/NotFound";
-import { LeftPanel } from "./ui/LeftPanel";
+import { LeftPanel, usePageTables, useTablesPanelPage } from "./ui/LeftPanel";
 import { ConstraintInfoDialog, RelationDialog } from "./ui/DetailDialogs";
 import { SearchDialog } from "./ui/SearchDialog";
 import { TableDetailDialog } from "./ui/TableDetailDialog";
@@ -50,6 +50,11 @@ export function App() {
   const workspaces = useAppStore((s) => s.workspaces);
   const workspaceId = useAppStore((s) => s.workspaceId);
   const workspaceName = workspaces.find((w) => w.id === workspaceId)?.name;
+  // #/tables の初期表示テーブルを左パネルの見た目と揃えるための材料（下の restoreTableId）。
+  // フックなので早期 return より前に置く
+  const tablesPanelLane = useAppStore((s) => s.tablesPanelLane);
+  const tablesPanelPage = useTablesPanelPage();
+  const tablesPanelPageTables = usePageTables(tablesPanelPage);
   const exportDiagramId = useEditStore((s) => s.exportDiagramId);
   // 未保存: ER図編集（正味の変更 netDirty）またはテーブル/カラム編集（pageEditStore の dirty）
   const erdUnsaved = useEditStore((s) => s.session === "editing" && s.netDirty);
@@ -161,11 +166,16 @@ export function App() {
   const firstTableId = [...(index?.tables ?? [])].sort((a, b) =>
     a.name.localeCompare(b.name, "ja"),
   )[0]?.id;
-  // 最後に閲覧したテーブルが今も存在すればそれを、無ければ先頭を開く（回答E を維持）
+  // 前回のテーブルが無いときの着地点。左パネルが「ページ」レーンなら、そこに並んでいる
+  // アクティブなページ（＝業務領域）の先頭テーブルを開く。全テーブルの先頭だと、
+  // 左の一覧に無いテーブルの詳細が出てしまい不自然（ページに1件も無ければ従来どおり先頭）
+  const panelFirstTableId =
+    tablesPanelLane === "pages" ? tablesPanelPageTables[0]?.id : undefined;
+  // 最後に閲覧したテーブルが今も存在すればそれを、無ければ上の既定を開く（回答E を維持）
   const restoreTableId =
     lastTableId !== null && (index?.tables ?? []).some((tt) => tt.id === lastTableId)
       ? lastTableId
-      : firstTableId;
+      : (panelFirstTableId ?? firstTableId);
 
   // 左パネルの表示対象（回答2: ER用・テーブル用の2インスタンスを常時マウントし表示を出し分ける）。
   // テーブル編集中は隠す（編集フォームに集中させ、そこから他テーブルへ飛ばせないようにする）

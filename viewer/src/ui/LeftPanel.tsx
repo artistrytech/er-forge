@@ -10,7 +10,8 @@
  *
  * レーン選択・フィルタ・検索クエリは各インスタンスのローカル状態。App が ER 用・
  * テーブル用の2インスタンスを常時マウントしたまま表示を出し分けるため、画面を往復しても
- * 状態が保持される（回答2）。
+ * 状態が保持される（回答2）。ただしテーブル用のレーンと「ページ」レーンの選択ページだけは
+ * appStore に置く（#/tables を開いたときの初期表示テーブルを App が同じ基準で選ぶため）。
  *
  * テーブルを選択したときの遷移（回答3 / 6）:
  * - ER画面: 現在のページにあればフォーカス、別ページにあればそのページでフォーカス、
@@ -29,7 +30,7 @@ import { colorAttr } from "../model/colors";
 import { useEditStore } from "../model/editStore";
 import { formatName, resolveIndexTableName, type NameDisplay } from "../model/logicalName";
 import { searchAll, type MatchMode } from "../model/search";
-import { useAppStore } from "../model/store";
+import { useAppStore, type PanelLane } from "../model/store";
 import type { IndexTable } from "../model/types";
 import { AddPageButton } from "./AddPage";
 import { Dialog } from "./Dialog";
@@ -38,7 +39,7 @@ import { cx } from "../lib/cx";
 import styles from "./LeftPanel.module.scss";
 
 export type PanelScope = "erd" | "tables";
-type Lane = "pages" | "all" | "search";
+type Lane = PanelLane;
 
 /** 未配置の疑似ページを表す選択センチネル（回答3） */
 const UNPLACED = "__unplaced__";
@@ -52,7 +53,12 @@ interface LeftPanelProps {
 }
 
 export function LeftPanel({ scope, currentDiagramId, activeTableId }: LeftPanelProps) {
-  const [lane, setLane] = useState<Lane>("pages");
+  // ER用はインスタンス内で完結。テーブル用は App も見る（#/tables の初期表示テーブル）ので store
+  const [erdLane, setErdLane] = useState<Lane>("pages");
+  const tablesLane = useAppStore((s) => s.tablesPanelLane);
+  const setTablesLane = useAppStore((s) => s.setTablesPanelLane);
+  const lane = scope === "erd" ? erdLane : tablesLane;
+  const setLane = scope === "erd" ? setErdLane : setTablesLane;
   // ER画面では、キャンバス上でノードを選んだときも一覧の選択を追随させる（双方向）。
   // 一覧 → キャンバスは URL のフォーカス経由、キャンバス → 一覧はこの選択状態経由になる
   const selection = useCanvasStore((s) => s.selection);
@@ -100,6 +106,44 @@ function usePlacement(): Map<string, string[]> {
     }
     return map;
   }, [index, diagrams]);
+}
+
+/** ページ一覧（表示順）。左パネルと #/tables の初期表示テーブルの決定で同じ並びを使う */
+function useSortedDiagrams() {
+  const manifest = useAppStore((s) => s.manifest);
+  return useMemo(
+    () => [...(manifest?.diagrams ?? [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
+    [manifest],
+  );
+}
+
+/**
+ * テーブル画面側の左パネルの「ページ」レーンで選択中のページ。
+ * 未選択（初回）と、消えたページを指したままの場合は先頭ページへ寄せる。
+ * 未配置の疑似ページはそのまま返す（尽きたら PagesLane が実ページへ戻す）。
+ */
+export function useTablesPanelPage(): string | undefined {
+  const stored = useAppStore((s) => s.tablesPanelPage);
+  const diagrams = useSortedDiagrams();
+  if (stored === UNPLACED) return UNPLACED;
+  if (stored !== null && diagrams.some((d) => d.id === stored)) return stored;
+  return diagrams[0]?.id;
+}
+
+/**
+ * 「ページ」レーンの一覧に並ぶテーブル（選択中ページの配置テーブル / 未配置トレイの中身）。
+ * PagesLane の表示と、#/tables を開いたときの初期表示テーブル（App）で基準を揃えるために切り出す。
+ */
+export function usePageTables(selectedPage: string | undefined): IndexTable[] {
+  const index = useAppStore((s) => s.index);
+  const placement = usePlacement();
+  return useMemo(() => {
+    if (selectedPage === undefined) return [];
+    const sorted = [...(index?.tables ?? [])].sort((a, b) => a.name.localeCompare(b.name, "ja"));
+    return selectedPage === UNPLACED
+      ? sorted.filter((it) => (placement.get(it.id) ?? []).length === 0)
+      : sorted.filter((it) => (placement.get(it.id) ?? []).includes(selectedPage));
+  }, [index, placement, selectedPage]);
 }
 
 // ------------------------------------------------------------------ アイコンレール
@@ -271,8 +315,6 @@ function PagesLane({
   activeTableId?: string;
 }) {
   const { t } = useI18n();
-  const manifest = useAppStore((s) => s.manifest);
-  const index = useAppStore((s) => s.index);
   const nameDisplay = useAppStore((s) => s.nameDisplay);
   const serverMode = useAppStore((s) => s.serverMode === true);
   const editing = useEditStore((s) => s.session === "editing");
@@ -290,22 +332,24 @@ function PagesLane({
   // 未配置トレイからの配置は ER図の編集セッション側の操作（ページ情報編集とは別物）
   const canPlace = scope === "erd" && editing && serverMode;
 
-  const diagrams = useMemo(
-    () => [...(manifest?.diagrams ?? [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
-    [manifest],
-  );
+  const diagrams = useSortedDiagrams();
 
-  // 選択中ページ。ER はルート（現在のページ）に追従、テーブルはローカル選択
-  const [selectedPage, setSelectedPage] = useState<string | undefined>(
-    currentDiagramId ?? diagrams[0]?.id,
+  // 選択中ページ。ER はルート（現在のページ）に追従、テーブルは store（#/tables の初期表示
+  // テーブルを App が同じページから選ぶため、ローカル状態にはしない）
+  const [erdPage, setErdPage] = useState<string | undefined>(currentDiagramId ?? diagrams[0]?.id);
+  const tablesPage = useTablesPanelPage();
+  const setTablesPage = useAppStore((s) => s.setTablesPanelPage);
+  const selectedPage = scope === "erd" ? erdPage : tablesPage;
+  const setSelectedPage = useCallback(
+    (id: string | undefined) => {
+      if (scope === "erd") setErdPage(id);
+      else setTablesPage(id ?? null);
+    },
+    [scope, setTablesPage],
   );
   useEffect(() => {
-    if (scope === "erd") {
-      if (currentDiagramId !== undefined) setSelectedPage(currentDiagramId);
-    } else {
-      setSelectedPage((prev) => prev ?? diagrams[0]?.id);
-    }
-  }, [scope, currentDiagramId, diagrams]);
+    if (scope === "erd" && currentDiagramId !== undefined) setErdPage(currentDiagramId);
+  }, [scope, currentDiagramId]);
 
   const tableCountByDiagram = useMemo(() => {
     const counts = new Map<string, number>();
@@ -315,15 +359,8 @@ function PagesLane({
     return counts;
   }, [placement]);
 
-  const sortedTables = useMemo(
-    () => [...(index?.tables ?? [])].sort((a, b) => a.name.localeCompare(b.name, "ja")),
-    [index],
-  );
-  const unplaced = sortedTables.filter((it) => (placement.get(it.id) ?? []).length === 0);
-  const pageTables =
-    selectedPage === undefined || selectedPage === UNPLACED
-      ? []
-      : sortedTables.filter((it) => (placement.get(it.id) ?? []).includes(selectedPage));
+  const unplaced = usePageTables(UNPLACED);
+  const pageTables = usePageTables(selectedPage === UNPLACED ? undefined : selectedPage);
 
   // 未配置の疑似ページを選択中に未配置が尽きたら、実ページの表示へ戻す
   // （配置し終えたら未配置トレイは消える。K-12 §7.1）
@@ -332,7 +369,7 @@ function PagesLane({
     if (selectedPage === UNPLACED && unplaced.length === 0) {
       setSelectedPage(scope === "erd" ? (currentDiagramId ?? diagrams[0]?.id) : diagrams[0]?.id);
     }
-  }, [selectedPage, unplaced.length, scope, currentDiagramId, diagrams]);
+  }, [selectedPage, unplaced.length, scope, currentDiagramId, diagrams, setSelectedPage]);
 
   const selectPage = (id: string): void => {
     setSelectedPage(id);
