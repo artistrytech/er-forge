@@ -162,7 +162,7 @@ node migrate.mjs up 001     # ENUM / CHECK / 部分・式インデックスま�
 
 **MySQL**に加え、追加 DB の内省検証として **SQL Server / Oracle**
 （いずれも docker compose の profile で分けています）と **SQLite**（docker 不要・プロセス内）も用意しています。
-PostgreSQL 以外は**初期スキーマがコンテナの起動時に自動で入ります**。詳細は
+PostgreSQL 以外の Docker で動かす DB は**初期スキーマがコンテナの起動時に自動で入ります**。詳細は
 [dev-db/README.md](dev-db/README.md) を参照してください。
 
 ## ビルド
