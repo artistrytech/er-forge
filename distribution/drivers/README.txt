@@ -1,3 +1,56 @@
+English
+=======
+
+Place JDBC driver JAR files in this directory.
+
+When the server starts, `drivers/*.jar` is scanned automatically and used for
+schema reverse engineering from databases. Loaded drivers can be checked in the
+GUI reverse engineering screen.
+
+Driver Download (Easy and Recommended)
+--------------------------------------
+
+Drivers are not bundled in the distribution. Open the GUI reverse engineering
+screen (reverse engineering from database), choose the database you use, and
+download the driver from there.
+
+  - When you choose a database, the setting is saved to `data/config.js`
+    (tracked by Git and shared by the team)
+  - The actual JAR file is downloaded into this directory (`drivers/`) on each
+    user's environment
+  - Once someone on the team has configured it, other members will see a
+    "missing drivers" message when they open the reverse engineering screen, and
+    can get set up by downloading the driver
+
+Default versions are prepared for major databases (PostgreSQL / MySQL /
+SQL Server / Oracle / SQLite / H2). Versions and Maven repositories can be
+changed freely from the screen.
+
+Manual Placement
+----------------
+
+For drivers not listed in the screen, or JAR files from an internal repository,
+place them directly in this `drivers/` directory and restart the server.
+
+  Examples:
+    drivers/postgresql-42.7.4.jar
+    drivers/mysql-connector-j-9.1.0.jar
+
+Notes
+-----
+
+JAR files in this directory are not tracked by Git. The bundled `erd/.gitignore`
+already excludes `drivers/*.jar`. This `README.txt` is tracked by Git.
+Only the setting that describes which driver to use (`config.js`) is shared; the
+actual JAR files are kept by each user.
+
+Drivers are intentionally not bundled. This leaves redistribution decisions to
+users according to each driver's license, such as GPLv2 with the FOSS exception
+for MySQL or the Oracle Free Use Terms and Conditions for Oracle.
+
+日本語
+======
+
 このディレクトリには JDBC ドライバの jar を置きます。
 
 サーバー起動時に drivers/*.jar が自動スキャンされ、DB からのスキーマ逆生成に

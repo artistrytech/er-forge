@@ -1,16 +1,16 @@
 #!/bin/sh
 # ============================================================
 #  ER diagram tool - release build (macOS / Linux)
-#  build-dist.bat の POSIX shell 版。動作は同じ。
+#  POSIX shell version of build-dist.bat. Behavior is the same.
 #
-#  配布 ZIP を作る: server/build/dist/ERForge-<VERSION>.zip
-#    1. viewer/ の npm install（初回のみ）
-#    2. ビューアのビルド（単一 index.html）
-#    3. erd-server.jar（shadowJar）
-#    4. ZIP の組み立て（設計書 §3.1）
+#  Creates the distribution ZIP: server/build/dist/ERForge-<VERSION>.zip
+#    1. npm install in viewer/ (first run only)
+#    2. Build the viewer (single index.html)
+#    3. Build erd-server.jar (shadowJar)
+#    4. Assemble the ZIP (design doc section 3.1)
 #
-#  必要: Node.js (npm) と JDK 17+（JAVA_HOME か PATH）
-#  オプション: --no-pause  最後にキー入力を待たない
+#  Requirements: Node.js (npm) and JDK 17+ (JAVA_HOME or PATH)
+#  Option: --no-pause  Do not wait for key input at the end
 # ============================================================
 set -e
 cd "$(dirname "$0")"
@@ -20,7 +20,7 @@ if [ "$1" = "--no-pause" ]; then
     NOPAUSE=1
 fi
 
-# 対話端末でなければ待たない（CI からそのまま呼べるように）
+# Do not wait when not running in an interactive terminal, so CI can call this as-is.
 if [ ! -t 0 ]; then
     NOPAUSE=1
 fi
@@ -58,8 +58,9 @@ if [ ! -d "viewer/node_modules" ]; then
 fi
 
 # ---- build all (gradle runs: viewer build -> shadowJar -> ZIP) ----
-# ERD_RELEASE=1 はリリースビルドの印。index.html と erd-server.jar に焼き込む版が
-# VERSION の内容そのままになる（他のビルドは -dev が付き、見分けが付く）
+# ERD_RELEASE=1 marks this as a release build. The version embedded into
+# index.html and erd-server.jar becomes the exact VERSION value.
+# Other builds get a -dev suffix so they are easy to distinguish.
 echo "--- build: viewer -> erd-server.jar -> ZIP ---"
 export ERD_RELEASE=1
 (cd server && chmod +x ./gradlew && ./gradlew packageDist --console=plain)
@@ -68,8 +69,8 @@ trap - EXIT
 
 echo
 echo "=== DONE ==="
-# ZIP 名は build.gradle.kts が VERSION（唯一の真実源）から組み立てる。
-# ここは ERD_RELEASE=1 のリリースビルドなので -dev は付かない
+# build.gradle.kts assembles the ZIP name from VERSION, the single source of truth.
+# This is an ERD_RELEASE=1 release build, so no -dev suffix is added.
 VERSION=$(tr -d ' \t\r\n' < VERSION)
 echo "output: $(pwd)/server/build/dist/ERForge-$VERSION.zip"
 echo "Upload this ZIP to GitHub Releases manually."
