@@ -12,7 +12,7 @@ import { Dialog } from "./Dialog";
 import styles from "./AboutDialog.module.scss";
 
 /** 配布元。README と同じく GitHub のリポジトリを正とする */
-export const REPOSITORY_URL = "https://github.com/artistrytech/er-diagram-tools";
+export const REPOSITORY_URL = "https://github.com/artistrytech/er-forge";
 
 export function AboutDialog({ onClose }: { onClose: () => void }) {
   const { t } = useI18n();

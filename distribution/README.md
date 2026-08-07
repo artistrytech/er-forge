@@ -4,6 +4,8 @@
 
 This tool helps maintain database ER diagrams and table catalogs in a Git-friendly format.
 
+See: https://github.com/artistrytech/er-forge
+
 ## Included Files
 
 | File | Description |

@@ -2,6 +2,8 @@
 
 DB スキーマの ER 図・テーブルカタログを、Git で管理しやすい形式で保守するツールです。
 
+https://github.com/artistrytech/er-forge
+
 ## 同梱物
 
 | ファイル | 説明 |
