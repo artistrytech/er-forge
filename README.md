@@ -10,9 +10,9 @@ When the database changes, you can review the diff before updating, while preser
 | Common problem | How ERForge helps |
 |---|---|
 | **Documentation quickly goes stale.** The database changes, but the documents tend to stay as they were. | Import the latest table information from the database. Because you can review changes before applying them, table definitions can be kept up to date without friction. |
-| **ER diagrams and table definitions are managed separately.** It becomes unclear which one is correct. | ER diagrams, table lists, and column details are all shown from the same data. This reduces drift caused by updating only one side. |
-| **Business explanations disappear on the next update.** | Human-written information such as logical names, notes, and tags can be kept while only database-derived information is updated. |
-| **Asking viewers to install dedicated software is inconvenient.** | The deliverable is an HTML file that runs without a server. Recipients can open it in a browser to view ER diagrams and table definitions. |
+| **ER diagrams and table definitions are managed separately,** and are hard to keep in sync. It becomes unclear which one is correct. | ER diagrams, table lists, and column details are all shown from the same data. This reduces drift caused by updating only one side. |
+| **Business explanations disappear at the next update.** | Human-written information such as logical names, notes, and tags can be kept while only database-derived information is updated. |
+| **Asking readers to install dedicated software is inconvenient.** | The deliverable is an HTML file that runs without a server. Recipients can open it in a browser to view ER diagrams and table definitions. |
 | **Changes are hard to review.** Binary documents do not show useful diffs. | Data is stored as text. You can review changes with Git diffs, just like code. |
 
 If you place the deliverable in a repository, ER diagrams and table definitions can grow through the same workflow as your code.
@@ -25,10 +25,10 @@ It can import database changes while preserving human-written logical names and 
 ## ER Diagram Authoring Support
 
 Tables imported from the database are automatically prepared as ER diagram nodes.
-Users can create readable ER diagrams simply by placing the nodes they need on the canvas.
+You can create readable ER diagrams simply by placing the nodes you need on the canvas.
 
 - Nodes for each table are already generated, so you do not need to draw boxes from scratch
-- Relationships with physical foreign keys are drawn automatically
+- Relationships backed by physical foreign keys are drawn automatically
 - Pages can be split by business area to keep diagrams easy to read
 
 ![ER diagram screen](docs/images/erd-canvas.png)
@@ -39,7 +39,7 @@ ERForge can connect to a real database and read tables, columns, constraints, an
 Changes can be reviewed before import, helping you avoid unintended overwrites while updating the documentation.
 
 - Review additions, deletions, and modifications as diffs
-- Carry over table and column renames more easily
+- Keep existing logical names and notes when tables or columns are renamed
 - Exclude tables that do not need documentation from future imports
 
 ![Reverse engineering diff preview](docs/images/introspect-diff.png)
@@ -57,10 +57,10 @@ This prevents inconsistencies such as "it looks this way in the ER diagram, but 
 ## Rich Documentation Features
 
 In addition to physical information retrieved from the database, ERForge can organize business meaning and supplemental explanations.
-You can leave clear information for readers, such as table and column meanings, cautions, and classifications.
+You can record what tables and columns mean, points to watch out for, and how they are classified, in a form readers can follow.
 
 - Add logical names to tables and columns
-- Represent relationships that do not exist as physical foreign keys in the database as supplemental information in the diagram
+- Show relationships that have no physical foreign key in the database as supplemental information in the diagram
 - Organize information with supplemental notes and tags
 - Manage column logical names and tags together in the column dictionary
 - Re-import from the database while preserving logical names, notes, and tags
@@ -73,7 +73,7 @@ Data is stored as text, so changes can be checked with `git diff`.
 Updates to ER diagrams and table definitions can be reviewed in pull requests, just like code.
 
 - Text format with readable diffs
-- Stable files that produce the same output for the same content
+- Deterministic output — the same content always produces the same file
 - Easy to fit into team development workflows
 
 ## Browser-Ready Deliverables
@@ -83,15 +83,15 @@ Recipients can open it in a browser and view ER diagrams and table definitions w
 
 - Viewable without installation
 - Supports Japanese / English display
-- Database information is handled only in the local environment
+- Database information never leaves your machine
 - Export a ZIP containing only what is needed for viewing, from the header tool menu or with
-  `erd.bat export`. You can choose the file name and included workspaces, and hand it to people
-  who do not use Git as-is. Connection information and drivers are not included.
+  `erd.bat export`. You can choose the file name and the workspaces to include, then hand the ZIP
+  as is to people who do not use Git. Connection information and drivers are not included.
 
 ## Supported Databases
 
 ERForge can be used with many databases as long as a JDBC driver is available.
-It can retrieve database-specific information from PostgreSQL / MySQL, and operation is also verified with SQL Server / Oracle / SQLite.
+It can retrieve database-specific information from PostgreSQL / MySQL, and SQL Server / Oracle / SQLite are also verified to work.
 
 # For Developers
 
@@ -101,8 +101,8 @@ It can retrieve database-specific information from PostgreSQL / MySQL, and opera
 |---|---|
 | `server/` | Java 17 / Gradle. Core code for models, deterministic printers, index generation, and migrations, plus the Javalin web layer. |
 | `viewer/` | TypeScript / React / Vite. All assets are inlined into a single `index.html`. |
-| `fixtures/` | Golden fixtures shared by Java and TypeScript. Ensures printer output stays consistent. |
-| `distribution/` | Fixed files bundled in the distribution ZIP, including startup scripts, README, and `.gitignore` / `.gitattributes` for the extracted `erd/` directory. |
+| `fixtures/` | Golden fixtures shared by Java and TypeScript. Ensure that printer output matches across both. |
+| `distribution/` | Static files bundled in the distribution ZIP, including startup scripts, README, and `.gitignore` / `.gitattributes` for the extracted `erd/` directory. |
 | `dev-db/` | Databases for verification, including docker compose setups for PostgreSQL / MySQL / SQL Server / Oracle, plus schema migrations per database product. See [README](dev-db/README.md). |
 
 ## Starting the Development Environment
@@ -136,9 +136,9 @@ When you change the server side, restart `gradlew devServer`.
 `/workspaces.js`, and `/__erd` to the Java server. Since `GET /__erd/health` succeeds, the viewer enters server mode.
 
 > Vite's `public/` is **not used** (`publicDir: false`). If data with the same name is placed under `public/`,
-> the viewer may load that first and end up looking at that data instead of the server's real data, so the route is kept singular.
-> To verify static mode (`file://`), open the built `index.html` next to `workspaces.js` and
-> `workspace-<id>/data/` (`npm run e2e` builds exactly that setup).
+> the viewer may load it first and end up showing that data instead of the server's real data, so we keep a single loading path.
+> To verify static mode (`file://`), place the built `index.html` alongside `workspaces.js` and
+> `workspace-<id>/data/`, then open it (`npm run e2e` builds exactly that setup).
 
 If you change `ERD_PORT`, pass the same value to the viewer so the proxy target matches.
 
@@ -151,7 +151,7 @@ In PowerShell, run `$env:ERD_PORT="5400"` first.
 
 ### Databases for Verification
 
-[dev-db/](dev-db/README.md) provides PostgreSQL with docker compose and a set of migrations that can be applied step by step,
+[dev-db/](dev-db/README.md) provides a PostgreSQL environment (docker compose) and a set of migrations that can be applied step by step,
 so you can test reverse engineering against a real database.
 
 The container starts with an **empty database**. The schema, including initialization (`000_init.sql`), is applied through `migrate.mjs`.
@@ -164,7 +164,7 @@ node migrate.mjs up 001     # Applies ENUM / CHECK / partial and expression inde
 
 In addition to **MySQL**, the project includes **SQL Server / Oracle** for additional introspection verification
 (separated by docker compose profiles) and **SQLite** (no Docker required, in-process).
-For databases other than PostgreSQL, the **initial schema is applied automatically when the container starts**.
+For the Docker-based databases other than PostgreSQL, the **initial schema is applied automatically when the container starts**.
 See [dev-db/README.md](dev-db/README.md) for details.
 
 ## Build
@@ -193,7 +193,7 @@ The release procedure is as follows.
 3. On Windows, run **`build-dist.bat`**. On macOS / Linux, run **`./build-dist.sh`**
    (this automates npm install, viewer build, shadowJar, and ZIP assembly. `--no-pause` can be used for automation)
 4. Manually upload `server/build/dist/ERForge-<VERSION>.zip` (for example, `ERForge-0.3.0.zip`) to GitHub Releases
-   (the file name is assembled from `VERSION`. The absolute path is shown when the build completes)
+   (the file name is derived from `VERSION`. The absolute path is shown when the build completes)
 
 To build manually, run:
 
@@ -206,12 +206,12 @@ cd server && ERD_RELEASE=1 ./gradlew packageDist
 **The root-level `VERSION` file (one line) is the single source of truth for the version**.
 At build time, it is embedded into both `index.html` (Vite define) and `erd-server.jar` (manifest `Implementation-Version`),
 and is displayed in the top-right **information (i)** panel. In server mode, the jar version is also retrieved from
-`GET /__erd/health` and shown alongside it; if they differ, a warning is displayed so replacing only `index.html` is noticeable.
+`GET /__erd/health` and shown alongside it; if they differ, a warning is displayed so you notice when only `index.html` has been replaced.
 
 Only **release builds (`build-dist.*`) set `ERD_RELEASE=1`**, so they use the exact `VERSION`.
 All other local builds get a `-dev` suffix, for example `0.2.0-dev`. When running without creating a jar, such as `gradlew devServer`, the version is `dev`.
 
-This is an **independent axis** from the data format version (`schemaVersion`), and the two are not linked.
+This is versioned **independently** of the data format version (`schemaVersion`), and the two are not linked.
 
 JDBC drivers are not bundled in the distribution. Users can download drivers for major databases from Maven through the reverse engineering screen
 (settings are stored in `erd/config.js` under `drivers`, shared by all workspaces; default versions are managed by `DriverCatalog`).
