@@ -191,7 +191,7 @@ The release procedure is as follows.
 1. Update and commit **`VERSION`** at the repository root (for example, `0.3.0`)
 2. **Create a tag**: `git tag v0.3.0` (**the tag and `VERSION` must match**)
 3. On Windows, run **`build-dist.bat`**. On macOS / Linux, run **`./build-dist.sh`**
-   (this automates npm install, viewer build, shadowJar, and ZIP assembly. `--no-pause` can be used for automation)
+   (this automates npm ci, viewer build, shadowJar, and ZIP assembly. `--no-pause` can be used for automation)
 4. Manually upload `server/build/dist/ERForge-<VERSION>.zip` (for example, `ERForge-0.3.0.zip`) to GitHub Releases
    (the file name is derived from `VERSION`. The absolute path is shown when the build completes)
 

@@ -3,7 +3,7 @@ rem ============================================================
 rem  ER diagram tool - release build (Windows only)
 rem
 rem  Builds the distribution ZIP: server\build\dist\ERForge-<VERSION>.zip
-rem    1. npm install for viewer/ (first run only)
+rem    1. npm ci for viewer/ (first run only)
 rem    2. viewer build (single index.html)
 rem    3. erd-server.jar (shadowJar)
 rem    4. assemble the ZIP (architecture doc section 3.1)
@@ -41,9 +41,9 @@ if errorlevel 1 (
 
 rem ---- viewer dependencies (first run only) ----
 if not exist "viewer\node_modules" (
-    echo --- npm install ^(first run only^) ---
+    echo --- npm ci ^(first run only^) ---
     pushd viewer
-    call npm install
+    call npm ci
     if errorlevel 1 (
         popd
         goto :fail

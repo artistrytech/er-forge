@@ -4,7 +4,7 @@
 #  POSIX shell version of build-dist.bat. Behavior is the same.
 #
 #  Creates the distribution ZIP: server/build/dist/ERForge-<VERSION>.zip
-#    1. npm install in viewer/ (first run only)
+#    1. npm ci in viewer/ (first run only)
 #    2. Build the viewer (single index.html)
 #    3. Build erd-server.jar (shadowJar)
 #    4. Assemble the ZIP (design doc section 3.1)
@@ -52,8 +52,8 @@ fi
 
 # ---- viewer dependencies (first run only) ----
 if [ ! -d "viewer/node_modules" ]; then
-    echo "--- npm install (first run only) ---"
-    (cd viewer && npm install)
+    echo "--- npm ci (first run only) ---"
+    (cd viewer && npm ci)
     echo
 fi
 
