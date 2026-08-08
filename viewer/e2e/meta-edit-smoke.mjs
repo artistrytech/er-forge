@@ -110,22 +110,31 @@ async function main() {
 
     // 論理外部制約はダイアログで作る（カラムの対応は1行 = 1組の縦並び）
     await page.getByTestId("add-logical-fk").click();
-    await page.waitForSelector('[data-testid="fk-ref-table"]', { timeout: 5000 });
+    await page.waitForSelector('[data-testid="fk-ref-filter"]', { timeout: 5000 });
     // 参照先・対応が揃うまでは確定させない（保存時に初めて怒られない）
     check("the constraint dialog blocks submit until it is complete",
         await page.getByTestId("constraint-submit").isDisabled());
-    // 参照先は名称（論理名・物理名）で絞り込める。候補は畳まない一覧で見える
-    const refOptions = () => page.locator('[data-testid="fk-ref-table"] option').count();
-    const allTables = await refOptions();
+    // 候補は入力欄にフォーカスしている間だけ浮かせて出す（ダイアログを塞がない）
+    check("the candidate list stays closed until the filter is focused",
+        (await page.getByTestId("fk-ref-list").count()) === 0);
+    // 参照先は名称（論理名・物理名）で絞り込める
+    await page.getByTestId("fk-ref-filter").click();
+    await page.waitForSelector('[data-testid="fk-ref-list"]', { timeout: 5000 });
+    const allTables = await page.getByTestId("fk-ref-option").count();
     await page.getByTestId("fk-ref-filter").pressSequentially("プロファ");
     await page.waitForFunction(
-      () => document.querySelectorAll('[data-testid="fk-ref-table"] option').length === 1,
+      () => document.querySelectorAll('[data-testid="fk-ref-option"]').length === 1,
       null,
       { timeout: 5000 },
     );
     check("the referenced table can be filtered by name", allTables > 1);
-    // 絞り込んだ候補からそのまま選べる
-    await page.getByTestId("fk-ref-table").selectOption("public.user_profiles");
+    // 絞り込んだ候補は、一覧をクリックした時点で確定する
+    await page.locator('[data-testid="fk-ref-option"][data-table-id="public.user_profiles"]').click();
+    // 確定したら入力不可の表示に変わり、候補一覧は出さない（うっかり変わらないように）
+    await page.waitForSelector('[data-testid="fk-ref-table"]', { timeout: 5000 });
+    check("confirming the referenced table hides the candidate list",
+        (await page.getByTestId("fk-ref-list").count()) === 0
+        && (await page.getByTestId("fk-ref-table").getAttribute("readonly")) !== null);
     await page.getByTestId("fk-column-0").selectOption("user_id");
     // 参照先テーブルのスキーマは選択後に読み込まれる（読み込み完了まで選択肢は出ない）
     await page.waitForFunction(
@@ -151,6 +160,12 @@ async function main() {
     check("adding a pair grows the mapping vertically",
         (await page.getByTestId("fk-column-1").count()) === 1
         && (await page.getByTestId("constraint-submit").isDisabled()));
+    // [×] で確定を解除すると、絞り込みと候補一覧に戻る（選び直せる）
+    await page.getByTestId("fk-ref-clear").click();
+    await page.waitForSelector('[data-testid="fk-ref-list"]', { timeout: 5000 });
+    check("clearing the referenced table brings the picker back",
+        (await page.getByTestId("fk-ref-table").count()) === 0
+        && (await page.getByTestId("fk-ref-column-0").isDisabled()));
     // 増やした対応は使わないので、確定せずに閉じる（1組のままにする）
     await page.keyboard.press("Escape");
     check("closing the dialog keeps the previous mapping",

@@ -149,20 +149,79 @@
   font-size: 12.5px;
 }
 
-.select-wide {
-  flex: none;
-  width: 100%;
-  box-sizing: border-box;
-}
+/* ---- 参照先テーブルの選択（絞り込み → 一覧から確定 → 確定後は入力不可） ---- */
 
-/* 参照先テーブルの候補一覧（畳まない select）。絞り込みの結果がそのまま見える */
+/* 絞り込んだ候補の一覧。入力欄にフォーカスしている間だけ、その下に浮かせて出す。
+   ダイアログ本文は縦スクロールするため、body 直下へポータルして固定配置する
+   （中に置くと切り取られる）。z-index はダイアログ（50）より上 */
 .ref-list {
+  position: fixed;
+  z-index: 60;
+  list-style: none;
+  margin: 0;
   padding: 4px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 6px 16px rgb(0 0 0 / 12%);
 }
 
-.ref-list option {
-  padding: 4px 6px;
+.ref-empty {
+  padding: 5px 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.ref-option {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid transparent;
   border-radius: 5px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ref-option:hover,
+.ref-option:focus-visible {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.ref-option-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* 表示名と物理 ID が違うとき、どのテーブルなのかを ID でも示す */
+.ref-option-id {
+  margin-left: auto;
+  flex: none;
+  color: var(--text-muted);
+  font-size: 11.5px;
+}
+
+/* 確定後：入力不可の表示 ＋ 解除の [×]（候補一覧は出さない） */
+.ref-selected {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ref-selected-input {
+  font-weight: 600;
+  cursor: default;
+}
+
+.ref-selected-input:focus {
+  outline: none;
 }
 
 /* ---- 縦に伸びる行（一意制約のカラム / 外部制約のカラム対応） ---- */

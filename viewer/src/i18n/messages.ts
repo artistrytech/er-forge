@@ -401,6 +401,7 @@ const ja = {
   "tableEdit.fkDialogHint": "このテーブルのカラムが、参照先テーブルのカラムを指すという宣言です。",
   "tableEdit.refTableFilter": "テーブル名で絞り込み…",
   "tableEdit.refTableNoMatch": "一致するテーブルがありません",
+  "tableEdit.refTableClear": "参照先を選び直す",
   "tableEdit.columnMapping": "カラムの対応",
   "tableEdit.mappingHint": "1行が1組の対応です。複合キーは行を増やしてください（上から順）。",
   "tableEdit.addPair": "＋ 対応を追加",
@@ -976,6 +977,7 @@ const en: Record<MsgKey, string> = {
     "Declares that columns of this table point at columns of the referenced table.",
   "tableEdit.refTableFilter": "Filter by table name…",
   "tableEdit.refTableNoMatch": "No table matches",
+  "tableEdit.refTableClear": "Pick another referenced table",
   "tableEdit.columnMapping": "Column mapping",
   "tableEdit.mappingHint":
     "One row is one pair. Add rows for composite keys (matched top to bottom).",

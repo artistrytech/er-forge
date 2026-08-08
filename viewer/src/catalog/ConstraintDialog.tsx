@@ -9,7 +9,8 @@
  * 対応が行として揃うため、両側の本数がずれること（COUNT_MISMATCH）も構造的に起こらない。
  * ダイアログは確定できる状態になるまで [確定] を押させない（保存時に初めて怒られない）。
  */
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useI18n } from "../i18n/useI18n";
 import { loadTable } from "../model/loader";
 import {
@@ -227,6 +228,207 @@ interface PairRow {
   refColumn: string;
 }
 
+/**
+ * 参照先テーブルの選択。**選ぶ前**と**選んだ後**で見た目を変える。
+ *
+ * - 選ぶ前: 絞り込みの入力だけを置き、**入力欄にフォーカスしている間だけ**候補を
+ *   フローティングで出す。クリック（または候補が1件なら Enter）で確定する
+ *   （テーブルが増えても、畳んだ選択肢の中を探し回らずに済む）
+ * - 選んだ後: 確定したテーブルを入力不可で見せるだけ。候補は出さない
+ *   （確定済みの値が、うっかり別のテーブルに変わらないように）。解除は [×] から
+ *
+ * 候補は TagInput と同じく **body 直下へのポータル + 実測アンカー**で出す。
+ * ダイアログ本文は `overflow-y: auto` なので、中に絶対配置すると切り取られてしまう。
+ */
+function RefTablePicker({
+  selfId,
+  value,
+  onSelect,
+  onClear,
+}: {
+  /** 編集中のテーブル（自己参照の注記に使う） */
+  selfId: string;
+  /** 確定済みの参照先テーブル ID（"" = 未確定） */
+  value: string;
+  onSelect: (id: string) => void;
+  onClear: () => void;
+}) {
+  const { t } = useI18n();
+  const index = useAppStore((s) => s.index);
+  const nameDisplay = useAppStore((s) => s.nameDisplay);
+  const [filter, setFilter] = useState("");
+  const [focused, setFocused] = useState(false);
+  const [anchor, setAnchor] = useState<DOMRect | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  // [×] で解除した直後は、そのまま選び直せるように入力欄へ戻す
+  const refocus = useRef(false);
+
+  const tables = index?.tables ?? [];
+  const label = (it: IndexTable): string =>
+    formatName(resolveIndexTableName(it), it.name, nameDisplay);
+
+  // 名称（論理名・物理名・ID）での絞り込み
+  const q = filter.trim().toLowerCase();
+  const candidates = tables.filter(
+    (it) =>
+      q === "" ||
+      it.id.toLowerCase().includes(q) ||
+      it.name.toLowerCase().includes(q) ||
+      resolveIndexTableName(it).name.toLowerCase().includes(q),
+  );
+  const open = value === "" && focused;
+
+  useEffect(() => {
+    if (value === "" && refocus.current) {
+      refocus.current = false;
+      inputRef.current?.focus();
+    }
+  }, [value]);
+
+  // 候補は固定配置なので、入力欄の位置を測って渡す（スクロール・リサイズにも追随させる）
+  useLayoutEffect(() => {
+    if (!open) {
+      setAnchor(null);
+      return;
+    }
+    const measure = (): void => {
+      const rect = inputRef.current?.getBoundingClientRect();
+      if (rect !== undefined) setAnchor(rect);
+    };
+    measure();
+    window.addEventListener("scroll", measure, true);
+    window.addEventListener("resize", measure);
+    return () => {
+      window.removeEventListener("scroll", measure, true);
+      window.removeEventListener("resize", measure);
+    };
+  }, [open, candidates.length]);
+
+  /** 下に入りきらないときは上に出す（画面外に垂れ流さない） */
+  const listStyle = (): React.CSSProperties => {
+    if (anchor === null) return { visibility: "hidden" };
+    const below = window.innerHeight - anchor.bottom;
+    const openUp = below < 240 && anchor.top > below;
+    return {
+      left: anchor.left,
+      width: anchor.width,
+      ...(openUp
+        ? { bottom: window.innerHeight - anchor.top + 2, maxHeight: Math.max(120, anchor.top - 12) }
+        : { top: anchor.bottom + 2, maxHeight: Math.max(120, below - 12) }),
+    };
+  };
+
+  if (value !== "") {
+    const selected = tables.find((it) => it.id === value);
+    const text = selected === undefined ? value : label(selected);
+    return (
+      <div className={styles.field}>
+        <span className={styles.fieldLabel}>{t("tableEdit.refTable")}</span>
+        <div className={styles.refSelected}>
+          <input
+            type="text"
+            className={cx(styles.input, styles.refSelectedInput)}
+            data-testid="fk-ref-table"
+            data-table-id={value}
+            readOnly
+            value={text}
+          />
+          <button
+            type="button"
+            className={styles.removeRow}
+            data-testid="fk-ref-clear"
+            aria-label={t("tableEdit.refTableClear")}
+            title={t("tableEdit.refTableClear")}
+            onClick={() => {
+              setFilter("");
+              refocus.current = true;
+              onClear();
+            }}
+          >
+            ×
+          </button>
+        </div>
+        <span className={styles.fieldHint}>
+          {value === selfId ? `${value}（${t("tableEdit.selfRef")}）` : value}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className={styles.field}>
+      <span className={styles.fieldLabel}>
+        {t("tableEdit.refTable")}
+        {open && (
+          <span className={styles.fieldCount}>{t("catalog.count", { n: candidates.length })}</span>
+        )}
+      </span>
+      <input
+        ref={inputRef}
+        type="search"
+        className={styles.input}
+        data-testid="fk-ref-filter"
+        role="combobox"
+        aria-expanded={open}
+        aria-controls="fk-ref-list"
+        placeholder={t("tableEdit.refTableFilter")}
+        value={filter}
+        // 1件まで絞れているなら Enter でそのまま確定できる（一覧まで手を伸ばさせない）
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && candidates.length === 1) {
+            e.preventDefault();
+            onSelect(candidates[0]!.id);
+          }
+        }}
+        onChange={(e) => setFilter(e.target.value)}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+      />
+      {open &&
+        createPortal(
+          <ul
+            className={styles.refList}
+            id="fk-ref-list"
+            role="listbox"
+            data-testid="fk-ref-list"
+            style={listStyle()}
+          >
+            {candidates.length === 0 ? (
+              <li className={styles.refEmpty}>{t("tableEdit.refTableNoMatch")}</li>
+            ) : (
+              candidates.map((it) => (
+                <li key={it.id}>
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={false}
+                    className={styles.refOption}
+                    data-testid="fk-ref-option"
+                    data-table-id={it.id}
+                    // blur より先に拾う（onClick だと入力欄の blur で候補が消えてしまう）
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      onSelect(it.id);
+                    }}
+                  >
+                    <span className={styles.refOptionName}>
+                      {label(it)}
+                      {it.id === selfId ? ` (${t("tableEdit.selfRef")})` : ""}
+                    </span>
+                    {label(it) !== it.id && (
+                      <span className={cx("mono", styles.refOptionId)}>{it.id}</span>
+                    )}
+                  </button>
+                </li>
+              ))
+            )}
+          </ul>,
+          document.body,
+        )}
+    </div>
+  );
+}
+
 // ------------------------------------------------------------------ 論理一意制約
 
 export function LogicalUniqueDialog({
@@ -358,12 +560,9 @@ export function LogicalFkDialog({
   onClose: () => void;
 }) {
   const { t } = useI18n();
-  const index = useAppStore((s) => s.index);
-  const nameDisplay = useAppStore((s) => s.nameDisplay);
   const [name, setName] = useState(initial?.name ?? "");
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const [refTable, setRefTable] = useState(initial?.refTable ?? "");
-  const [filter, setFilter] = useState("");
   // 既存データは両側の本数がずれている可能性がある（手書きのファイル）。長い方に合わせて
   // 組にし、欠けた側は未選択として見せる（ダイアログ上で必ず埋めさせる）
   const [pairs, setPairs] = useState<PairRow[]>(() => {
@@ -379,18 +578,6 @@ export function LogicalFkDialog({
   });
 
   const columnNames = table.columns.map((c) => c.name);
-  const tableLabel = (it: IndexTable): string =>
-    formatName(resolveIndexTableName(it), it.name, nameDisplay);
-  // 名称（論理名・物理名・ID）での絞り込み。選択中のものは常に残す
-  const refCandidates = (index?.tables ?? []).filter((it) => {
-    const q = filter.trim().toLowerCase();
-    if (q === "" || it.id === refTable) return true;
-    return (
-      it.id.toLowerCase().includes(q) ||
-      it.name.toLowerCase().includes(q) ||
-      resolveIndexTableName(it).name.toLowerCase().includes(q)
-    );
-  });
   // 参照先テーブルのスキーマはオンデマンドで読む（参照先カラムの選択肢に要る）
   const target = useAppStore((s) => (refTable !== "" ? s.tables[refTable] : undefined));
   useEffect(() => {
@@ -431,44 +618,19 @@ export function LogicalFkDialog({
         testId="constraint-name"
       />
 
-      <div className={styles.field}>
-        <span className={styles.fieldLabel}>
-          {t("tableEdit.refTable")}
-          <span className={styles.fieldCount}>{t("catalog.count", { n: refCandidates.length })}</span>
-        </span>
-        {/* テーブルが増えると選択肢が長くなるため、名称（論理名・物理名）で絞れるようにする。
-            候補は畳まない一覧で出す（畳んだままだと、絞り込んだ結果が開くまで見えない）。
-            選択済みのテーブルは絞り込みから外れても候補に残す（選択が消えないように） */}
-        <input
-          type="search"
-          className={styles.input}
-          data-testid="fk-ref-filter"
-          placeholder={t("tableEdit.refTableFilter")}
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-        />
-        <select
-          className={cx(styles.select, styles.selectWide, styles.refList)}
-          data-testid="fk-ref-table"
-          size={6}
-          value={refTable}
-          // 参照先が変わると参照先カラムは意味を失う（自カラム側の対応は残す）
-          onChange={(e) => {
-            setRefTable(e.target.value);
-            setPairs((ps) => ps.map((p) => ({ ...p, refColumn: "" })));
-          }}
-        >
-          {refCandidates.map((it) => (
-            <option key={it.id} value={it.id}>
-              {tableLabel(it)}
-              {it.id === table.id ? ` (${t("tableEdit.selfRef")})` : ""}
-            </option>
-          ))}
-        </select>
-        {refCandidates.length === 0 && (
-          <span className={styles.fieldHint}>{t("tableEdit.refTableNoMatch")}</span>
-        )}
-      </div>
+      {/* 参照先が変わると参照先カラムは意味を失う（自カラム側の対応は残す） */}
+      <RefTablePicker
+        selfId={table.id}
+        value={refTable}
+        onSelect={(id) => {
+          setRefTable(id);
+          setPairs((ps) => ps.map((p) => ({ ...p, refColumn: "" })));
+        }}
+        onClear={() => {
+          setRefTable("");
+          setPairs((ps) => ps.map((p) => ({ ...p, refColumn: "" })));
+        }}
+      />
 
       {/* カラムの対応は1行 = 1組。複合キーでも縦に伸びるだけで、対応が読み取れる */}
       <div className={styles.field}>
