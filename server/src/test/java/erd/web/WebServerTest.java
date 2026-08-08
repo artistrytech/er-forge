@@ -86,7 +86,7 @@ class WebServerTest {
             assertTrue(registry.contains("ERD.workspaces({"));
             assertTrue(registry.contains("{ id: \"sales\", name: \"販売管理\" },"));
 
-            HttpResponse<String> served = send("GET", origin + "/workspaces.js", null);
+            HttpResponse<String> served = send("GET", t(origin, "/workspaces.js"), null);
             assertEquals(200, served.statusCode());
             assertTrue(served.body().contains("sales"));
 
@@ -94,13 +94,20 @@ class WebServerTest {
             Path data = root.resolve("workspace-sales/data");
             Files.createDirectories(data);
             Files.writeString(data.resolve("manifest.js"), "ERD.manifest({ schemaVersion: 1 });\n");
-            HttpResponse<String> manifest = send("GET", origin + "/workspace-sales/data/manifest.js", null);
+            HttpResponse<String> manifest = send("GET", t(origin, "/workspace-sales/data/manifest.js"), null);
             assertEquals(200, manifest.statusCode());
             assertTrue(manifest.body().contains("schemaVersion"));
             assertEquals("text/javascript; charset=utf-8", manifest.headers().firstValue("Content-Type").orElse(""));
 
+            // トークン無しでは配らない（§8.5）。データファイルは ERD.table({...}) を呼ぶ
+            // スクリプトなので、無認証だと任意の Web ページが <script src> で読み出せてしまう
+            assertEquals(403, send("GET", origin + "/workspaces.js", null).statusCode());
+            assertEquals(403, send("GET", origin + "/workspace-sales/data/manifest.js", null).statusCode());
+            assertEquals(403, send("GET", t(origin, "/workspace-sales/data/manifest.js")
+                    .replace(TOKEN, "wrong"), null).statusCode());
+
             // 存在しないワークスペースは 404（ディレクトリを作らない）
-            assertEquals(404, send("GET", origin + "/workspace-nope/data/manifest.js", null).statusCode());
+            assertEquals(404, send("GET", t(origin, "/workspace-nope/data/manifest.js"), null).statusCode());
             assertEquals(404, send("GET", t(origin, "/__erd/w/nope/project"), null).statusCode());
         });
     }

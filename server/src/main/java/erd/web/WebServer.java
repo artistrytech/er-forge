@@ -901,7 +901,13 @@ public final class WebServer {
         }
     }
 
-    /** 書き込み API の共通ガード（§8.5 の最小形）: トークン一致 + Origin 検証。 */
+    /**
+     * 共通ガード（§8.5 の最小形）: トークン一致 + Origin 検証。
+     *
+     * <p>書き込み API だけでなく**データ配信にも掛ける**。トークンを見ないのは
+     * {@code /}・{@code /index.html}（データを含まない）と {@code /__erd/health}
+     * （モード判定。トークン以前に到達性を確かめるためのもの）だけである。
+     */
     private boolean authorized(Context ctx) {
         String presented = ctx.queryParam("t");
         if (presented == null) presented = ctx.header("X-Erd-Token");
@@ -928,8 +934,14 @@ public final class WebServer {
     /**
      * ワークスペースの索引（§2）。file:// と同じ相対パスで読めるよう、ここでも配信する。
      * 走査結果とずれていれば書き直してから返す（外から workspace-* を足された場合に追随する）。
+     *
+     * <p>データ配信と同じくトークンを要求する（{@link #serveData} の注記を参照）。
      */
     private void serveRegistry(Context ctx) throws Exception {
+        if (!authorized(ctx)) {
+            ctx.status(403).contentType("text/plain; charset=utf-8").result("forbidden");
+            return;
+        }
         workspaces.list(root);
         Path file = root.resolve(WorkspaceStore.REGISTRY);
         ctx.header("Cache-Control", "no-cache");
@@ -941,7 +953,22 @@ public final class WebServer {
         }
     }
 
+    /**
+     * データファイル（{@code workspace-<id>/data/**}）の配信。**トークンを要求する**（§8.5）。
+     *
+     * <p>データファイルは {@code ERD.table({...})} を呼ぶスクリプトである。無認証で配ると、
+     * 利用者が開いた任意の Web ページが {@code <script src="http://127.0.0.1:5321/...">} で
+     * 読み出せてしまう（{@code <script>} の読み込みは CORS で止まらないため、同一オリジン
+     * ポリシーは防壁にならない）。ビューアは読み込み URL に {@code ?t=<token>} を付ける。
+     *
+     * <p>{@code Origin} 検証も {@code authorized} 経由で掛かるが、{@code <script>} 読み込みでは
+     * ブラウザが {@code Origin} を送らないため、実質的に効いているのはトークンである。
+     */
     private void serveData(Context ctx) throws Exception {
+        if (!authorized(ctx)) {
+            ctx.status(403).contentType("text/plain; charset=utf-8").result("forbidden");
+            return;
+        }
         String wsId = ctx.pathParam("ws");
         if (!WorkspaceStore.exists(root, wsId)) {
             ctx.status(404).contentType("text/plain; charset=utf-8").result("not found");

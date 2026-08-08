@@ -36,6 +36,7 @@ import {
 import { NotesCell, NotesDialog } from "./NotesDialog";
 import { ColorSelect } from "../ui/ColorSelect";
 import { Dialog } from "../ui/Dialog";
+import { Forbidden } from "../ui/Forbidden";
 import { Link } from "../ui/Link";
 import { NotFound } from "../ui/NotFound";
 import { ScrollTable } from "../ui/ScrollTable";
@@ -62,7 +63,12 @@ export function TableEdit({ tableId }: { tableId: string }) {
   const sessionReady = useAppStore((s) => s.serverMode === true);
 
   const [committed, setCommitted] = useState<{ table: Table; baseHash: string } | null>(null);
-  const [loadFailed, setLoadFailed] = useState(false);
+  /**
+   * 読み込みに失敗した理由。**403 は「見つからない」と分けて扱う**（§8.5）。
+   * トークン不一致は閲覧が全部できるのに編集だけ拒まれるため、
+   * 「見つかりません」に混ぜると原因に辿り着けない
+   */
+  const [loadError, setLoadError] = useState<"notFound" | "forbidden" | null>(null);
   const [draft, setDraft] = useState<MetaDraft | null>(null);
   const [initialJson, setInitialJson] = useState("");
   const [clientErrors, setClientErrors] = useState<FieldError[]>([]);
@@ -78,19 +84,19 @@ export function TableEdit({ tableId }: { tableId: string }) {
   const reload = useCallback(async () => {
     setCommitted(null);
     setDraft(null);
-    setLoadFailed(false);
+    setLoadError(null);
     setEditing(null);
     setNotesColumn(null);
     invalidateTable(tableId);
     const table = await loadTable(tableId);
     if (!table) {
-      setLoadFailed(true);
+      setLoadError("notFound");
       return;
     }
     try {
       const res = await apiGet(wpath(`/tables/${encodeURIComponent(tableId)}`));
       if (res.status !== 200) {
-        setLoadFailed(true);
+        setLoadError(res.status === 403 ? "forbidden" : "notFound");
         return;
       }
       const body = JSON.parse(res.body) as { baseHash: string };
@@ -101,7 +107,7 @@ export function TableEdit({ tableId }: { tableId: string }) {
       setClientErrors([]);
       setServerIssues([]);
     } catch {
-      setLoadFailed(true);
+      setLoadError("notFound");
     }
   }, [tableId]);
 
@@ -202,6 +208,9 @@ export function TableEdit({ tableId }: { tableId: string }) {
           const body = JSON.parse(res.body) as { errors: ServerIssue[]; warnings: ServerIssue[] };
           setServerIssues(body.errors);
           addToast(t("tableEdit.validationFailed"));
+        } else if (res.status === 403) {
+          // トークン不一致（§8.5）。HTTP コードだけ出しても次の手が分からない
+          addToast(t("save.forbidden"));
         } else {
           addToast(`${t("save.failed")} (HTTP ${res.status})`);
         }
@@ -227,7 +236,16 @@ export function TableEdit({ tableId }: { tableId: string }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [save]);
 
-  if (loadFailed) {
+  if (loadError === "forbidden") {
+    return (
+      <Forbidden
+        scope="edit"
+        backHref={hrefs.table(tableId)}
+        backLabel={t("forbidden.toDetail")}
+      />
+    );
+  }
+  if (loadError !== null) {
     return <NotFound path={`tables/${tableId}/edit`} />;
   }
   if (!committed || !draft) {

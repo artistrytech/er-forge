@@ -16,6 +16,7 @@ import { BootstrapScreen } from "./ui/BootstrapScreen";
 import { EditDialogs, ExternalUpdateBanner, Toasts } from "./ui/EditDialogs";
 import { ErdEmpty } from "./ui/ErdEmpty";
 import { ExportDialog } from "./ui/ExportDialog";
+import { Forbidden } from "./ui/Forbidden";
 import { Header } from "./ui/Header";
 import { Link } from "./ui/Link";
 import { NotFound } from "./ui/NotFound";
@@ -345,6 +346,10 @@ function FatalBanner({ fatal }: { fatal: Fatal }) {
   }
   if (fatal.kind === "workspace-not-found") {
     return <WorkspaceNotFound id={fatal.id} />;
+  }
+  // トークン不一致（§8.5）。データ配信ごと拒まれているので、閲覧も含めて何も出せない
+  if (fatal.kind === "forbidden") {
+    return <Forbidden />;
   }
   if (fatal.kind === "no-data" || fatal.kind === "empty") {
     // サーバーモードならブートストラップ（A-08）。判定中はどちらの画面も出さない

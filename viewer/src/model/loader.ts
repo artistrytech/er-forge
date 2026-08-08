@@ -8,6 +8,7 @@
  * → 段階3: 表示対象ページ（オンデマンド）→ 段階4: 選択テーブルのスキーマ（オンデマンド）
  * → 段階5: 残り全テーブル（アイドル時）
  */
+import { apiToken } from "./api";
 import { useAppStore } from "./store";
 import {
   SUPPORTED_SCHEMA_VERSION,
@@ -80,10 +81,47 @@ export function installGlobalApi(): void {
   };
 }
 
+/**
+ * データファイルの URL にトークンを足す（§8.5）。
+ *
+ * データファイルは `ERD.tables({...})` を呼ぶスクリプトなので、配信にトークンを要求しないと
+ * **利用者が開いた任意の Web ページが `<script src>` で読み出せてしまう**（`<script>` は CORS で
+ * 止まらない）。ヘッダを付けられない読み込み方（§4.3）なので、クエリで渡す。
+ *
+ * `file://`（静的モード）にはトークンの概念が無いため何も足さない。読み込み経路は1本のまま。
+ */
+function withToken(src: string): string {
+  const token = apiToken();
+  if (token === "" || (location.protocol !== "http:" && location.protocol !== "https:")) return src;
+  return `${src}${src.includes("?") ? "&" : "?"}t=${encodeURIComponent(token)}`;
+}
+
+/**
+ * 読み込みに失敗した理由がトークン不一致（403）かどうか。
+ * `<script>` の onerror はステータスを教えてくれないため、同じ URL を XHR で引き直して確かめる。
+ * 失敗したときにしか呼ばないので、正常時のコストはゼロ。
+ */
+function isForbidden(src: string): Promise<boolean> {
+  if (location.protocol !== "http:" && location.protocol !== "https:") return Promise.resolve(false);
+  return new Promise((resolve) => {
+    try {
+      const xhr = new XMLHttpRequest();
+      xhr.open("GET", withToken(src), true);
+      xhr.timeout = 3000;
+      xhr.onload = () => resolve(xhr.status === 403);
+      xhr.onerror = () => resolve(false);
+      xhr.ontimeout = () => resolve(false);
+      xhr.send();
+    } catch {
+      resolve(false);
+    }
+  });
+}
+
 function injectScript(src: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const el = document.createElement("script");
-    el.src = src;
+    el.src = withToken(src);
     el.async = true;
     el.onload = () => {
       el.remove();
@@ -189,7 +227,9 @@ export async function boot(): Promise<void> {
   const workspaces = await loadWorkspaces();
   set({ workspaces });
   if (workspaces.length === 0) {
-    set({ fatal: { kind: "no-workspace" } });
+    // トークンが違うと配信そのものが 403 になる（§8.5）。「まだ何も無い（welcome）」と
+    // 区別しないと、初回起動と取り違えて延々ワークスペースを作らせることになる
+    set({ fatal: (await isForbidden(REGISTRY_FILE)) ? { kind: "forbidden" } : { kind: "no-workspace" } });
     return;
   }
   const current = resolveWorkspace(workspaces);
@@ -205,7 +245,11 @@ export async function boot(): Promise<void> {
   try {
     await injectScript(dataBase() + "manifest.js");
   } catch {
-    set({ fatal: { kind: "no-data" } });
+    set({
+      fatal: (await isForbidden(dataBase() + "manifest.js"))
+        ? { kind: "forbidden" }
+        : { kind: "no-data" },
+    });
     return;
   }
   const rawManifest = staged.manifest;

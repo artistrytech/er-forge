@@ -18,6 +18,8 @@ export type Fatal =
   | { kind: "empty" }
   /** ワークスペースが1つも無い（初回起動。サーバーモードなら welcome 画面へ） */
   | { kind: "no-workspace" }
+  /** データ配信がトークン不一致で拒まれた（§8.5）。「データが無い」と区別する */
+  | { kind: "forbidden" }
   /** URL が存在しないワークスペースを指している（一覧への導線を出す） */
   | { kind: "workspace-not-found"; id: string };
 

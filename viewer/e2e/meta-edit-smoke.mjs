@@ -88,6 +88,15 @@ async function main() {
     await page.waitForSelector(".react-flow__node", { timeout: 15000 });
     const logicalBefore = await page.locator('[data-testid="erd-edge"][data-kind="logical"]').count();
 
+    // ---- 403（§8.5）: トークンが違うとデータ配信ごと拒まれる ----
+    // データファイルは <script> で読むため、無認証で配ると任意の Web ページから読み出せる。
+    // 拒む以上は「データが無い」ではなく、次の手順（起動 URL を開き直す等）を出す
+    await page.goto(`${origin}/?t=bogus#/w/default/tables/public.user_sessions/edit`);
+    await page.waitForSelector('[data-testid="forbidden"]', { timeout: 15000 });
+    check("a token mismatch shows the actionable 403 notice instead of the welcome screen", true);
+    const bogusData = await fetch(`${origin}/workspace-default/data/index.js`);
+    check("data files are not served without the token", bogusData.status === 403);
+
     // ---- テーブル編集画面（O-03）: 論理名 + 論理外部制約を保存 ----
     await page.goto(`${url}#/w/default/tables/public.user_sessions/edit`);
     await page.waitForFunction(

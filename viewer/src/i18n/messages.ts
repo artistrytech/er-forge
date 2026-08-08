@@ -124,7 +124,23 @@ const ja = {
   "save.unsaved": "未保存の変更が {n} 件",
   "save.button": "保存",
   "save.failed": "保存に失敗しました",
+  "save.forbidden":
+    "保存できません: サーバーがトークンを拒否しました（403）。サーバーが表示した URL（?t=… 付き）で開き直してください。",
   "save.retry": "再試行",
+  // 403（トークン不一致）の案内。次に何をすればよいかまで書く（§8.5）
+  "forbidden.dataTitle": "データを表示できません（サーバーに拒否されました）",
+  "forbidden.dataLead":
+    "サーバーがデータの配信を拒否しました（HTTP 403）。この画面の URL に付いているトークン（?t=…）が、サーバーが発行したものと一致していません。",
+  "forbidden.editTitle": "編集できません（サーバーに拒否されました）",
+  "forbidden.editLead":
+    "サーバーが編集用の API を拒否しました（HTTP 403）。この画面の URL に付いているトークン（?t=…）が、サーバーが発行したものと一致していません。",
+  "forbidden.step1":
+    "サーバーの起動時にコンソールへ表示された URL（http://127.0.0.1:<ポート>/?t=<トークン>）を、そのまま開き直してください。URL を手で打ち込んで ?t=… を落とした場合も同じエラーになります。",
+  "forbidden.step2":
+    "トークンが分からない場合は、サーバーを再起動してください。トークンは起動ごとに新しく発行され、URL がコンソールに表示されます（ブラウザも自動で開きます）。",
+  "forbidden.step3":
+    "開発サーバー（vite）から使っている場合は、サーバーを ERD_TOKEN=erd-dev で起動してください（gradlew devServer はこれを設定します）。ビューアは ?t=erd-dev で API を呼びます。",
+  "forbidden.toDetail": "テーブル詳細へ",
   "edit.undo": "元に戻す",
   "edit.redo": "やり直す",
   "edit.exportButton": "配置をエクスポート",
@@ -1201,7 +1217,23 @@ const en: Record<MsgKey, string> = {
   "save.unsaved": "{n} unsaved changes",
   "save.button": "Save",
   "save.failed": "Failed to save",
+  "save.forbidden":
+    "Cannot save: the server rejected the token (403). Reopen the app with the URL the server printed (the one with ?t=…).",
   "save.retry": "Retry",
+  // 403（トークン不一致）の案内。次に何をすればよいかまで書く（§8.5）
+  "forbidden.dataTitle": "The data cannot be shown (the server rejected the request)",
+  "forbidden.dataLead":
+    "The server refused to serve the data files (HTTP 403). The token in this page's URL (?t=…) does not match the one the server issued.",
+  "forbidden.editTitle": "Editing is not allowed (the server rejected the request)",
+  "forbidden.editLead":
+    "The server rejected the editing API (HTTP 403). The token in this page's URL (?t=…) does not match the one the server issued.",
+  "forbidden.step1":
+    "Reopen the URL the server printed on startup (http://127.0.0.1:<port>/?t=<token>). Typing the URL by hand and dropping the ?t=… part causes the same error.",
+  "forbidden.step2":
+    "If you do not know the token, restart the server. A new token is issued on every start and the URL is printed to the console (the browser is opened automatically too).",
+  "forbidden.step3":
+    "When using the vite dev server, start the backend with ERD_TOKEN=erd-dev (gradlew devServer sets it). The viewer calls the API with ?t=erd-dev.",
+  "forbidden.toDetail": "Go to table detail",
   "edit.undo": "Undo",
   "edit.redo": "Redo",
   "edit.exportButton": "Export layout",

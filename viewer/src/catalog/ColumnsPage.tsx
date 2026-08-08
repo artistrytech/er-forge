@@ -240,6 +240,9 @@ export function ColumnsPage({
             ? `${t("save.failed")} (HTTP 422)`
             : `${t("save.failed")}: ${first.path} — ${first.message}`,
         );
+      } else if (res.status === 403) {
+        // トークン不一致（§8.5）。HTTP コードだけ出しても次の手が分からない
+        addToast(t("save.forbidden"));
       } else {
         addToast(`${t("save.failed")} (HTTP ${res.status})`);
       }

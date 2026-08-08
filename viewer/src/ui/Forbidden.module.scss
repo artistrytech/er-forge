@@ -1,0 +1,37 @@
+/* 403（トークン不一致）の案内。起動時（ヘッダも無い画面）と編集画面の両方で使うため、
+   自前で中央寄せの枠を持つ。手順を読ませる文章なので本文は左寄せにする
+   （箇条書きが中央寄せだと読み出しの位置が揃わない）。 */
+
+.wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  padding: 40px 24px;
+  color: var(--text-muted);
+}
+
+.box {
+  max-width: 560px;
+  text-align: left;
+}
+
+.title {
+  margin: 0 0 8px;
+  color: var(--text-strong);
+  font-size: 17px;
+}
+
+.lead {
+  margin: 0 0 10px;
+}
+
+.steps {
+  margin: 0 0 16px;
+  padding-left: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  line-height: 1.6;
+}
