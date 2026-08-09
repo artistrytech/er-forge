@@ -220,13 +220,39 @@ async function main() {
         await page.locator(V + '[data-testid="page-info-toggle"]').isDisabled());
     check("page management is hidden outside the page-info mode",
         (await page.locator(V + '[data-testid="page-add"]').count()) === 0);
-    // ER図の編集を終えてからページ情報の編集へ入る
-    await page.click('[data-testid="session-toggle"][data-editing="true"]');
+
+    // ---- 3b. 左パネルの行から編集画面への近道 / Esc での編集解除 ----
+    // 編集中は近道を出さない（踏むと編集ルートを離れ、未保存の配置が捨てられるため）
+    check("the row shortcut to the table editor is hidden while editing",
+        (await page.locator(V + '[data-testid="lp-edit-table"]').count()) === 0);
+
+    // 入力欄にフォーカスがあるときの Esc は横取りしない（入力の取り消しに使うため）
+    await page.click(V + '[data-testid="lane-all"]');
+    await page.waitForSelector(V + '[data-testid="lp-filter"]', { timeout: 5000 });
+    await page.locator(V + '[data-testid="lp-filter"]').first().click();
+    await page.keyboard.press("Escape");
+    check("Esc inside an input does not end the edit session",
+        (await page.locator('[data-testid="session-toggle"][data-editing="true"]').count()) === 1);
+
+    // ER図の編集を終えてからページ情報の編集へ入る（終了は Esc でも [編集終了] と同じ経路）
+    await page.click(V + '[data-testid="lane-pages"]'); // 入力欄からフォーカスを外す
+    await page.keyboard.press("Escape");
     await page.waitForSelector('[data-testid="session-toggle"][data-editing="false"]', { timeout: 5000 });
+    check("Esc ends the diagram edit session", true);
+
+    // 閲覧に戻れば近道が出る（href はテーブル編集ルートを指す）
+    await page.waitForSelector(V + '[data-testid="lp-edit-table"]', { timeout: 5000 });
+    check("the row shortcut points at the table edit route",
+        (await page.locator(V + '[data-testid="lp-edit-table"]').first().getAttribute("href"))
+          ?.endsWith("/edit") === true);
+
     await page.click(V + '[data-testid="page-info-toggle"]');
     await page.waitForSelector(V + '[data-testid="page-info-toggle"][data-editing="true"]', { timeout: 5000 });
     check("diagram editing cannot start while editing page info",
         await page.locator('[data-testid="session-toggle"]').isDisabled());
+    // ページ情報の編集中も近道は出さない（そちらの操作に集中させる）
+    check("the row shortcut is hidden while editing page info",
+        (await page.locator(V + '[data-testid="lp-edit-table"]').count()) === 0);
 
     await page.click(V + '[data-testid="page-add"]');
     await page.locator('[data-testid="page-id"]').pressSequentially("billing");

@@ -278,6 +278,8 @@
   border-radius: 8px;
   display: flex;
   align-items: center;
+  /* 編集への近道（.lp-edit-link）を行の上に浮かせるための基準 */
+  position: relative;
 }
 
 /* 指定色（P-13）。行の背景を ER図のノードと同じ色にし、左端に細いバーを出す。 */
@@ -317,12 +319,11 @@
   font: inherit;
 }
 
-.lp-item-btn:hover {
-  background: var(--accent-soft);
-}
-
-/* 色付きの行にもホバーを効かせる（上の [data-color] 指定より詳細度を上げる） */
-.lp-item[data-color] .lp-item-btn:hover {
+/* ホバーは**行**で判定する（ボタンではなく）。近道アイコンはボタンの上に浮いているので、
+   ポインタがアイコンに乗った瞬間に行の色が戻ってしまわないようにする。
+   色付きの行にも効かせるため、[data-color] の指定より詳細度を上げる */
+.lp-item:hover .lp-item-btn,
+.lp-item[data-color]:hover .lp-item-btn {
   background: var(--accent-soft);
 }
 
@@ -330,6 +331,29 @@
 
 .lp-item-name {
   overflow-wrap: anywhere;
+}
+
+/* 行ホバーで出るテーブル編集への近道。常に出すと一覧が賑やかになりすぎるため、
+   ホバー / フォーカスのときだけ見せる（N-07）。
+   **行の上に浮かせる**（レイアウトを占めない）: 幅を分け合うと、出ていないときも右端に
+   余白が空き、テーブル名の折り返しがその分早くなる。背景はホバー中の行と同じ色にして、
+   長い名前や検索ヒットの上に重なっても、その部分が透けて読めなくならないようにする
+   （重なるのはホバー中だけで、指を離せば全文が読める） */
+.lp-edit-link {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  background: var(--accent-soft);
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+
+.lp-item:hover .lp-edit-link,
+.lp-item:focus-within .lp-edit-link {
+  opacity: 1;
 }
 
 /* ビュー等の種別（O-10）。原文のまま出すので、行を圧迫しないよう最小限の見た目にする */

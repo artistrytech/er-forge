@@ -652,6 +652,7 @@ const ja = {
   "panel.selectPageHint": "ページを選択してください",
   "panel.pickPageTitle": "ページを選択",
   "panel.pickPageHint": "「{table}」は複数のページに配置されています。開くページを選んでください。",
+  "panel.editTable": "このテーブルを編集",
   // 検索モーダルのタブ（遷移先。回答A）
   "search.tab.detail": "テーブル詳細",
   "search.tab.erd": "ER図",
@@ -1320,6 +1321,7 @@ const en: Record<MsgKey, string> = {
   "panel.selectPageHint": "Select a page",
   "panel.pickPageTitle": "Select a page",
   "panel.pickPageHint": "“{table}” is placed on multiple pages. Choose which one to open.",
+  "panel.editTable": "Edit this table",
   "search.tab.detail": "Table detail",
   "search.tab.erd": "Diagram",
   "search.tab.columns": "Column names",

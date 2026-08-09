@@ -29,11 +29,13 @@ import { TABLE_DND_TYPE } from "../canvas/ErdPage";
 import { colorAttr } from "../model/colors";
 import { useEditStore } from "../model/editStore";
 import { formatName, resolveIndexTableName, type NameDisplay } from "../model/logicalName";
+import { usePageEditStore } from "../model/pageEditStore";
 import { searchAll, type MatchMode } from "../model/search";
 import { useAppStore, type PanelLane } from "../model/store";
 import type { IndexTable } from "../model/types";
 import { AddPageButton } from "./AddPage";
 import { Dialog } from "./Dialog";
+import { Link } from "./Link";
 import { hrefs } from "./router";
 import { cx } from "../lib/cx";
 import styles from "./LeftPanel.module.scss";
@@ -303,6 +305,38 @@ function PagePickerDialog({
   );
 }
 
+// ------------------------------------------------------------------ 行のホバーで出る編集への近道
+
+/**
+ * テーブル行にホバーしたときだけ出る、テーブル編集画面（O-03）への直行リンク。
+ * 一覧のどのレーンからでも「見つけて、すぐ直す」ができるようにするためのもの。
+ *
+ * **編集モード中は出さない。** 編集ルートを離れるとセッションが終わる（ER図の未保存の
+ * 配置は破棄される）ため、編集中に別の編集画面へ飛べる導線を置くと事故になる。
+ * 静的モードでも出さない（編集ルートは詳細画面へリダイレクトされる）。
+ */
+function TableEditLink({ tableId }: { tableId: string }) {
+  const { t } = useI18n();
+  const serverMode = useAppStore((s) => s.serverMode === true);
+  const erdEditing = useEditStore((s) => s.session === "editing");
+  const pageInfoEditing = useAppStore((s) => s.pageInfoEditing);
+  // テーブル編集・カラム辞書編集の最中（それらの画面がコントローラを登録している）
+  const pageEditing = usePageEditStore((s) => s.controller !== null);
+
+  if (!serverMode || erdEditing || pageInfoEditing || pageEditing) return null;
+  return (
+    <Link
+      className={cx("sidebar-icon-button", styles.lpEditLink)}
+      href={hrefs.tableEdit(tableId)}
+      data-testid="lp-edit-table"
+      title={t("panel.editTable")}
+      aria-label={t("panel.editTable")}
+    >
+      <PenIcon />
+    </Link>
+  );
+}
+
 // ================================================================== 「ページ」レーン（両 scope 共通）
 
 function PagesLane({
@@ -459,6 +493,7 @@ function PagesLane({
                     {formatName(resolveIndexTableName(it), it.name, nameDisplay)}
                   </span>
                 </button>
+                <TableEditLink tableId={it.id} />
               </li>
             ))}
           </ul>
@@ -749,6 +784,7 @@ function UnplacedTray({
               {it.kind !== undefined && <span className={styles.lpItemKind}>{it.kind}</span>}
               {recent.includes(it.id) && <span className={styles.trayNew}>{t("tray.new")}</span>}
             </button>
+            <TableEditLink tableId={it.id} />
           </li>
         ))}
       </ul>
@@ -904,6 +940,7 @@ function SearchLane({
                   <span className={styles.lpItemName}>{label}</span>
                   {hit.columnHits.length > 0 && <span className={styles.lpHitcount}>{hit.columnHits.length}</span>}
                 </button>
+                <TableEditLink tableId={hit.tableId} />
                 {hit.columnHits.length > 0 && (
                   <ul className={styles.lpColhits}>
                     {hit.columnHits.slice(0, 6).map((c) => (
@@ -973,6 +1010,8 @@ function TableRow({
         {/* ビュー等の種別（O-10）。DB が返した原文なので翻訳しない */}
         {it.kind !== undefined && <span className={styles.lpItemKind}>{it.kind}</span>}
       </button>
+      {/* 編集への近道と配置（＋ / ✓）は排他: 近道は編集中に出ず、＋ は編集中にしか出ない */}
+      <TableEditLink tableId={it.id} />
       {canPlace &&
         (onPage ? (
           <span className={styles.sidebarOnpage} title={t("table.onThisPage")} aria-hidden="true">
@@ -994,6 +1033,17 @@ function TableRow({
 }
 
 // アイコン（インライン SVG。静的モードでは外部アイコンフォントを使えないため）
+
+/** 編集（ペン）。ヘッダの [編集開始] と同じ形にして、同じ意味だと分かるようにする */
+function PenIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z" />
+    </svg>
+  );
+}
+
 function PagesIcon() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">

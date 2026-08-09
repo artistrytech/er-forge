@@ -6,7 +6,7 @@
  * 編集操作は ER図（editStore）・テーブル編集 / カラム辞書の編集（pageEditStore のコントローラ）を
  * ひとつのヘッダ UI に集約する。個別画面はフォームだけを持ち、保存・終了はここから行う。
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import appIconUrl from "../assets/app-icon.png";
 import { useI18n } from "../i18n/useI18n";
 import { apiPatch, apiPost, wpath } from "../model/api";
@@ -628,10 +628,24 @@ function InfoMenu() {
 // ------------------------------------------------------------------ 編集操作（保存・開始・終了）
 
 /**
+ * 入力中か（Esc をこちらで横取りしてよいかの判定）。
+ * IME の変換中（isComposing）も入力中として扱う — 変換の取り消しに Esc が要る。
+ */
+function isTypingTarget(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null;
+  if (el === null || typeof el.tagName !== "string") return false;
+  const tag = el.tagName.toLowerCase();
+  return tag === "input" || tag === "textarea" || tag === "select" || el.isContentEditable;
+}
+
+/**
  * 画面に応じた編集操作を1か所に集約する。
  * - ER図（editStore）: 閲覧なら [編集開始]、編集中なら [保存]（サーバー）/[エクスポート]（静的）＋[編集終了]
  * - テーブル編集 / カラム辞書の編集（pageEditStore コントローラ）: [保存]＋[編集終了]、閲覧なら [編集開始]
  * 未保存があるまま [編集終了] を押したときだけ確認ダイアログを出す（他の遷移・リロードは対象外）。
+ *
+ * Esc も [編集終了] と同じ扱いにする（N-10）。押した場所によっては別の意味を持つため、
+ * 入力中・ダイアログやメニューが開いている間は横取りしない（下の useEffect）。
  */
 function EditControls({ route }: { route: Route }) {
   const { t } = useI18n();
@@ -658,6 +672,8 @@ function EditControls({ route }: { route: Route }) {
   };
 
   let body: React.ReactNode = null;
+  /** Esc で解除できる編集モードの終了処理（無ければ null = いま編集中ではない） */
+  let endEdit: (() => void) | null = null;
 
   if (route.kind === "erd" || route.kind === "erdEdit") {
     // ER図
@@ -668,6 +684,7 @@ function EditControls({ route }: { route: Route }) {
         body = <StartEditButton href={hrefs.erdEdit(erdId)} locked={pageInfoEditing} />;
       } else {
         const dirty = netDirty;
+        endEdit = () => requestEnd(dirty, () => (location.hash = hrefs.erd(erdId)));
         body = (
           <>
             {serverMode === true && (
@@ -706,6 +723,7 @@ function EditControls({ route }: { route: Route }) {
     if (route.kind === "tableEdit") {
       // 編集ルート。サーバーモードのみ（静的モードは App が詳細へリダイレクト）
       if (serverMode === true && controller) {
+        endEdit = () => requestEnd(controller.dirty, controller.end);
         body = <PageEditButtons controller={controller} onEnd={requestEnd} />;
       }
     } else if (serverMode === true) {
@@ -716,6 +734,7 @@ function EditControls({ route }: { route: Route }) {
   } else if (route.kind === "columns" || route.kind === "columnsEdit") {
     if (route.kind === "columnsEdit") {
       if (serverMode === true && controller) {
+        endEdit = () => requestEnd(controller.dirty, controller.end);
         body = <PageEditButtons controller={controller} onEnd={requestEnd} />;
       }
     } else if (serverMode === true) {
@@ -725,6 +744,7 @@ function EditControls({ route }: { route: Route }) {
 
   return (
     <>
+      <EscapeToEndEdit endEdit={endEdit} />
       {body}
       {pendingEnd !== null && (
         <Dialog title={t("edit.stopConfirm.title")} onClose={() => setPendingEnd(null)}>
@@ -747,6 +767,42 @@ function EditControls({ route }: { route: Route }) {
       )}
     </>
   );
+}
+
+/**
+ * Esc で編集モードを解除する（[編集終了] と同じ経路なので、未保存があれば確認が出る）。
+ *
+ * Esc は押した文脈で意味が変わるキーなので、**ほかに Esc を待っているものが無いときだけ**
+ * 横取りする:
+ * - 入力欄・IME の変換中（{@link isTypingTarget}）… 入力側のもの
+ * - ダイアログ・メニューが開いている … そちらを閉じるためのもの。どちらも window の keydown を
+ *   見ており、後から登録されるぶん**こちらの方が先に呼ばれる**ので、DOM の有無で判定する
+ * - 色・注記のポップオーバーは capture 段階で握り潰すため、そもそもここへ届かない
+ */
+function EscapeToEndEdit({ endEdit }: { endEdit: (() => void) | null }) {
+  const setPageInfoEditing = useAppStore((s) => s.setPageInfoEditing);
+  const endRef = useRef(endEdit);
+  useEffect(() => {
+    endRef.current = endEdit;
+  }, [endEdit]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== "Escape" || e.isComposing || e.defaultPrevented) return;
+      if (isTypingTarget(e.target)) return;
+      if (document.querySelector('[role="dialog"], [role="menu"]') !== null) return;
+      // ページ情報の編集（即時にファイルへ書かれるので未保存の概念が無い）はその場で閉じる
+      if (useAppStore.getState().pageInfoEditing) {
+        setPageInfoEditing(false);
+        return;
+      }
+      endRef.current?.();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [setPageInfoEditing]);
+
+  return null;
 }
 
 /** テーブル編集 / カラム論理名編集の [保存]＋[編集終了]（pageEditStore コントローラ由来） */
