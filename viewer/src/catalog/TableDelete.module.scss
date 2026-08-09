@@ -1,0 +1,48 @@
+/* テーブル削除（J-02）の導線。詳細の本文とは区切って最下部に置く */
+
+.delete-section {
+  margin-top: 32px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.delete-button {
+  padding: 6px 14px;
+  border: 1px solid var(--error);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--error);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.delete-button:hover {
+  background: var(--error-bg);
+}
+
+.delete-hint {
+  margin: 6px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+/* ノードも消すかの選択。影響一覧のすぐ下（その1行目と連動して文言が変わる） */
+.remove-nodes {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+/* 削除の影響（配置ページ・被参照・失われる meta）。読み飛ばされないよう警告色にする */
+.impact-list {
+  margin: 12px 0 0;
+  padding: 8px 12px 8px 28px;
+  border-radius: 6px;
+  background: var(--warn-bg);
+  color: var(--warn);
+  font-size: 13px;
+  line-height: 1.6;
+}

@@ -7,11 +7,15 @@ import erd.core.io.DataFilePrinter;
 import erd.core.io.ProjectStore;
 import erd.core.model.Column;
 import erd.core.model.ColumnMeta;
+import erd.core.model.DiagramPage;
+import erd.core.model.EdgeLayout;
 import erd.core.model.ForeignKey;
 import erd.core.model.IndexDef;
 import erd.core.model.LogicalForeignKey;
 import erd.core.model.LogicalUnique;
+import erd.core.model.Manifest;
 import erd.core.model.MetaRules;
+import erd.core.model.NodeLayout;
 import erd.core.model.Table;
 import erd.core.model.TableMeta;
 import erd.core.model.UniqueConstraint;
@@ -30,7 +34,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * テーブル定義（meta を含む全文置換）の保存（O-03 / O-08 / J-05 / P-06〜P-08 / §4.1）。
+ * テーブル定義（meta を含む全文置換）の保存と削除（O-03 / O-08 / J-02 / J-05 / P-06〜P-08 / §4.1）。
  *
  * <p>PUT はテーブル1件の完全な定義を受け取り、machine-owned と meta の両方を置換する
  * （逆生成の適用が machine のみ置換するのとは非対称。O-03 詳細設計 §4.3）。
@@ -146,6 +150,102 @@ public final class TableService {
             throw new UncheckedIOException(e);
         }
         return new Ok(newHash, written, warnings);
+    }
+
+    // --------------------------------------------------------------- DELETE
+
+    /**
+     * テーブルの削除（J-02 / O-03 詳細設計 §6.2）。スキーマファイルを消し、
+     * manifest.js と index.js を再生成する。
+     *
+     * <p>ER図のノードを一緒に消すかは<b>呼び出し側が選ぶ</b>（{@code removeNodes}）。
+     * 既定は消さない（孤児ノードとして残す。K-13 と同じ扱い）。「黙って消さない」ことが
+     * 設計の意図であり、削除の確認画面で明示的に選ばれた場合は消してよい。
+     *
+     * <p>このテーブルを参照していた他テーブルの FK は、どちらを選んでも<b>書き換えない</b>
+     * （他テーブルの定義を勝手に触らない）。整合性チェック（M-04）で検出させる。
+     *
+     * <p>削除の影響（配置ページ・被参照・失われる meta）はビューアが index.js から組み立てて
+     * 確認ダイアログに出す。API はデータを返さない（§4.3）ため、ここでは返さない。
+     *
+     * @param body { baseHash, force, removeNodes }
+     */
+    public Outcome delete(Path dataDir, String tableId, JsonNode body) {
+        Path file = tableFile(dataDir, tableId);
+        if (file == null || !Files.isRegularFile(file)) return new NotFound();
+
+        String currentHash = Hashes.sha256(file);
+        boolean force = body.path("force").asBoolean(false);
+        if (!force && !currentHash.equals(body.path("baseHash").asText(""))) {
+            return new Stale(currentHash);
+        }
+
+        ProjectStore.LoadResult loaded = store.read(dataDir);
+        List<Table> remaining = loaded.model().tables().stream()
+                .filter(t -> !t.id().equals(tableId)).toList();
+        List<DiagramPage> diagrams = loaded.model().diagrams();
+
+        Map<String, String> written = new LinkedHashMap<>();
+        try {
+            Files.delete(file);
+            // null = 削除（SSE の自己判定はこの値で帰属を見る。Revisions#recordWrite）
+            written.put(dataDir.relativize(file).toString().replace('\\', '/'), null);
+            if (body.path("removeNodes").asBoolean(false)) {
+                diagrams = removeNodes(dataDir, loaded, tableId, written);
+            }
+            String manifestHash = FileWrites.regenerateManifest(dataDir, loaded.model().manifest(),
+                    remaining, diagrams);
+            if (manifestHash != null) written.put("manifest.js", manifestHash);
+            String indexHash = FileWrites.regenerateIndex(dataDir, remaining, diagrams);
+            if (indexHash != null) written.put("index.js", indexHash);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        return new Ok(null, written, List.of());
+    }
+
+    /**
+     * 削除したテーブルのノードを全ページから取り除く（I-06 と同じ「ページから除去」）。
+     *
+     * <p>落とすのはノードと、<b>そのテーブルが持つ制約のエッジ</b>（キーが
+     * {@code <テーブルID>#…}）だけである。このテーブルを指している他テーブルのエッジは
+     * 相手の座標情報なので触らない（両端が揃わなければ描画されず、実害もない）。
+     *
+     * <p>ページファイルには baseHash を要求しない。全文上書きではなく、直前に読み直した
+     * 内容から対象キーだけを落として書き戻すため、外部で加えられた変更は保たれる。
+     *
+     * @return 除去後のページ一覧（派生ファイルの再生成に使う）
+     */
+    private List<DiagramPage> removeNodes(Path dataDir, ProjectStore.LoadResult loaded,
+                                          String tableId, Map<String, String> written)
+            throws IOException {
+        Map<String, String> files = new HashMap<>();
+        for (Manifest.DiagramRef ref : loaded.model().manifest().diagrams()) {
+            files.put(ref.id(), ref.file());
+        }
+        String edgePrefix = tableId + "#";
+        List<DiagramPage> out = new ArrayList<>();
+        for (DiagramPage page : loaded.model().diagrams()) {
+            boolean hasNode = page.nodes().containsKey(tableId);
+            boolean hasEdge = page.edges().keySet().stream().anyMatch(k -> k.startsWith(edgePrefix));
+            if (!hasNode && !hasEdge) {
+                out.add(page);
+                continue;
+            }
+            Map<String, NodeLayout> nodes = new LinkedHashMap<>(page.nodes());
+            nodes.remove(tableId);
+            Map<String, EdgeLayout> edges = new LinkedHashMap<>(page.edges());
+            edges.keySet().removeIf(k -> k.startsWith(edgePrefix));
+            DiagramPage next = new DiagramPage(page.id(), page.title(), page.order(), nodes, edges,
+                    page.unknown());
+            out.add(next);
+
+            String rel = files.getOrDefault(page.id(), "diagrams/" + page.id() + ".js");
+            String content = printer.printDiagram(next);
+            FileWrites.writeAtomic(dataDir.resolve(rel), content);
+            written.put(rel, Hashes.sha256(content.getBytes(StandardCharsets.UTF_8)));
+        }
+        return out;
     }
 
     // ------------------------------------------------------- 正規化（P-12 / P-13）

@@ -351,6 +351,92 @@ async function main() {
       (await page.locator('tr[data-color="blue"]').count()) > 0,
     );
 
+    // ---- テーブルの削除（J-02）: 詳細画面の最下部から ----
+    const nodesBefore = await (async () => {
+      await page.goto(`${url}#/w/default/erd/users`);
+      await page.waitForSelector(".react-flow__node", { timeout: 15000 });
+      return page.locator('[data-testid="erd-node"]').count();
+    })();
+
+    await page.goto(`${url}#/w/default/tables/public.user_sessions`);
+    await page.waitForSelector('[data-testid="delete-table"]', { timeout: 15000 });
+    await page.getByTestId("delete-table").click();
+    // 削除の前に影響を提示する（§6.2）: 配置ページと、失われる meta
+    await page.waitForSelector('[data-testid="delete-impact"]', { timeout: 5000 });
+    // 配置ページ・失われる meta・消えるファイルの3行（文言は言語設定に依存するので件数で見る）
+    check("the confirmation lists the impact before deleting",
+        (await page.locator('[data-testid="delete-impact"] li').count()) === 3);
+    check("the confirmation names the schema file that will be deleted",
+        ((await page.getByTestId("delete-impact").textContent()) ?? "")
+          .includes("schema/public/user_sessions.js"));
+
+    // 配置されているノードも消すかは選べる（既定は消す）
+    check("removing the diagram nodes is opt-out (checked by default)",
+        await page.getByTestId("delete-remove-nodes").isChecked());
+
+    // baseHash を取り終えるまで確定させない（見ていない内容のまま消さない。INV-5）
+    await page.waitForSelector('[data-testid="delete-table-confirm"]:not([disabled])', { timeout: 15000 });
+    await page.getByTestId("delete-table-confirm").click();
+    // 削除した詳細に留まると「見つかりません」になるため一覧へ戻す
+    // （一覧は常に1件選択なので、残っている別のテーブルに着地する）
+    await page.waitForFunction(
+      () => location.hash.startsWith("#/w/default/tables")
+        && !location.hash.includes("user_sessions"),
+      null,
+      { timeout: 15000 },
+    );
+    check("deleting the table leaves the deleted table's page", true);
+    check(
+      "the schema file is deleted",
+      !existsSync(join(dir, "workspace-default", "data", "schema", "public", "user_sessions.js")),
+    );
+    const manifestAfter = readFileSync(join(dir, "workspace-default", "data", "manifest.js"), "utf-8");
+    check("manifest.js no longer lists the table",
+        !manifestAfter.includes("public.user_sessions"));
+    const indexAfterDelete = readFileSync(join(dir, "workspace-default", "data", "index.js"), "utf-8");
+    check("index.js no longer carries the table entry",
+        !indexAfterDelete.includes('id: "public.user_sessions"'));
+
+    const pageAfterDelete = readFileSync(
+      join(dir, "workspace-default", "data", "diagrams", "users.js"), "utf-8");
+    check("the node is removed from the diagram page file",
+        !pageAfterDelete.includes("public.user_sessions"));
+
+    // ノードごと消したので、孤児ノードは残らない（画面も追随している）
+    await page.goto(`${url}#/w/default/erd/users`);
+    await page.waitForSelector(".react-flow__node", { timeout: 15000 });
+    await page.waitForFunction(
+      (expected) => document.querySelectorAll('[data-testid="erd-node"]').length === expected,
+      nodesBefore - 1,
+      { timeout: 15000 },
+    );
+    check("the diagram loses the node as well",
+        (await page.locator('[data-testid="erd-node"][data-missing="true"]').count()) === 0);
+
+    // チェックを外せば従来どおりノードは孤児として残る（K-13 / §6.2）
+    await page.goto(`${url}#/w/default/tables/public.user_addresses`);
+    await page.waitForSelector('[data-testid="delete-table"]', { timeout: 15000 });
+    await page.getByTestId("delete-table").click();
+    await page.waitForSelector('[data-testid="delete-impact"]', { timeout: 5000 });
+    await page.getByTestId("delete-remove-nodes").uncheck();
+    await page.waitForSelector('[data-testid="delete-table-confirm"]:not([disabled])', { timeout: 15000 });
+    await page.getByTestId("delete-table-confirm").click();
+    await page.waitForFunction(
+      () => location.hash.startsWith("#/w/default/tables")
+        && !location.hash.includes("user_addresses"),
+      null,
+      { timeout: 15000 },
+    );
+    await page.goto(`${url}#/w/default/erd/users`);
+    await page.waitForSelector(".react-flow__node", { timeout: 15000 });
+    await page.waitForFunction(
+      () => document.querySelectorAll('[data-testid="erd-node"][data-missing="true"]').length === 1,
+      null,
+      { timeout: 15000 },
+    );
+    check("unchecking keeps the node as an orphan",
+        (await page.locator('[data-testid="erd-node"]').count()) === nodesBefore - 1);
+
     await page.close();
   } catch (e) {
     check(`no unexpected error (${e.message})`, false);

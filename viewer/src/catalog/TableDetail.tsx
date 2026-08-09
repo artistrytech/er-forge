@@ -7,6 +7,7 @@ import { formatName, resolveTableName } from "../model/logicalName";
 import { useAppStore } from "../model/store";
 import { NotFound } from "../ui/NotFound";
 import { TableInfo } from "../ui/TableInfo";
+import { TableDeleteSection } from "./TableDelete";
 import styles from "./TableDetail.module.scss";
 
 export function TableDetail({ tableId, notice }: { tableId: string; notice?: string }) {
@@ -33,6 +34,8 @@ export function TableDetail({ tableId, notice }: { tableId: string; notice?: str
         {/* 編集開始はヘッダ（EditControls）のペンアイコンに集約 */}
       </div>
       <TableInfo tableId={tableId} />
+      {/* 削除（J-02）は本文の下。誤って逆生成したテーブルを個別に消す唯一の導線 */}
+      <TableDeleteSection tableId={tableId} />
       {serverMode === true && (
         // 回答C: 新規作成ボタンだけ先行実装（クリック時の挙動 = J-01 は先送り）
         <button

@@ -57,6 +57,8 @@ export const TableNode = memo(function TableNode({ id, data }: NodeProps<TableNo
       // 欠損（警告色）・選択枠は指定色より上のレイヤ。CSS の後勝ちで担保する（D-03）
       data-color={colorAttr(data.color)}
       data-ghost={data.ghost === true ? "true" : undefined}
+      // 欠損（索引に無い = 孤児ノード。K-13）は⚠だけでなく属性でも表す（e2e の判定用）
+      data-missing={data.missing === true ? "true" : undefined}
     >
       <Handle type="target" position={Position.Top} className={styles.erdHandle} isConnectable={false} />
       {data.kind !== undefined && (

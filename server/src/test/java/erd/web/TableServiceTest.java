@@ -5,8 +5,12 @@ import erd.core.io.DataFileParser;
 import erd.core.io.ProjectStore;
 import erd.core.migrate.SchemaVersions;
 import erd.core.model.Column;
+import erd.core.model.DiagramPage;
+import erd.core.model.EdgeLayout;
 import erd.core.model.LogicalType;
 import erd.core.model.Manifest;
+import erd.core.model.NodeLayout;
+import erd.core.model.Point;
 import erd.core.model.ProjectConfig;
 import erd.core.model.ProjectModel;
 import erd.core.model.Table;
@@ -317,6 +321,115 @@ class TableServiceTest {
     @Test
     void baseHashMatchesFile() {
         assertEquals(hashOf("schema/public/users.js"), service.baseHash(dataDir, "public.users"));
+    }
+
+    // ------------------------------------------------------------ 削除（J-02）
+
+    private TableService.Outcome delete(String tableId, String baseHash) throws Exception {
+        return service.delete(dataDir, tableId,
+                json.readTree("{ \"baseHash\": \"%s\" }".formatted(baseHash)));
+    }
+
+    // J-02: スキーマファイルを消し、manifest.js / index.js から落とす
+    @Test
+    void deleteRemovesFileAndDerivedEntries() throws Exception {
+        var outcome = delete("public.orders", hashOf("schema/public/orders.js"));
+
+        assertInstanceOf(TableService.Ok.class, outcome);
+        var ok = (TableService.Ok) outcome;
+        assertTrue(ok.writtenFiles().containsKey("schema/public/orders.js"));
+        assertNull(ok.writtenFiles().get("schema/public/orders.js"), "削除は null で記録する");
+        assertTrue(ok.writtenFiles().containsKey("manifest.js"));
+        assertTrue(ok.writtenFiles().containsKey("index.js"));
+
+        assertFalse(Files.exists(dataDir.resolve("schema/public/orders.js")));
+        assertTrue(Files.exists(dataDir.resolve("schema/public/users.js")), "他テーブルは残る");
+
+        String manifest = Files.readString(dataDir.resolve("manifest.js"), StandardCharsets.UTF_8);
+        assertFalse(manifest.contains("public.orders"));
+        assertTrue(manifest.contains("public.users"));
+        String index = Files.readString(dataDir.resolve("index.js"), StandardCharsets.UTF_8);
+        assertFalse(index.contains("public.orders"));
+        assertNull(service.baseHash(dataDir, "public.orders"));
+    }
+
+    // J-02: 参照していた制約は自動削除しない（他テーブルを勝手に書き換えない。§6.2）
+    @Test
+    void deleteKeepsReferencesInOtherTables() throws Exception {
+        String meta = """
+                { "logicalForeignKeys": [
+                    { "name": "lfk_orders_user", "columns": ["user_id"],
+                      "ref": { "table": "public.users", "columns": ["id"] } } ] }
+                """;
+        assertInstanceOf(TableService.Ok.class,
+                put("public.orders", ordersJson(meta), hashOf("schema/public/orders.js")));
+
+        assertInstanceOf(TableService.Ok.class,
+                delete("public.users", hashOf("schema/public/users.js")));
+
+        Table orders = parser.parseTable(Files.readString(
+                dataDir.resolve("schema/public/orders.js"), StandardCharsets.UTF_8)).value();
+        assertEquals("public.users", orders.meta().logicalForeignKeys().get(0).ref().table());
+        // 参照先を失ったリレーションは索引で dangling として残る（M-04 で検出させる）
+        String index = Files.readString(dataDir.resolve("index.js"), StandardCharsets.UTF_8);
+        assertTrue(index.contains("dangling: true"));
+    }
+
+    /** ノード削除のテスト用に、対象テーブルを配置した ER図ページを1枚用意する。 */
+    private void writeDiagramPage() {
+        ProjectStore ps = new ProjectStore();
+        ProjectStore.LoadResult loaded = ps.read(dataDir);
+        DiagramPage page = new DiagramPage("core", "コア", 1,
+                Map.of("public.orders", new NodeLayout(new Point(0, 0)),
+                        "public.users", new NodeLayout(new Point(200, 0))),
+                Map.of("public.orders#fk:orders_user_fkey", new EdgeLayout(List.of(new Point(8, 8))),
+                        "public.users#fk:users_org_fkey", new EdgeLayout(List.of(new Point(16, 16)))));
+        ps.writeAll(dataDir, new ProjectModel(loaded.model().manifest(), loaded.model().config(),
+                loaded.model().dictionary(), loaded.model().tables(), List.of(page)));
+    }
+
+    // J-02 既定: ER図のノードは残る（孤児ノード。K-13）
+    @Test
+    void deleteKeepsDiagramNodesByDefault() throws Exception {
+        writeDiagramPage();
+
+        var outcome = delete("public.orders", hashOf("schema/public/orders.js"));
+
+        assertInstanceOf(TableService.Ok.class, outcome);
+        assertFalse(((TableService.Ok) outcome).writtenFiles().containsKey("diagrams/core.js"));
+        String page = Files.readString(dataDir.resolve("diagrams/core.js"), StandardCharsets.UTF_8);
+        assertTrue(page.contains("\"public.orders\":"));
+    }
+
+    // J-02 選択時: ノードと、そのテーブルが持つエッジだけを全ページから取り除く
+    @Test
+    void deleteRemovesDiagramNodesWhenAsked() throws Exception {
+        writeDiagramPage();
+
+        var outcome = service.delete(dataDir, "public.orders", json.readTree("""
+                { "baseHash": "%s", "removeNodes": true }
+                """.formatted(hashOf("schema/public/orders.js"))));
+
+        assertInstanceOf(TableService.Ok.class, outcome);
+        assertTrue(((TableService.Ok) outcome).writtenFiles().containsKey("diagrams/core.js"));
+        String page = Files.readString(dataDir.resolve("diagrams/core.js"), StandardCharsets.UTF_8);
+        assertFalse(page.contains("\"public.orders\""), "ノードと自分のエッジは消える");
+        assertTrue(page.contains("\"public.users\":"), "他テーブルのノードは残る");
+        assertTrue(page.contains("public.users#fk:users_org_fkey"), "他テーブルのエッジは触らない");
+    }
+
+    // §8.4 / INV-5: baseHash 不一致ならファイルを消さない
+    @Test
+    void staleBaseHashRejectsDelete() throws Exception {
+        var outcome = delete("public.orders", "sha256:0000");
+
+        assertInstanceOf(TableService.Stale.class, outcome);
+        assertTrue(Files.exists(dataDir.resolve("schema/public/orders.js")));
+    }
+
+    @Test
+    void deleteUnknownTableIsNotFound() throws Exception {
+        assertInstanceOf(TableService.NotFound.class, delete("public.nope", "x"));
     }
 
     // ------------------------------------------------------------ ビュー（K-16 / O-10）

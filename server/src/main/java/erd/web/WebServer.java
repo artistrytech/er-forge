@@ -140,6 +140,7 @@ public final class WebServer {
 
         javalin.get("/__erd/w/{ws}/tables/{id}", this::getTable);
         javalin.put("/__erd/w/{ws}/tables/{id}", this::putTable);
+        javalin.delete("/__erd/w/{ws}/tables/{id}", this::deleteTable);
         javalin.get("/__erd/w/{ws}/dictionary", this::getDictionary);
         javalin.put("/__erd/w/{ws}/dictionary", this::putDictionary);
         javalin.get("/__erd/w/{ws}/config", this::getConfig);
@@ -461,6 +462,33 @@ public final class WebServer {
                     "revision", revision,
                     "newHash", ok.newHash(),
                     "warnings", ok.warnings().stream().map(Issue::toMap).toList()));
+        }
+    }
+
+    /**
+     * テーブルの削除（J-02 / §6.2）。baseHash が必須。
+     *
+     * <p>消えるのはスキーマファイルだけで、ER図のノードは孤児として残る（K-13）。
+     * manifest.js / index.js は {@link TableService} が再生成するため、応答の files に載る。
+     */
+    private void deleteTable(Context ctx) throws Exception {
+        Path dataDir = dataDirOrFail(ctx);
+        if (dataDir == null) return;
+        JsonNode body = ctx.body().isEmpty() ? mapper.createObjectNode() : mapper.readTree(ctx.body());
+        TableService.Outcome outcome = tables.delete(dataDir, ctx.pathParam("id"), body);
+        if (outcome instanceof TableService.NotFound) {
+            ctx.status(404).json(Map.of("error", "not found"));
+        } else if (outcome instanceof TableService.Stale stale) {
+            ctx.status(409).json(Map.of("code", "STALE", "currentHash", stale.currentHash()));
+        } else if (outcome instanceof TableService.Ok ok) {
+            Revisions revisions = revisions(ctx);
+            String revision = revisions.next();
+            ok.writtenFiles().forEach((rel, hash) -> revisions.recordWrite(rel, hash, revision));
+            ObjectNode res = mapper.createObjectNode();
+            res.put("revision", revision);
+            ArrayNode files = res.putArray("files");
+            ok.writtenFiles().keySet().forEach(files::add);
+            ctx.json(res);
         }
     }
 

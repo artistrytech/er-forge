@@ -126,6 +126,8 @@ const ja = {
   "save.failed": "保存に失敗しました",
   "save.forbidden":
     "保存できません: サーバーがトークンを拒否しました（403）。サーバーが表示した URL（?t=… 付き）で開き直してください。",
+  "save.staleReload":
+    "対象のファイルが外部で変更されています（git pull、逆生成の適用、またはエディタでの編集）。画面を再読込してからやり直してください。",
   "save.retry": "再試行",
   // 403（トークン不一致）の案内。次に何をすればよいかまで書く（§8.5）
   "forbidden.dataTitle": "データを表示できません（サーバーに拒否されました）",
@@ -440,6 +442,22 @@ const ja = {
   "tableEdit.validationFailed": "入力にエラーがあります。修正してください。",
   "tableEdit.conflictBody":
     "このテーブルのファイルが外部で変更されています（git pull、逆生成の適用、またはエディタでの編集）。どちらを残すか選んでください。",
+  // ---- テーブルの削除（J-02）。消えるのはスキーマファイルだけ、を明示する ----
+  "tableDelete.button": "このテーブルを削除",
+  "tableDelete.hint": "スキーマファイルを削除します。他テーブルの参照は自動では消えません。",
+  "tableDelete.title": "テーブルを削除しますか？",
+  "tableDelete.body": "次のテーブルを削除します:",
+  "tableDelete.warnPages":
+    "ER図 {n} ページに配置されています（{pages}）。ノードは孤児として残ります",
+  "tableDelete.warnPagesRemoved":
+    "ER図 {n} ページ（{pages}）からノードも削除します（配置は元に戻せません）",
+  "tableDelete.removeNodes": "ER図のノードも削除する",
+  "tableDelete.warnReferenced":
+    "{n} 件のテーブルから参照されています（{tables}）。これらは参照先を失います（自動削除しません）",
+  "tableDelete.warnMeta": "論理名・注記・タグ・カラムの個別設定・論理制約が失われます",
+  "tableDelete.warnFile": "スキーマファイル {file} を削除します（元に戻せません）",
+  "tableDelete.confirm": "削除する",
+  "tableDelete.done": "テーブル {id} を削除しました",
   "vErr.DUPLICATE": "名前が重複しています",
   "vErr.EMPTY_COLUMNS": "カラムを選択してください",
   "vErr.COLUMN_NOT_FOUND": "存在しないカラムです",
@@ -1017,6 +1035,24 @@ const en: Record<MsgKey, string> = {
   "tableEdit.validationFailed": "There are validation errors. Please fix them.",
   "tableEdit.conflictBody":
     "This table's file was modified externally (git pull, introspection apply, or an editor). Choose which version to keep.",
+  // ---- テーブルの削除（J-02）。消えるのはスキーマファイルだけ、を明示する ----
+  "tableDelete.button": "Delete this table",
+  "tableDelete.hint":
+    "Deletes the schema file. References from other tables are not removed automatically.",
+  "tableDelete.title": "Delete this table?",
+  "tableDelete.body": "The following table will be deleted:",
+  "tableDelete.warnPages":
+    "Placed on {n} diagram page(s) ({pages}). The nodes will remain as orphans",
+  "tableDelete.warnPagesRemoved":
+    "The nodes will also be removed from {n} diagram page(s) ({pages}); the layout cannot be restored",
+  "tableDelete.removeNodes": "Also remove the nodes from the diagrams",
+  "tableDelete.warnReferenced":
+    "Referenced by {n} table(s) ({tables}). Those references will become dangling (never removed automatically)",
+  "tableDelete.warnMeta":
+    "The logical name, notes, tags, per-column settings and logical constraints will be lost",
+  "tableDelete.warnFile": "The schema file {file} will be deleted (this cannot be undone)",
+  "tableDelete.confirm": "Delete",
+  "tableDelete.done": "Deleted the table {id}",
   "vErr.DUPLICATE": "Duplicate name",
   "vErr.EMPTY_COLUMNS": "Select at least one column",
   "vErr.COLUMN_NOT_FOUND": "Column does not exist",
@@ -1219,6 +1255,8 @@ const en: Record<MsgKey, string> = {
   "save.failed": "Failed to save",
   "save.forbidden":
     "Cannot save: the server rejected the token (403). Reopen the app with the URL the server printed (the one with ?t=…).",
+  "save.staleReload":
+    "The target file was modified externally (git pull, introspection apply, or an editor). Reload the page and try again.",
   "save.retry": "Retry",
   // 403（トークン不一致）の案内。次に何をすればよいかまで書く（§8.5）
   "forbidden.dataTitle": "The data cannot be shown (the server rejected the request)",

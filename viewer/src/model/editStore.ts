@@ -92,6 +92,13 @@ interface EditState {
   renamePage(diagramId: string, title: string): Promise<PageOpResult>;
   reorderPage(diagramId: string, direction: "up" | "down"): Promise<PageOpResult>;
   deletePage(diagramId: string): Promise<PageOpResult>;
+
+  /**
+   * テーブルの削除（J-02）。baseHash は削除確認を出す直前に取得したものを渡す
+   * （確認中に外部で書き換わったら 409 で止める。INV-5）。
+   * removeNodes=false なら ER図のノードは孤児として残る（K-13）。
+   */
+  deleteTable(tableId: string, baseHash: string, removeNodes: boolean): Promise<PageOpResult>;
 }
 
 // ---------------------------------------------------------- モジュール内部状態
@@ -393,20 +400,40 @@ export const useEditStore = create<EditState>((set, get) => ({
         apiDelete(wpath(`/diagrams/${encodeURIComponent(diagramId)}`), {
           baseHash: baseHashes.get(`diagrams/${diagramId}.js`) ?? "",
         }),
-      diagramId,
+      () => forgetDiagram(diagramId),
+    ),
+
+  // ---- テーブルの削除（J-02 / O-03 詳細設計 §6.2） ----
+
+  // スキーマファイルが消え、manifest.js / index.js が再生成される。ページ管理と同じ派生
+  // ファイルを動かすため、同じ直列化された経路に載せる（INV-6）。
+  // ノードも消す場合はページファイルも書き換わるので、応答の files を見て読み直す
+  deleteTable: (tableId, baseHash, removeNodes) =>
+    pageOp(
+      () =>
+        apiDelete(wpath(`/tables/${encodeURIComponent(tableId)}`), { baseHash, removeNodes }),
+      (revision, files) => {
+        invalidateTable(tableId);
+        const pages = files.filter((f) => f.startsWith("diagrams/"));
+        if (pages.length > 0) applyOtherChanges(pages, revision);
+      },
     ),
 }));
 
 /**
- * ページ管理の書き込み（I-01〜I-03）。レイアウトの保存（flush）と同じ1本の経路に載せる
- * （INV-6。並行して投げると、後から届いた古い index.js が新しいものを上書きしうる）。
+ * ページ管理・テーブル削除の書き込み（I-01〜I-03 / J-02）。レイアウトの保存（flush）と
+ * 同じ1本の経路に載せる（INV-6。並行して投げると、後から届いた古い index.js が
+ * 新しいものを上書きしうる）。
  *
- * 成功後は manifest / index を読み直す。ページの追加・削除・改名はいずれも派生ファイルを
- * 動かすため、何が変わったかを判定せず、まとめて追随させる（§8.2 と同じ方針）。
+ * 成功後は manifest / index を読み直す。ページの追加・削除・改名もテーブルの削除も
+ * 派生ファイルを動かすため、何が変わったかを判定せず、まとめて追随させる（§8.2 と同じ方針）。
+ *
+ * @param forget 成功したときに手元のキャッシュから消すもの（manifest / index の再読込より前に
+ *   呼ぶ）。書き込まれたファイル（応答の files）を受け取り、必要な追随を自分で決める
  */
 async function pageOp(
   request: () => Promise<{ status: number; body: string }>,
-  removedDiagramId?: string,
+  forget?: (revision: string, files: string[]) => void,
 ): Promise<PageOpResult> {
   if (!serverMode()) {
     return { ok: false, error: t9n("page.editHint") };
@@ -416,16 +443,23 @@ async function pageOp(
   try {
     const res = await request();
     if (res.status === 200) {
-      const body = JSON.parse(res.body) as { revision: string };
+      const body = JSON.parse(res.body) as { revision: string; files?: string[] };
       rememberRevision(body.revision);
-      if (removedDiagramId !== undefined) forgetDiagram(removedDiagramId);
+      forget?.(body.revision, body.files ?? []);
       await Promise.all([reloadManifest(body.revision), reloadIndex(body.revision)]);
       await refreshHashes();
       return { ok: true };
     }
+    if (res.status === 403) {
+      // トークン不一致（§8.5）。HTTP コードだけでは次の手が分からない
+      return { ok: false, error: t9n("save.forbidden") };
+    }
     const body = JSON.parse(res.body) as { code?: string; id?: string; message?: string };
     if (body.code === "DUPLICATE_ID") {
       return { ok: false, error: t9n("page.duplicateId", { id: body.id ?? "" }) };
+    }
+    if (body.code === "STALE") {
+      return { ok: false, error: t9n("save.staleReload") };
     }
     return { ok: false, error: body.message ?? `HTTP ${res.status}` };
   } catch {
