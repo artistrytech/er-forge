@@ -199,6 +199,25 @@ async function main() {
     await page.waitForFunction(() => document.querySelector('[data-testid="session-toggle"][data-editing="true"]') === null);
     check("session ends back to viewing", true);
 
+    // ---- 6b. 外部でスキーマファイルが変わっても、読み込み進捗は完了する ----
+    // 無効化してキャッシュを捨てるだけで読み直さないと「読み込み済み < 全体」のままになり、
+    // ヘッダの進捗バーが 100% 手前で消えずに残り続ける
+    await page.waitForFunction(
+      () => document.querySelectorAll('[data-testid="toast"]').length === 0,
+      null,
+      { timeout: 15000 },
+    ); // 直前の保存トーストと、次の「外部の変更を反映しました」を取り違えないように
+    const schemaFile = join(dir, "workspace-default", "data", "schema", "public", "users.js");
+    writeFileSync(schemaFile,
+        readFileSync(schemaFile, "utf-8").replace("ユーザーマスタ", "ユーザーマスタ（外部更新）"));
+    await page.waitForSelector('[data-testid="toast"]', { timeout: 15000 });
+    await page.waitForFunction(
+      () => document.querySelector('[role="progressbar"]') === null,
+      null,
+      { timeout: 10000 },
+    );
+    check("an external schema change does not leave the loading bar stuck", true);
+
     check("no page errors (server mode)", pageErrors.length === 0);
     await page.close();
 

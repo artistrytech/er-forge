@@ -444,13 +444,21 @@ export async function reloadManifest(version?: string): Promise<void> {
     const parsed = zManifest.safeParse(raw);
     if (raw !== undefined && parsed.success) {
       useAppStore.setState({ manifest: parsed.data });
+      // テーブルが増えていることがある（外部での追加・逆生成の適用）。増えた分を読みに行かないと
+      // 「読み込み済み < 全体」のまま進捗が完了しない
+      scheduleBackgroundLoad();
     }
   } catch {
     // 失敗時は手元の manifest を維持する
   }
 }
 
-/** スキーマファイルの外部変更でキャッシュを無効化する（次に開いたとき読み直す） */
+/**
+ * スキーマファイルの外部変更でキャッシュを無効化する（読み直させる）。
+ *
+ * 捨てるだけだと「読み込み済み < 全体」の状態が残り、ヘッダの進捗バーが完了しない。
+ * 段階5 のバックグラウンドロードを再点火して、手元の内容を最新に追随させる。
+ */
 export function invalidateTable(id: string): void {
   useAppStore.setState((s) => {
     const tables = { ...s.tables };
@@ -466,6 +474,7 @@ export function invalidateTable(id: string): void {
       failedTableCount: s.failedTableCount - (hadError ? 1 : 0),
     };
   });
+  scheduleBackgroundLoad();
 }
 
 // ---- 段階4/5: テーブルスキーマ ----
@@ -538,36 +547,63 @@ export async function loadAllTables(): Promise<void> {
   await Promise.all(Array.from({ length: Math.min(MAX_PARALLEL, ids.length) }, worker));
 }
 
+/** まだ手元に無いテーブル（manifest にあって、読み込み済みでも失敗済みでもないもの） */
+function pendingTableIds(): string[] {
+  const st = useAppStore.getState();
+  return Object.keys(st.manifest?.tables ?? {}).filter(
+    (id) =>
+      st.tables[id] === undefined &&
+      st.tableErrors[id] === undefined &&
+      !inflightTables.has(id),
+  );
+}
+
+/** 二重に走らせない（走行中の呼び出しは、その回の巡回が拾う） */
+let backgroundLoading = false;
+
 /**
  * 段階5: アイドル時のバックグラウンドロード（§6.2）。
  * requestIdleCallback（未対応環境は setTimeout）でチャンク実行し、並列度 8 に制限する。
+ *
+ * **対象は呼び出しごとに取り直す**（起動時の一覧を握り続けない）。外部変更でテーブルが
+ * 増えたり、無効化で未読に戻ったりするため、固定の一覧だと取りこぼしが残り、
+ * ヘッダの進捗バーが 100% 手前で完了しなくなる。何度呼んでも安全。
  */
 export function scheduleBackgroundLoad(): void {
-  const manifest = useAppStore.getState().manifest;
-  if (!manifest) return;
-  const ids = Object.keys(manifest.tables ?? {});
-  let next = 0;
+  if (backgroundLoading) return;
+  const st = useAppStore.getState();
+  if (!st.manifest) return;
+  backgroundLoading = true;
+
+  let queue: string[] = [];
   let active = 0;
   const MAX_PARALLEL = 8;
 
   const idle = (fn: () => void): void => {
-    const w = window as Window & { requestIdleCallback?: (cb: () => void) => number };
+    const w = window as Window & {
+      requestIdleCallback?: (cb: () => void, options?: { timeout: number }) => number;
+    };
     if (typeof w.requestIdleCallback === "function") {
-      w.requestIdleCallback(fn);
+      // timeout 付きで呼ぶ。重い画面（大きな ER図）ではアイドルが来ず、
+      // 指定しないと読み込みが途中で止まったまま進まなくなる
+      w.requestIdleCallback(fn, { timeout: 500 });
     } else {
       setTimeout(fn, 16);
     }
   };
 
   const pump = (): void => {
-    while (active < MAX_PARALLEL && next < ids.length) {
-      const id = ids[next++]!;
+    while (active < MAX_PARALLEL) {
+      if (queue.length === 0) queue = pendingTableIds();
+      const id = queue.shift();
+      if (id === undefined) break; // 未読なし
       active++;
       void loadTable(id).finally(() => {
         active--;
         idle(pump);
       });
     }
+    if (active === 0 && queue.length === 0) backgroundLoading = false;
   };
   idle(pump);
 }
