@@ -255,7 +255,11 @@ async function main() {
         (await page.locator(V + '[data-testid="lp-edit-table"]').count()) === 0);
 
     await page.click(V + '[data-testid="page-add"]');
-    await page.locator('[data-testid="page-id"]').pressSequentially("billing");
+    await page.waitForSelector('[data-testid="page-id"]', { timeout: 5000 });
+    // 開いた直後からページID を打てる（ダイアログの枠が autoFocus を奪わない）
+    await page.keyboard.type("billing");
+    check("the add-page dialog focuses the page id input",
+        (await page.inputValue('[data-testid="page-id"]')) === "billing");
     await page.locator('[data-testid="page-title"]').pressSequentially("課金");
     await page.click('[data-testid="page-create"]');
     check("I-01: new page file is written",

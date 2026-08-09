@@ -656,7 +656,7 @@ function RenamePageDialog({
         <label className="form-row">
           <span>{t("page.title")}</span>
           <input
-            autoFocus
+            data-autofocus="true"
             data-testid="page-rename-input"
             type="text"
             value={title}

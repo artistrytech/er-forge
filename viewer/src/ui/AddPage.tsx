@@ -80,7 +80,7 @@ export function AddPageDialog({ onClose }: { onClose: () => void }) {
         <label className="form-row">
           <span>{t("page.id")}</span>
           <input
-            autoFocus
+            data-autofocus="true"
             data-testid="page-id"
             type="text"
             value={id}

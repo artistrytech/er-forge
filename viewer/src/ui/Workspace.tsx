@@ -230,7 +230,10 @@ function WorkspaceFields({
           type="text"
           data-testid="workspace-id-input"
           value={id}
+          // ダイアログの中では Dialog が data-autofocus を見て当てる。welcome 画面（ダイアログ
+          // ではない）でも最初の入力へ移りたいので、素の autoFocus も残す
           autoFocus
+          data-autofocus="true"
           onChange={(e) => onId(e.target.value)}
           onKeyDown={onKey}
         />
@@ -302,7 +305,7 @@ export function WorkspaceDeleteDialog({
           type="text"
           data-testid="workspace-delete-input"
           value={typed}
-          autoFocus
+          data-autofocus="true"
           onChange={(e) => setTyped(e.target.value)}
         />
       </label>
