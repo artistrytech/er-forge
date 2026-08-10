@@ -14,6 +14,7 @@ import { rememberOwnRevision } from "../model/editStore";
 import { usePageEditStore } from "../model/pageEditStore";
 import { invalidateTable, loadTable, reloadIndex } from "../model/loader";
 import {
+  EMPTY_CARDINALITY,
   buildDraft,
   draftToMeta,
   errorsAt,
@@ -25,13 +26,15 @@ import {
 } from "../model/metaDraft";
 import { colorAttr, isColorToken } from "../model/colors";
 import { useAppStore } from "../model/store";
-import type { CardEnd, Table } from "../model/types";
+import type { Table } from "../model/types";
 import {
+  CardinalityBadge,
   ConstraintList,
   ConstraintRow,
   FkDetail,
   LogicalFkDialog,
   LogicalUniqueDialog,
+  PhysicalFkDialog,
 } from "./ConstraintDialog";
 import { NotesCell, NotesDialog } from "./NotesDialog";
 import { ColorSelect } from "../ui/ColorSelect";
@@ -77,6 +80,8 @@ export function TableEdit({ tableId }: { tableId: string }) {
   const [conflict, setConflict] = useState(false);
   /** 論理制約の作成・編集ダイアログ（uid=null は新規追加。P-06 / P-07） */
   const [editing, setEditing] = useState<{ kind: "unique" | "fk"; uid: number | null } | null>(null);
+  /** カーディナリティを設定中の物理FK（制約名。P-11。定義そのものは編集できない） */
+  const [editingPhysicalFk, setEditingPhysicalFk] = useState<string | null>(null);
   /** 注記を編集中のカラム（P-04）。本文はモーダルでマルチライン入力する */
   const [notesColumn, setNotesColumn] = useState<string | null>(null);
 
@@ -86,6 +91,7 @@ export function TableEdit({ tableId }: { tableId: string }) {
     setDraft(null);
     setLoadError(null);
     setEditing(null);
+    setEditingPhysicalFk(null);
     setNotesColumn(null);
     invalidateTable(tableId);
     const table = await loadTable(tableId);
@@ -495,6 +501,7 @@ export function TableEdit({ tableId }: { tableId: string }) {
               autoName={autoNameOf("lfk", fk.uid, fk.columns)}
               detail={<FkDetail fk={fk} />}
               notes={fk.notes}
+              badge={<CardinalityBadge value={fk.cardinality} />}
               hasError={errorsAt(allErrors, `meta.logicalForeignKeys[${i}]`).length > 0}
               testId="logical-fk"
               onEdit={() => setEditing({ kind: "fk", uid: fk.uid })}
@@ -515,8 +522,12 @@ export function TableEdit({ tableId }: { tableId: string }) {
           {t("tableEdit.addLogicalFk")}
         </button>
 
-        {/* ---- カーディナリティ（P-11） ---- */}
-        <CardinalitySection table={table} draft={draft} onChange={update} />
+        {/* ---- 物理FK（P-11。定義は machine-owned で編集できない。触れるのは多重度と注記だけ） ---- */}
+        <PhysicalFkSection
+          table={table}
+          draft={draft}
+          onOpen={(name) => setEditingPhysicalFk(name)}
+        />
       </fieldset>
 
       {notesColumn !== null && (
@@ -555,6 +566,29 @@ export function TableEdit({ tableId }: { tableId: string }) {
           }}
         />
       )}
+
+      {editingPhysicalFk !== null &&
+        (() => {
+          const fk = (table.foreignKeys ?? []).find((f) => f.name === editingPhysicalFk);
+          if (fk === undefined) return null;
+          return (
+            <PhysicalFkDialog
+              table={table}
+              fk={fk}
+              initial={draft.physicalCardinality[editingPhysicalFk] ?? { ...EMPTY_CARDINALITY }}
+              onClose={() => setEditingPhysicalFk(null)}
+              onSubmit={(cardinality) => {
+                update({
+                  physicalCardinality: {
+                    ...draft.physicalCardinality,
+                    [editingPhysicalFk]: cardinality,
+                  },
+                });
+                setEditingPhysicalFk(null);
+              }}
+            />
+          );
+        })()}
 
       {conflict && (
         <Dialog title={t("edit.conflict.title")} onClose={() => setConflict(false)}>
@@ -601,113 +635,60 @@ function ErrorText({ error }: { error: FieldError }) {
 }
 
 /**
- * カーディナリティの設定（P-11）。物理 FK + 論理外部制約の各リレーションについて、
- * 導出値（index.js の解決結果）を既定とし、meta.relations で上書きする。
+ * 物理FK の一覧（P-11）。DB から読み取った定義そのものは編集できない（machine-owned）。
+ * ここは**カーディナリティの上書きと注記への入口**であり、設定はそれぞれの詳細ダイアログで行う。
+ * 名前の無い物理FK は `meta.relations` のキーを作れないため、設定の対象にできない。
  */
-function CardinalitySection({
+function PhysicalFkSection({
   table,
   draft,
-  onChange,
+  onOpen,
 }: {
   table: Table;
   draft: MetaDraft;
-  onChange: (patch: Partial<MetaDraft>) => void;
+  onOpen: (name: string) => void;
 }) {
   const { t } = useI18n();
-  const index = useAppStore((s) => s.index);
-
-  const rows = useMemo(() => {
-    const out: { key: string; label: string; savedName: boolean }[] = [];
-    for (const fk of table.foreignKeys ?? []) {
-      if (fk.name === undefined) continue;
-      out.push({
-        key: `fk:${fk.name}`,
-        label: `${fk.name} (${fk.columns.join(", ")}) → ${fk.ref.table}`,
-        savedName: true,
-      });
-    }
-    for (const fk of draft.logicalForeignKeys) {
-      if (fk.name.trim() === "") continue; // 名前が決まってから設定できる（自動生成前は対象外）
-      out.push({
-        key: `lfk:${fk.name.trim()}`,
-        label: `${fk.name.trim()} (${fk.columns.join(", ")}) → ${fk.refTable}`,
-        savedName: false,
-      });
-    }
-    return out;
-  }, [table, draft.logicalForeignKeys]);
-
-  if (rows.length === 0) return null;
-
-  const resolvedOf = (key: string): string => {
-    const rel = (index?.relations ?? []).find((r) => r.id === `${table.id}#${key}`);
-    if (!rel?.cardinality) return "—";
-    return `${rel.cardinality.parent ?? "?"} / ${rel.cardinality.child ?? "?"}`;
-  };
-
-  const rowValue = (key: string) => draft.relations[key] ?? { parent: "" as const, child: "" as const, notes: "" };
-  const setRow = (key: string, patch: Partial<{ parent: "" | CardEnd; child: "" | CardEnd; notes: string }>) => {
-    const current = rowValue(key);
-    onChange({ relations: { ...draft.relations, [key]: { ...current, ...patch } } });
-  };
+  const named = (table.foreignKeys ?? []).filter((fk) => fk.name !== undefined);
+  const unnamed = (table.foreignKeys ?? []).length - named.length;
+  if (named.length === 0 && unnamed === 0) return null;
 
   return (
     <>
-      <h3>{t("tableEdit.sectionCardinality")}</h3>
-      <p className="muted form-hint">{t("tableEdit.cardinalityHint")}</p>
-      <div className="table-scroll">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>{t("relation.name")}</th>
-              <th>{t("tableEdit.derivedNow")}</th>
-              <th>{t("relation.parentSide")}</th>
-              <th>{t("relation.childSide")}</th>
-              <th>{t("table.colNotes")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => {
-              const v = rowValue(r.key);
-              return (
-                <tr key={r.key}>
-                  <td className="mono">{r.label}</td>
-                  <td className="mono muted">{resolvedOf(r.key)}</td>
-                  <td>
-                    <select
-                      value={v.parent}
-                      onChange={(e) => setRow(r.key, { parent: e.target.value as "" | CardEnd })}
-                    >
-                      <option value="">{t("tableEdit.auto")}</option>
-                      <option value="0..1">0..1</option>
-                      <option value="1..1">1..1</option>
-                    </select>
-                  </td>
-                  <td>
-                    <select
-                      value={v.child}
-                      onChange={(e) => setRow(r.key, { child: e.target.value as "" | CardEnd })}
-                    >
-                      <option value="">{t("tableEdit.auto")}</option>
-                      <option value="0..1">0..1</option>
-                      <option value="1..1">1..1</option>
-                      <option value="0..N">0..N</option>
-                      <option value="1..N">1..N</option>
-                    </select>
-                  </td>
-                  <td>
-                    <input
-                      type="text"
-                      value={v.notes}
-                      onChange={(e) => setRow(r.key, { notes: e.target.value })}
-                    />
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+      <h3>{t("tableEdit.sectionPhysicalFk")}</h3>
+      <p className="muted form-hint">ⓘ {t("tableEdit.physicalFkSectionHint")}</p>
+      <ConstraintList empty={named.length === 0}>
+        {named.map((fk) => {
+          const name = fk.name as string;
+          const cardinality = draft.physicalCardinality[name] ?? EMPTY_CARDINALITY;
+          return (
+            <ConstraintRow
+              key={name}
+              name={name}
+              detail={
+                <FkDetail
+                  fk={{
+                    uid: 0,
+                    name,
+                    columns: fk.columns,
+                    refTable: fk.ref.table,
+                    refColumns: fk.ref.columns ?? [],
+                    notes: "",
+                    cardinality,
+                  }}
+                />
+              }
+              notes={cardinality.notes}
+              badge={<CardinalityBadge value={cardinality} />}
+              hasError={false}
+              editLabel={t("tableEdit.openDetail")}
+              testId="physical-fk"
+              onEdit={() => onOpen(name)}
+            />
+          );
+        })}
+      </ConstraintList>
+      {unnamed > 0 && <p className="muted form-hint">{t("tableEdit.physicalFkUnnamed", { n: unnamed })}</p>}
     </>
   );
 }

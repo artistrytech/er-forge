@@ -205,6 +205,40 @@ async function main() {
       indexText.includes("public.user_sessions#lfk:lfk_user_sessions_user_id"),
     );
 
+    // ---- カーディナリティ（P-11）: 別枠の一覧ではなく、各制約の詳細ダイアログで設定する ----
+    // 物理FK は定義を変えられない（machine-owned）。詳細から多重度と注記だけ設定できる
+    check("the physical FK section lists the FK read from the DB",
+        (await page.getByTestId("physical-fk").count()) === 1);
+    await page.getByTestId("physical-fk-edit").click();
+    await page.waitForSelector('[data-testid="cardinality-fields"]', { timeout: 5000 });
+    check("the physical FK dialog shows the constraint name read-only",
+        (await page.getByTestId("physical-fk-name").textContent())?.includes("user_sessions_user_id_fkey"));
+    check("the resolved cardinality comes from the saved index.js",
+        (await page.getByTestId("cardinality-resolved").textContent())?.includes("0..N"));
+    await page.getByTestId("cardinality-child").selectOption("1..N");
+    await typeInto(page.getByTestId("cardinality-notes"), "セッションは必ず1件以上");
+    await page.getByTestId("constraint-submit").click();
+    check("the row shows a badge once the cardinality is set explicitly",
+        (await page.getByTestId("cardinality-badge").count()) >= 1);
+
+    // 論理外部制約の多重度は、同じダイアログの中（制約の属性として）設定する
+    await page.getByTestId("logical-fk-edit").click();
+    await page.waitForSelector('[data-testid="cardinality-fields"]', { timeout: 5000 });
+    await page.getByTestId("cardinality-parent").selectOption("1..1");
+    await page.getByTestId("constraint-submit").click();
+
+    await page.waitForSelector('[data-testid="save-button"]:not([disabled])', { timeout: 15000 });
+    await page.getByTestId("save-button").click();
+    await page.waitForSelector('[data-testid="save-button"][data-status="saved"]', { timeout: 15000 });
+    const cardText = readFileSync(
+      join(dir, "workspace-default", "data", "schema", "public", "user_sessions.js"),
+      "utf-8",
+    );
+    check("the physical FK cardinality is keyed by fk:<name>",
+        cardText.includes('"fk:user_sessions_user_id_fkey"') && cardText.includes('child: "1..N"'));
+    check("the logical FK cardinality is keyed by lfk:<name>",
+        cardText.includes('"lfk:lfk_user_sessions_user_id"') && cardText.includes('parent: "1..1"'));
+
     // ---- タグ（P-12）と色（P-13）: 空白で確定、色はタグとは独立に指定する ----
     const tagInput = page.getByTestId("table-tags");
     // サンプルの user_sessions には既に "auth" が付いている（chip 1件が初期状態）

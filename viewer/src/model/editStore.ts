@@ -16,18 +16,20 @@
  */
 import { create } from "zustand";
 import { translate, type MsgKey } from "../i18n/messages";
-import { apiDelete, apiGet, apiPatch, apiPost, wpath } from "./api";
+import { apiDelete, apiGet, apiPatch, apiPost, apiPut, wpath } from "./api";
 import { applyCommands, foldToPayload, invert, type Command } from "./commands";
 import {
   forceReloadDiagram,
   invalidateTable,
+  loadTable,
   reloadDictionary,
   reloadIndex,
   reloadManifest,
 } from "./loader";
+import { buildDraft, draftToMeta, type MetaDraft } from "./metaDraft";
 import { useAppStore } from "./store";
 import { currentWorkspaceId } from "./workspace";
-import type { Diagram } from "./types";
+import type { Diagram, Table } from "./types";
 
 export type SaveStatus = "saved" | "dirty" | "saving" | "failed";
 
@@ -808,6 +810,81 @@ export function installUnloadHandlers(): void {
 /** フォームの保存が発行したリビジョンを記録し、SSE のエコーバックを無視させる（INV-3） */
 export function rememberOwnRevision(revision: string): void {
   rememberRevision(revision);
+}
+
+/** {@link saveTableMeta} の結果。stale = 他で書き換えられていた（再取得してやり直す） */
+export type TableSaveResult = { ok: true } | { ok: false; message: string; stale?: boolean };
+
+/**
+ * テーブルの meta を1件だけ書き換えて即時保存する（ER図からの論理FK編集・カーディナリティ設定）。
+ *
+ * テーブル編集画面（TableEdit）が「開いて編集して明示保存」するのに対し、こちらは
+ * **ダイアログの確定 = 1回の保存**で完結する。ER図の配置編集（コマンド + Undo + 明示保存）
+ * とは別の経路であり、Undo の対象にもならない。
+ *
+ * 書き込みはレイアウト保存・ページ管理と同じ1本の経路に載せる（INV-6）。並行して投げると
+ * 派生ファイル（index.js）の再生成が競合し、古い内容で上書きされうる。
+ *
+ * @param edit 読み直した内容から作ったドラフトを書き換えて返す。null を返すと中止する
+ *   （対象の制約が見つからない = 他で変更された、など）
+ */
+export async function saveTableMeta(
+  tableId: string,
+  edit: (draft: MetaDraft, table: Table) => MetaDraft | null,
+): Promise<TableSaveResult> {
+  if (!serverMode()) return { ok: false, message: t9n("page.editHint") };
+  await waitForIdle();
+  inflight = true;
+  try {
+    // baseHash は「読み込んだ内容」に対して取る（§8.4）。順序を逆にすると、
+    // 読み込んだ後・ハッシュを取る前の変更を検出できない
+    invalidateTable(tableId);
+    const table = await loadTable(tableId);
+    if (!table) return { ok: false, message: t9n("relationEdit.tableGone", { id: tableId }) };
+    const head = await apiGet(wpath(`/tables/${encodeURIComponent(tableId)}`));
+    if (head.status === 403) return { ok: false, message: t9n("save.forbidden") };
+    if (head.status !== 200) {
+      return { ok: false, message: `${t9n("save.failed")} (HTTP ${head.status})` };
+    }
+    const baseHash = (JSON.parse(head.body) as { baseHash: string }).baseHash;
+
+    const next = edit(buildDraft(table), table);
+    if (next === null) return { ok: false, message: t9n("relationEdit.constraintGone"), stale: true };
+
+    const meta = draftToMeta(next, table);
+    const body: Record<string, unknown> = { ...table };
+    if (Object.keys(meta).length > 0) body["meta"] = meta;
+    else delete body["meta"];
+
+    const res = await apiPut(wpath(`/tables/${encodeURIComponent(tableId)}`), {
+      baseHash,
+      force: false,
+      table: body,
+    });
+    if (res.status === 200) {
+      const ok = JSON.parse(res.body) as { revision: string };
+      rememberRevision(ok.revision);
+      // 自分の書き込みは SSE では無視される（INV-3）ため、ここで追随させる。
+      // 論理外部制約は index.relations に載る = 再生成しないとエッジが増えない（P §4.3）
+      invalidateTable(tableId);
+      await loadTable(tableId);
+      await reloadIndex(ok.revision);
+      return { ok: true };
+    }
+    if (res.status === 409) return { ok: false, message: t9n("save.staleReload"), stale: true };
+    if (res.status === 403) return { ok: false, message: t9n("save.forbidden") };
+    if (res.status === 422) {
+      const invalid = JSON.parse(res.body) as { errors: { path: string; message: string }[] };
+      const detail = invalid.errors.map((e) => `${e.path}: ${e.message}`).join(" / ");
+      return { ok: false, message: detail === "" ? t9n("save.failed") : detail };
+    }
+    return { ok: false, message: `${t9n("save.failed")} (HTTP ${res.status})` };
+  } catch {
+    return { ok: false, message: `${t9n("save.failed")} (network)` };
+  } finally {
+    inflight = false;
+    void continueFlush();
+  }
 }
 
 /** エクスポート後などに未保存の有無を判定するヘルパ */

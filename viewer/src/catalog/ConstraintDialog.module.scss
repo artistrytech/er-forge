@@ -65,6 +65,16 @@
   white-space: nowrap;
 }
 
+/* カーディナリティを明示設定している印（自動命名バッジとは別色にする） */
+.card-badge {
+  padding: 1px 6px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
 .row-detail {
   font-size: 12.5px;
   overflow-wrap: anywhere;
@@ -147,6 +157,40 @@
   background: var(--panel);
   color: inherit;
   font-size: 12.5px;
+}
+
+/* 変更できない値（物理FK の定義など）。入力欄と混同させないため枠を持たせない */
+.readonly-value {
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+
+/* ---- カーディナリティ（親側 / 子側を横に並べる） ---- */
+
+.card-row {
+  display: flex;
+  gap: 10px;
+}
+
+.card-cell {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.card-cell-label {
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+/* 保存に失敗した理由（ダイアログは閉じず、入力はそのまま残す） */
+.submit-error {
+  margin: 12px 0 0;
+  color: var(--error);
+  font-size: 12px;
+  overflow-wrap: anywhere;
 }
 
 /* ---- 参照先テーブルの選択（絞り込み → 一覧から確定 → 確定後は入力不可） ---- */

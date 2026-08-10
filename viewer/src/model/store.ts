@@ -33,6 +33,11 @@ export type PanelLane = "pages" | "all" | "search";
 export type DialogState =
   | { type: "table"; id: string }
   | { type: "relation"; id: string }
+  /**
+   * リレーションの編集（ER図の編集モード中にエッジをダブルクリックしたとき）。
+   * 閲覧ルートからは開かない = 閲覧は読むだけ、を崩さない（P-11）
+   */
+  | { type: "relationEdit"; id: string }
   /** 名前を持たない制約もあるため、テーブル内の位置（at）で指す */
   | { type: "constraint"; tableId: string; kind: ConstraintKind; at: number };
 

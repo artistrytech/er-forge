@@ -14,14 +14,17 @@ import { createPortal } from "react-dom";
 import { useI18n } from "../i18n/useI18n";
 import { loadTable } from "../model/loader";
 import {
+  EMPTY_CARDINALITY,
   generateConstraintName,
+  isAutoCardinality,
   newUid,
+  type DraftCardinality,
   type DraftLogicalFk,
   type DraftLogicalUnique,
 } from "../model/metaDraft";
 import { formatName, resolveIndexTableName } from "../model/logicalName";
 import { useAppStore } from "../model/store";
-import type { IndexTable, Table } from "../model/types";
+import type { CardEnd, ForeignKey, IndexTable, Table } from "../model/types";
 import { Button } from "../ui/Button";
 import { Dialog } from "../ui/Dialog";
 import { cx } from "../lib/cx";
@@ -44,23 +47,29 @@ export function ConstraintList({ empty, children }: { empty: boolean; children: 
  */
 export function ConstraintRow({
   name,
-  autoName,
+  autoName = "",
   detail,
   notes,
   hasError,
+  badge,
+  editLabel,
   testId,
   onEdit,
   onRemove,
 }: {
   name: string;
-  /** 名前が空のときに保存で付く名前（プレビュー） */
-  autoName: string;
+  /** 名前が空のときに保存で付く名前（プレビュー）。名前が必ずある制約では不要 */
+  autoName?: string;
   detail: React.ReactNode;
   notes: string;
   hasError: boolean;
+  /** 名前の右に出す印（カーディナリティを明示設定しているか。P-11） */
+  badge?: React.ReactNode;
+  editLabel?: string;
   testId: string;
   onEdit: () => void;
-  onRemove: () => void;
+  /** 省略すると [削除] を出さない（物理FK は消せない = machine-owned） */
+  onRemove?: () => void;
 }) {
   const { t } = useI18n();
   const named = name.trim() !== "";
@@ -72,6 +81,7 @@ export function ConstraintRow({
             {named ? name.trim() : autoName}
           </span>
           {!named && <span className={styles.rowAutoBadge}>{t("tableEdit.autoNamed")}</span>}
+          {badge}
           {hasError && <span className="field-error">⚠</span>}
         </div>
         <div className={cx("mono", styles.rowDetail)}>{detail}</div>
@@ -79,13 +89,32 @@ export function ConstraintRow({
       </div>
       <div className={styles.rowActions}>
         <Button data-testid={`${testId}-edit`} onClick={onEdit}>
-          {t("tableEdit.edit")}
+          {editLabel ?? t("tableEdit.edit")}
         </Button>
-        <Button variant="danger" data-testid={`${testId}-remove`} onClick={onRemove}>
-          {t("tableEdit.remove")}
-        </Button>
+        {onRemove !== undefined && (
+          <Button variant="danger" data-testid={`${testId}-remove`} onClick={onRemove}>
+            {t("tableEdit.remove")}
+          </Button>
+        )}
       </div>
     </li>
+  );
+}
+
+/** カーディナリティを明示設定している制約に付ける印（一覧でひと目で分かるように。P-11） */
+export function CardinalityBadge({ value }: { value: DraftCardinality }) {
+  const { t } = useI18n();
+  if (isAutoCardinality(value)) return null;
+  // 片側だけの上書きもあるため、上書きしていない側は「自動」と出す（親 / 子 の順）
+  const auto = t("tableEdit.autoShort");
+  const text =
+    value.parent === "" && value.child === ""
+      ? t("tableEdit.cardinalityNotesOnly")
+      : `${value.parent === "" ? auto : value.parent} / ${value.child === "" ? auto : value.child}`;
+  return (
+    <span className={styles.cardBadge} data-testid="cardinality-badge" title={t("relation.explicit")}>
+      {text}
+    </span>
   );
 }
 
@@ -168,16 +197,97 @@ function NotesField({ value, onChange }: { value: string; onChange: (v: string) 
   );
 }
 
+/**
+ * カーディナリティの上書き（P-11）。物理FK・論理外部制約のどちらのダイアログでも同じ枠を使う。
+ *
+ * 親側に `0..N` / `1..N` は出さない（参照先は必ず1件を指すため。詳細設計 §5.3）。
+ * 「現在の解決値」は **保存済みの index.js から引く**。導出（NOT NULL / 一意制約からの判定）は
+ * サーバーが持つ唯一の実装であり、ビューアには複製しない（Phase0 §5）。そのため、
+ * まだ保存していない制約や、カラム構成を変えた直後は解決値を出せない。
+ */
+export function CardinalityFields({
+  value,
+  relationId,
+  onChange,
+}: {
+  value: DraftCardinality;
+  /** 解決値を引くためのリレーションID（`<テーブルID>#<種別>:<制約名>`）。未保存なら null */
+  relationId: string | null;
+  onChange: (next: DraftCardinality) => void;
+}) {
+  const { t } = useI18n();
+  const index = useAppStore((s) => s.index);
+  const relation =
+    relationId === null ? undefined : (index?.relations ?? []).find((r) => r.id === relationId);
+  const resolved = relation?.cardinality;
+
+  const end = (side: "parent" | "child", options: CardEnd[]) => (
+    <label className={styles.cardCell}>
+      <span className={styles.cardCellLabel}>
+        {side === "parent" ? t("relation.parentSide") : t("relation.childSide")}
+      </span>
+      <select
+        className={cx("mono", styles.select)}
+        data-testid={`cardinality-${side}`}
+        value={value[side]}
+        onChange={(e) => onChange({ ...value, [side]: e.target.value as "" | CardEnd })}
+      >
+        <option value="">{t("tableEdit.auto")}</option>
+        {options.map((o) => (
+          <option key={o} value={o}>
+            {o}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+
+  return (
+    <div className={styles.field} data-testid="cardinality-fields">
+      <span className={styles.fieldLabel}>{t("relation.cardinality")}</span>
+      <span className={styles.fieldHint}>{t("tableEdit.cardinalityHint")}</span>
+      <div className={styles.cardRow}>
+        {end("parent", ["0..1", "1..1"])}
+        {end("child", ["0..1", "1..1", "0..N", "1..N"])}
+      </div>
+      <span className={styles.fieldHint} data-testid="cardinality-resolved">
+        {resolved === undefined
+          ? t("tableEdit.derivedPending")
+          : t("tableEdit.derivedNowValue", {
+              parent: resolved.parent ?? "?",
+              child: resolved.child ?? "?",
+            })}
+      </span>
+      <input
+        type="text"
+        className={styles.input}
+        data-testid="cardinality-notes"
+        placeholder={t("tableEdit.cardinalityNotes")}
+        value={value.notes}
+        onChange={(e) => onChange({ ...value, notes: e.target.value })}
+      />
+    </div>
+  );
+}
+
 /** [確定]（確定できないときは理由を出したまま押させない）＋ [キャンセル] */
 function DialogActions({
   blocked,
   editing,
+  busy = false,
+  error,
+  extraActions,
   onSubmit,
   onClose,
 }: {
   /** 確定できない理由（null なら確定できる） */
   blocked: string | null;
   editing: boolean;
+  /** 保存中（ER図からの即時保存。二重送信を防ぐ） */
+  busy?: boolean;
+  /** 保存に失敗した理由。入力を失わせないため、ダイアログは閉じずにここへ出す */
+  error?: string | null;
+  extraActions?: React.ReactNode;
   onSubmit: () => void;
   onClose: () => void;
 }) {
@@ -185,16 +295,22 @@ function DialogActions({
   return (
     <>
       {blocked !== null && <p className={styles.blockedHint}>{blocked}</p>}
+      {error !== null && error !== undefined && error !== "" && (
+        <p className={styles.submitError} data-testid="constraint-error">
+          {error}
+        </p>
+      )}
       <div className="dialog-actions">
         <Button
           variant="primary"
           data-testid="constraint-submit"
-          disabled={blocked !== null}
+          disabled={blocked !== null || busy}
           onClick={onSubmit}
         >
-          {editing ? t("tableEdit.applyEdit") : t("tableEdit.applyAdd")}
+          {busy ? t("tableEdit.saving") : editing ? t("tableEdit.applyEdit") : t("tableEdit.applyAdd")}
         </Button>
         <Button onClick={onClose}>{t("layout.cancel")}</Button>
+        {extraActions}
       </div>
     </>
   );
@@ -547,21 +663,39 @@ export function LogicalUniqueDialog({
 export function LogicalFkDialog({
   table,
   initial,
+  adding = initial === null,
   taken,
+  busy = false,
+  error,
+  extraActions,
   onSubmit,
   onClose,
 }: {
   table: Table;
   /** null = 新規追加 */
   initial: DraftLogicalFk | null;
+  /**
+   * 新規追加として扱うか（既定は initial===null）。ER図から作るときは参照先が決まった状態で
+   * 開くため、初期値を渡しつつ「追加」の見た目にする必要がある
+   */
+  adding?: boolean;
   /** ほかの論理外部制約の名前（重複させない・自動生成の連番に使う） */
   taken: ReadonlySet<string>;
+  /** 保存中（ER図からの即時保存。押しっぱなしを防ぐ） */
+  busy?: boolean;
+  /** 保存に失敗した理由（ダイアログを閉じずに見せる） */
+  error?: string | null;
+  /** 追加のボタン（ER図からの編集では [削除] を置く） */
+  extraActions?: React.ReactNode;
   onSubmit: (next: DraftLogicalFk) => void;
   onClose: () => void;
 }) {
   const { t } = useI18n();
   const [name, setName] = useState(initial?.name ?? "");
   const [notes, setNotes] = useState(initial?.notes ?? "");
+  const [cardinality, setCardinality] = useState<DraftCardinality>(
+    initial?.cardinality ?? { ...EMPTY_CARDINALITY },
+  );
   const [refTable, setRefTable] = useState(initial?.refTable ?? "");
   // 既存データは両側の本数がずれている可能性がある（手書きのファイル）。長い方に合わせて
   // 組にし、欠けた側は未選択として見せる（ダイアログ上で必ず埋めさせる）
@@ -606,7 +740,7 @@ export function LogicalFkDialog({
 
   return (
     <Dialog
-      title={initial === null ? t("tableEdit.fkAddTitle") : t("tableEdit.fkEditTitle")}
+      title={adding ? t("tableEdit.fkAddTitle") : t("tableEdit.fkEditTitle")}
       onClose={onClose}
     >
       <p className="muted form-hint">{t("tableEdit.fkDialogHint")}</p>
@@ -706,9 +840,25 @@ export function LogicalFkDialog({
       </div>
 
       <NotesField value={notes} onChange={setNotes} />
+
+      {/* カーディナリティはこの制約の属性なので、別枠の一覧ではなくここで設定する（P-11） */}
+      <CardinalityFields
+        value={cardinality}
+        // 解決値は保存済みの名前でしか引けない（新規・リネーム中は出ない）
+        relationId={
+          initial !== null && !adding && initial.name.trim() !== ""
+            ? `${table.id}#lfk:${initial.name.trim()}`
+            : null
+        }
+        onChange={setCardinality}
+      />
+
       <DialogActions
         blocked={blocked}
-        editing={initial !== null}
+        editing={!adding}
+        busy={busy}
+        error={error}
+        extraActions={extraActions}
         onClose={onClose}
         onSubmit={() =>
           onSubmit({
@@ -718,8 +868,95 @@ export function LogicalFkDialog({
             refTable,
             refColumns,
             notes: notes.trim(),
+            cardinality,
           })
         }
+      />
+    </Dialog>
+  );
+}
+
+// ------------------------------------------------------------------ 物理外部キー
+
+/**
+ * 物理FK の詳細（O-03 / P-11）。**定義そのものは machine-owned で編集できない**
+ * （DB から読み取った内容であり、変更は逆生成の適用でのみ入る。J-01〜J-04）。
+ * ここで編集できるのは人が付ける情報 = カーディナリティの上書きと注記だけ。
+ */
+export function PhysicalFkDialog({
+  table,
+  fk,
+  initial,
+  busy = false,
+  error,
+  onSubmit,
+  onClose,
+}: {
+  table: Table;
+  fk: ForeignKey;
+  initial: DraftCardinality;
+  busy?: boolean;
+  error?: string | null;
+  onSubmit: (next: DraftCardinality) => void;
+  onClose: () => void;
+}) {
+  const { t } = useI18n();
+  const [cardinality, setCardinality] = useState<DraftCardinality>(initial);
+  const n = Math.max(fk.columns.length, fk.ref.columns?.length ?? 0);
+
+  return (
+    <Dialog title={t("tableEdit.physicalFkTitle")} onClose={onClose}>
+      <p className="muted form-hint">{t("tableEdit.physicalFkHint")}</p>
+
+      <div className={styles.field}>
+        <span className={styles.fieldLabel}>{t("relation.name")}</span>
+        <span className={cx("mono", styles.readonlyValue)} data-testid="physical-fk-name">
+          {fk.name ?? t("constraint.noName")}
+        </span>
+      </div>
+
+      <div className={styles.field}>
+        <span className={styles.fieldLabel}>{t("tableEdit.columnMapping")}</span>
+        <div className={cx("mono", styles.readonlyValue)}>
+          {Array.from({ length: n }, (_, i) => (
+            <div key={i} className={styles.detailPair}>
+              <span>{fk.columns[i] ?? "?"}</span>
+              <span className={styles.pairArrow} aria-hidden="true">
+                →
+              </span>
+              <span>{`${fk.ref.table}.${fk.ref.columns?.[i] ?? "?"}`}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {(fk.onDelete !== undefined || fk.onUpdate !== undefined) && (
+        <div className={styles.field}>
+          <span className={styles.fieldLabel}>{t("tableEdit.fkActions")}</span>
+          <span className={cx("mono", styles.readonlyValue)}>
+            {[
+              fk.onDelete !== undefined ? `ON DELETE ${fk.onDelete}` : null,
+              fk.onUpdate !== undefined ? `ON UPDATE ${fk.onUpdate}` : null,
+            ]
+              .filter((s) => s !== null)
+              .join(" / ")}
+          </span>
+        </div>
+      )}
+
+      <CardinalityFields
+        value={cardinality}
+        relationId={fk.name === undefined ? null : `${table.id}#fk:${fk.name}`}
+        onChange={setCardinality}
+      />
+
+      <DialogActions
+        blocked={null}
+        editing
+        busy={busy}
+        error={error}
+        onClose={onClose}
+        onSubmit={() => onSubmit(cardinality)}
       />
     </Dialog>
   );

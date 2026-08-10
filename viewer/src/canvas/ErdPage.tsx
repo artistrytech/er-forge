@@ -32,6 +32,7 @@ import { useAppStore } from "../model/store";
 import type { IndexTable, Relation } from "../model/types";
 import { Dialog } from "../ui/Dialog";
 import { useCanvasStore } from "./canvasStore";
+import { LogicalFkCreateDialog } from "./RelationEditDialog";
 import { RelationEdge, type RelationEdgeType } from "./RelationEdge";
 import { TableNode, type TableNodeType } from "./TableNode";
 import styles from "./ErdPage.module.scss";
@@ -96,8 +97,17 @@ function ErdCanvas({ diagramId, focusTableId }: ErdPageProps) {
   const [preview, setPreview] = useState<Record<string, Pos> | null>(null);
   const [layoutBusy, setLayoutBusy] = useState(false);
   const [removeConfirm, setRemoveConfirm] = useState<string[] | null>(null);
+  /**
+   * 論理外部制約の作成モード（P-07）。編集モードの中の**一時的な特殊モード**で、
+   * 参照元 → 参照先 → 詳細、の順に選ばせる。この間は配置の編集（移動・除去・Undo）を止める
+   * （クリックの意味が「選ぶ」に変わるため、同じ操作で違うことが起きないようにする）。
+   */
+  const [fkDraft, setFkDraft] = useState<{ from: string | null; to: string | null } | null>(null);
   /** 配置編集ができるのは「サーバーモード × 編集中」だけ（§9.6） */
   const canPlace = editing && serverMode;
+  /** リレーションの作成・編集も条件は同じ（静的モードではファイルに書けない） */
+  const canEditRelations = canPlace;
+  const pickingFk = fkDraft !== null && fkDraft.to === null;
 
   useEffect(() => {
     void loadDiagram(diagramId);
@@ -200,20 +210,47 @@ function ErdCanvas({ diagramId, focusTableId }: ErdPageProps) {
   }, [diagram, pageRelations]);
 
   const onNodeClick = useCallback(
-    (_e: unknown, node: TableNodeType) => select({ type: "node", id: node.id }, pageRelations),
-    [select, pageRelations],
+    (_e: unknown, node: TableNodeType) => {
+      // 作成モード中のクリックは「選ぶ」の意味になる（選択のハイライトは動かさない）
+      if (fkDraft !== null) {
+        if (!indexTables.has(node.id)) {
+          // 索引に無い孤児ノード（K-13）はテーブルの実体が読めず、制約の対象にできない
+          addToast(t("relationEdit.pickMissing"), "error");
+          return;
+        }
+        setFkDraft((d) =>
+          d === null ? d : d.from === null ? { from: node.id, to: null } : { from: d.from, to: node.id },
+        );
+        return;
+      }
+      select({ type: "node", id: node.id }, pageRelations);
+    },
+    [addToast, fkDraft, indexTables, select, pageRelations, t],
   );
   const onEdgeClick = useCallback(
-    (_e: unknown, edge: RelationEdgeType) => select({ type: "edge", id: edge.id }, pageRelations),
-    [select, pageRelations],
+    (_e: unknown, edge: RelationEdgeType) => {
+      if (fkDraft !== null) return;
+      select({ type: "edge", id: edge.id }, pageRelations);
+    },
+    [fkDraft, select, pageRelations],
   );
   const onNodeDoubleClick = useCallback(
-    (_e: unknown, node: TableNodeType) => openDialog({ type: "table", id: node.id }),
-    [openDialog],
+    (_e: unknown, node: TableNodeType) => {
+      if (fkDraft !== null) return;
+      openDialog({ type: "table", id: node.id });
+    },
+    [fkDraft, openDialog],
   );
+  /**
+   * 編集モード中は編集できるダイアログを開く（閲覧ルートからは今までどおり読むだけ）。
+   * 物理FK はカーディナリティと注記だけ、論理外部制約は定義ごと変えられる。
+   */
   const onEdgeDoubleClick = useCallback(
-    (_e: unknown, edge: RelationEdgeType) => openDialog({ type: "relation", id: edge.id }),
-    [openDialog],
+    (_e: unknown, edge: RelationEdgeType) => {
+      if (fkDraft !== null) return;
+      openDialog({ type: canEditRelations ? "relationEdit" : "relation", id: edge.id });
+    },
+    [canEditRelations, fkDraft, openDialog],
   );
 
   // H-01 / H-02: ドラッグ確定（手を離したとき）が1操作 = コマンド1つ（§3.1）
@@ -453,6 +490,21 @@ function ErdCanvas({ diagramId, focusTableId }: ErdPageProps) {
     }
   }, [builtNodes, editing, preview, setNodes]);
 
+  // 編集を終えた・ページを移ったら作成モードを畳む（選んだ相手が居なくなるため）
+  useEffect(() => {
+    setFkDraft(null);
+  }, [canEditRelations, diagramId]);
+
+  // Esc で作成モードを中断する（3段目のダイアログは Dialog 自身も Esc で閉じる）
+  useEffect(() => {
+    if (fkDraft === null) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setFkDraft(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [fkDraft]);
+
   const exists = manifest?.diagrams?.some((d) => d.id === diagramId) ?? false;
   if (!exists || diagramError !== undefined) {
     return (
@@ -478,9 +530,10 @@ function ErdCanvas({ diagramId, focusTableId }: ErdPageProps) {
         fitView
         minZoom={0.1}
         maxZoom={2.5}
-        nodesDraggable={editing && !previewing}
+        // 作成モード中はクリックの意味が変わる。移動・選択は止める（onNodeClick は届く）
+        nodesDraggable={editing && !previewing && fkDraft === null}
         nodesConnectable={false}
-        elementsSelectable={editing && !previewing}
+        elementsSelectable={editing && !previewing && fkDraft === null}
         snapToGrid
         snapGrid={[8, 8]}
         zoomOnDoubleClick={false}
@@ -512,14 +565,29 @@ function ErdCanvas({ diagramId, focusTableId }: ErdPageProps) {
           </span>
         </Panel>
         <ZoomPanel />
-        {editing && !previewing && (
+        {editing && !previewing && fkDraft === null && (
           <EditToolbar
             diagramId={diagramId}
             canPlace={canPlace}
+            canEditRelations={canEditRelations}
             busy={layoutBusy}
             onAutoLayout={startLayoutPreview}
             onRemove={requestRemove}
+            onAddRelation={() => setFkDraft({ from: null, to: null })}
           />
+        )}
+        {pickingFk && (
+          <Panel position="top-center" className={styles.erdFkPicker} data-testid="erd-fk-picker">
+            <span className={styles.erdFkStep}>{fkDraft.from === null ? "1 / 3" : "2 / 3"}</span>
+            <span>
+              {fkDraft.from === null
+                ? t("relationEdit.pickFrom")
+                : t("relationEdit.pickTo", { name: labelOf(fkDraft.from) })}
+            </span>
+            <button type="button" data-testid="erd-fk-cancel" onClick={() => setFkDraft(null)}>
+              {t("layout.cancel")}
+            </button>
+          </Panel>
         )}
         {previewing && (
           <Panel position="top-center" className={styles.erdLayoutPreview} data-testid="erd-layout-preview">
@@ -535,7 +603,9 @@ function ErdCanvas({ diagramId, focusTableId }: ErdPageProps) {
         <FocusOnTable diagramId={diagramId} tableId={focusTableId} />
         <KeyboardShortcuts
           diagramId={diagramId}
-          canRemove={canPlace && !previewing}
+          canRemove={canPlace && !previewing && fkDraft === null}
+          // 作成モード中は配置のコマンド（Undo / Redo / 保存）を受け付けない
+          frozen={fkDraft !== null}
           onRemove={requestRemove}
         />
         {Object.keys(diagram.nodes ?? {}).length === 0 && !previewing && (
@@ -549,6 +619,15 @@ function ErdCanvas({ diagramId, focusTableId }: ErdPageProps) {
           count={removeConfirm.length}
           onCancel={() => setRemoveConfirm(null)}
           onConfirm={confirmRemove}
+        />
+      )}
+      {/* 3段目: 参照元・参照先が決まったら、残り（カラム対応・名前・多重度）をダイアログで決める。
+          確定すると即時に保存される（配置編集の Undo / Redo とは別の経路） */}
+      {fkDraft !== null && fkDraft.from !== null && fkDraft.to !== null && (
+        <LogicalFkCreateDialog
+          fromId={fkDraft.from}
+          toId={fkDraft.to}
+          onClose={() => setFkDraft(null)}
         />
       )}
     </div>
@@ -617,19 +696,23 @@ function FocusOnTable({ diagramId, tableId }: { diagramId: string; tableId?: str
   return null;
 }
 
-/** Undo / Redo・自動レイアウト・除去（H-05 / H-07 / I-06。閲覧中は表示しない） */
+/** Undo / Redo・自動レイアウト・除去・論理外部制約の追加（H-05 / H-07 / I-06 / P-07） */
 function EditToolbar({
   diagramId,
   canPlace,
+  canEditRelations,
   busy,
   onAutoLayout,
   onRemove,
+  onAddRelation,
 }: {
   diagramId: string;
   canPlace: boolean;
+  canEditRelations: boolean;
   busy: boolean;
   onAutoLayout: () => void;
   onRemove: () => void;
+  onAddRelation: () => void;
 }) {
   const { t } = useI18n();
   const page = useEditStore((s) => s.pages[diagramId]);
@@ -666,6 +749,16 @@ function EditToolbar({
       <button type="button" data-testid="remove-node" disabled={!canPlace} onClick={onRemove} title="Delete">
         🗑 {t("node.remove")}
       </button>
+      {/* 論理外部制約だけ作れる。物理FK は DB の実体があって初めて存在する（machine-owned） */}
+      <button
+        type="button"
+        data-testid="add-relation"
+        disabled={!canEditRelations}
+        onClick={onAddRelation}
+        title={canEditRelations ? t("relationEdit.addHint") : t("layout.staticDisabled")}
+      >
+        ⇢ {t("relationEdit.add")}
+      </button>
     </Panel>
   );
 }
@@ -674,10 +767,13 @@ function EditToolbar({
 function KeyboardShortcuts({
   diagramId,
   canRemove,
+  frozen = false,
   onRemove,
 }: {
   diagramId: string;
   canRemove: boolean;
+  /** 配置のコマンドを受け付けない状態（論理外部制約の作成モード中）。ズームだけは効かせる */
+  frozen?: boolean;
   onRemove: () => void;
 }) {
   const rf = useReactFlow();
@@ -686,6 +782,7 @@ function KeyboardShortcuts({
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
       const st = useEditStore.getState();
+      if (frozen && (e.ctrlKey || e.metaKey || e.key === "Delete")) return;
       if (e.key === "Delete" && canRemove && st.session === "editing") {
         e.preventDefault();
         onRemove();
@@ -711,6 +808,6 @@ function KeyboardShortcuts({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [rf, diagramId, canRemove, onRemove]);
+  }, [rf, diagramId, canRemove, frozen, onRemove]);
   return null;
 }

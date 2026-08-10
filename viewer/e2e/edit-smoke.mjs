@@ -36,6 +36,16 @@ function javaBin() {
   return "java";
 }
 
+/** ファイルが条件を満たすまで待つ（画面の見た目ではなく、書かれた結果で判定する） */
+async function waitForFile(path, predicate, timeout = 15000) {
+  const until = Date.now() + timeout;
+  for (;;) {
+    if (predicate(readFileSync(path, "utf-8"))) return true;
+    if (Date.now() > until) return false;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+}
+
 function usersPosInFile(dir) {
   const text = readFileSync(join(dir, "workspace-default", "data", "diagrams", "users.js"), "utf-8");
   const m = text.match(/"public\.users": \{ pos: \[(-?\d+), (-?\d+)\]/);
@@ -192,6 +202,84 @@ async function main() {
         text.includes('"public.users": { pos: [160, 160]'));
     check("overwrite saves my user_profiles move",
         !text.includes('"public.user_profiles": { pos: [80, 256]'));
+
+    // ---- 5b. ER図からの論理外部制約の作成（P-07。3段階 → 即時保存 / Undo 対象外） ----
+    const edgesBefore = await page.locator('[data-testid="erd-edge"]').count();
+    await page.getByTestId("add-relation").click();
+    await page.waitForSelector('[data-testid="erd-fk-picker"]', { timeout: 5000 });
+    // 作成モード中は配置編集を止める（クリックの意味が「選ぶ」に変わるため）
+    check("fk picker hides the edit toolbar",
+        (await page.locator('[data-testid="erd-edit-toolbar"]').count()) === 0);
+    await page.click('.react-flow__node[data-id="public.user_sessions"]');
+    await page.click('.react-flow__node[data-id="public.user_profiles"]');
+    // 3段目は通常の論理外部制約ダイアログ（参照先だけ埋まった状態で開く）
+    await page.waitForSelector('[data-testid="fk-ref-table"]', { timeout: 10000 });
+    check("the third step opens with the referenced table already chosen",
+        (await page.getByTestId("fk-ref-table").getAttribute("data-table-id")) === "public.user_profiles");
+    await page.getByTestId("fk-column-0").selectOption("user_id");
+    await page.waitForFunction(
+      () => {
+        const s = document.querySelector('[data-testid="fk-ref-column-0"]');
+        return s !== null && !s.disabled && s.options.length > 1;
+      },
+      null,
+      { timeout: 15000 },
+    );
+    await page.getByTestId("fk-ref-column-0").selectOption("id");
+    // カーディナリティは同じダイアログの中で設定する（別枠の一覧ではない。P-11）
+    await page.getByTestId("cardinality-child").selectOption("1..N");
+    await page.getByTestId("constraint-submit").click();
+    // 確定 = 即時保存。index.js が再生成され、破線エッジが1本増える
+    await page.waitForFunction(
+      (n) => document.querySelectorAll('[data-testid="erd-edge"]').length === n + 1,
+      edgesBefore,
+      { timeout: 15000 },
+    );
+    check("creating a logical FK from the canvas adds an edge", true);
+    const sessionsFile = join(dir, "workspace-default", "data", "schema", "public", "user_sessions.js");
+    const sessionsText = readFileSync(sessionsFile, "utf-8");
+    check("the logical FK is written to the referencing table's file",
+        sessionsText.includes('table: "public.user_profiles"')
+        && sessionsText.includes("lfk_user_sessions_user_id"));
+    check("the cardinality set in the dialog is written to meta.relations",
+        sessionsText.includes('"lfk:lfk_user_sessions_user_id"') && sessionsText.includes('child: "1..N"'));
+    // 配置編集の保存状態は動かない（別経路で、Undo の対象にもならない）
+    check("an immediate save does not make the layout dirty",
+        (await page.locator('[data-testid="save-button"][data-status="saved"]').count()) === 1);
+
+    // ---- 5c. エッジのダブルクリックで編集（編集モード中だけ。閲覧では読むだけ） ----
+    const lfkEdge = '.react-flow__edge[data-id="public.user_sessions#lfk:lfk_user_sessions_user_id"]';
+    await page.locator(`${lfkEdge} .react-flow__edge-interaction`).dblclick({ force: true });
+    await page.waitForSelector('[data-testid="cardinality-fields"]', { timeout: 10000 });
+    check("double-clicking an edge while editing opens the editable dialog",
+        (await page.getByTestId("fk-ref-table").getAttribute("data-table-id")) === "public.user_profiles");
+    // 保存済みなので、今度は解決値（index.js 由来）が出る
+    check("the dialog shows the resolved cardinality once saved",
+        (await page.getByTestId("cardinality-resolved").textContent())?.includes("1..N"));
+    await page.getByTestId("cardinality-parent").selectOption("1..1");
+    await page.getByTestId("constraint-submit").click();
+    check("editing a relation from the canvas writes the file",
+        await waitForFile(sessionsFile, (t) => t.includes('parent: "1..1"')));
+    // 保存が済むとダイアログは閉じる（失敗したときは開いたまま理由を出す）
+    await page.waitForFunction(
+      () => document.querySelector('[data-testid="cardinality-fields"]') === null,
+      null,
+      { timeout: 15000 },
+    );
+
+    // 削除も同じダイアログから（配置の Undo では戻らないので、確認を挟む）
+    await page.locator(`${lfkEdge} .react-flow__edge-interaction`).dblclick({ force: true });
+    await page.waitForSelector('[data-testid="relation-delete"]', { timeout: 10000 });
+    await page.getByTestId("relation-delete").click();
+    await page.getByTestId("relation-delete-confirm").click();
+    check("deleting a logical FK from the canvas removes the constraint",
+        await waitForFile(sessionsFile, (t) => !t.includes("lfk_user_sessions_user_id")));
+    await page.waitForFunction(
+      (n) => document.querySelectorAll('[data-testid="erd-edge"]').length === n,
+      edgesBefore,
+      { timeout: 15000 },
+    );
+    check("the edge disappears from the canvas as well", true);
 
     // ---- 6. 編集終了（未保存なし）→ 閲覧ルートへ戻る ----
     // （エクスポートは静的モード専用になったため、バイト一致の検証は下の静的モードで行う）

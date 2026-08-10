@@ -25,20 +25,36 @@ export interface DraftLogicalUnique {
   notes: string;
 }
 
+/**
+ * カーディナリティの上書き（P-11）。"" = 上書きしない（物理からの導出値に任せる）。
+ *
+ * 保存先は `meta.relations[<種別>:<制約名>]` だが、**ドラフトでは制約名で持たない**。
+ * 論理外部制約は編集中に名前が変わる（未入力なら保存時に自動生成される）ため、
+ * 名前をキーにすると設定が制約から外れて孤児になってしまう。制約の行そのものに持たせ、
+ * 保存時（draftToMeta）に確定した名前でキーを組み立てる。
+ */
+export interface DraftCardinality {
+  parent: "" | CardEnd;
+  child: "" | CardEnd;
+  notes: string;
+}
+
+export const EMPTY_CARDINALITY: DraftCardinality = { parent: "", child: "", notes: "" };
+
 export interface DraftLogicalFk {
   uid: number;
   name: string;
   columns: string[];
   refTable: string;
   refColumns: string[];
+  /** 制約そのものの注記（meta.logicalForeignKeys[].notes） */
   notes: string;
+  /** この制約のカーディナリティ（meta.relations["lfk:<制約名>"]） */
+  cardinality: DraftCardinality;
 }
 
-export interface DraftRelation {
-  parent: "" | CardEnd;
-  child: "" | CardEnd;
-  notes: string;
-}
+/** meta.relations の1エントリ（保存形） */
+export type RelationEntry = { parent?: CardEnd; child?: CardEnd; notes?: string };
 
 export interface MetaDraft {
   displayName: string;
@@ -49,8 +65,16 @@ export interface MetaDraft {
   columns: Record<string, DraftColumnMeta>;
   logicalUniques: DraftLogicalUnique[];
   logicalForeignKeys: DraftLogicalFk[];
-  /** キー = `fk:<制約名>` / `lfk:<制約名>`（P-11） */
-  relations: Record<string, DraftRelation>;
+  /**
+   * 物理FK のカーディナリティ。キー = 物理FK の制約名（`fk:` は付けない）。
+   * 物理FK は machine-owned で編集中に名前が変わらないため、名前で持って問題ない。
+   */
+  physicalCardinality: Record<string, DraftCardinality>;
+  /**
+   * 現存する制約に対応しない meta.relations のエントリ（キーは保存形のまま）。
+   * 画面には出ないが、保存で黙って捨てない（INV-1。手で書いた設定を消さない）。
+   */
+  orphanRelations: Record<string, RelationEntry>;
 }
 
 let uidSeq = 0;
@@ -70,10 +94,37 @@ export function buildDraft(table: Table): MetaDraft {
       notes: cm?.notes ?? "",
     };
   }
-  const relations: Record<string, DraftRelation> = {};
+  // meta.relations は「どの制約の設定か」で3つに振り分ける（残りは孤児として素通し）
+  const rest = new Map<string, RelationEntry>();
   for (const [key, rm] of Object.entries(meta?.relations ?? {})) {
-    relations[key] = { parent: rm.parent ?? "", child: rm.child ?? "", notes: rm.notes ?? "" };
+    rest.set(key, {
+      ...(rm.parent !== undefined ? { parent: rm.parent } : {}),
+      ...(rm.child !== undefined ? { child: rm.child } : {}),
+      ...(rm.notes !== undefined ? { notes: rm.notes } : {}),
+    });
   }
+  const takeCardinality = (key: string): DraftCardinality => {
+    const entry = rest.get(key);
+    if (entry === undefined) return { ...EMPTY_CARDINALITY };
+    rest.delete(key);
+    return { parent: entry.parent ?? "", child: entry.child ?? "", notes: entry.notes ?? "" };
+  };
+
+  const physicalCardinality: Record<string, DraftCardinality> = {};
+  for (const fk of table.foreignKeys ?? []) {
+    if (fk.name === undefined) continue; // 名前の無い物理FK は relations のキーを作れない
+    physicalCardinality[fk.name] = takeCardinality(`fk:${fk.name}`);
+  }
+  const logicalForeignKeys = (meta?.logicalForeignKeys ?? []).map((fk) => ({
+    uid: newUid(),
+    name: fk.name ?? "",
+    columns: [...fk.columns],
+    refTable: fk.ref.table,
+    refColumns: [...(fk.ref.columns ?? [])],
+    notes: fk.notes ?? "",
+    cardinality: fk.name === undefined ? { ...EMPTY_CARDINALITY } : takeCardinality(`lfk:${fk.name}`),
+  }));
+
   return {
     displayName: meta?.displayName ?? "",
     tags: [...(meta?.tags ?? [])],
@@ -86,15 +137,9 @@ export function buildDraft(table: Table): MetaDraft {
       columns: [...u.columns],
       notes: u.notes ?? "",
     })),
-    logicalForeignKeys: (meta?.logicalForeignKeys ?? []).map((fk) => ({
-      uid: newUid(),
-      name: fk.name ?? "",
-      columns: [...fk.columns],
-      refTable: fk.ref.table,
-      refColumns: [...(fk.ref.columns ?? [])],
-      notes: fk.notes ?? "",
-    })),
-    relations,
+    logicalForeignKeys,
+    physicalCardinality,
+    orphanRelations: Object.fromEntries(rest),
   };
 }
 
@@ -181,6 +226,17 @@ export function draftToMeta(draft: MetaDraft, table: Table): TableMeta {
   });
   if (logicalUniques.length > 0) meta["logicalUniques"] = logicalUniques;
 
+  // 孤児（現存しない制約への設定）を先に置き、以降のキーが同名なら上書きする
+  const relations: Record<string, RelationEntry> = { ...draft.orphanRelations };
+  const putCardinality = (key: string, c: DraftCardinality): void => {
+    const entry = cardinalityToEntry(c);
+    if (entry === null) delete relations[key];
+    else relations[key] = entry;
+  };
+  for (const [name, c] of Object.entries(draft.physicalCardinality)) {
+    putCardinality(`fk:${name}`, c);
+  }
+
   const takenFk = new Set<string>();
   for (const fk of draft.logicalForeignKeys) {
     if (fk.name.trim() !== "") takenFk.add(fk.name.trim());
@@ -191,6 +247,8 @@ export function draftToMeta(draft: MetaDraft, table: Table): TableMeta {
         ? fk.name.trim()
         : generateConstraintName("lfk", table.name, fk.columns, takenFk);
     takenFk.add(name);
+    // カーディナリティのキーは確定した名前で組み立てる（リネームにも自動で追随する）
+    putCardinality(`lfk:${name}`, fk.cardinality);
     return {
       name,
       columns: [...fk.columns],
@@ -200,17 +258,23 @@ export function draftToMeta(draft: MetaDraft, table: Table): TableMeta {
   });
   if (logicalForeignKeys.length > 0) meta["logicalForeignKeys"] = logicalForeignKeys;
 
-  const relations: Record<string, { parent?: CardEnd; child?: CardEnd; notes?: string }> = {};
-  for (const [key, r] of Object.entries(draft.relations)) {
-    const entry: { parent?: CardEnd; child?: CardEnd; notes?: string } = {};
-    if (r.parent !== "") entry.parent = r.parent;
-    if (r.child !== "") entry.child = r.child;
-    if (r.notes.trim() !== "") entry.notes = r.notes.trim();
-    if (Object.keys(entry).length > 0) relations[key] = entry;
-  }
   if (Object.keys(relations).length > 0) meta["relations"] = relations;
 
   return meta as TableMeta;
+}
+
+/** カーディナリティの保存形。すべて未設定なら null（= キーごと落とす。P §1.1） */
+export function cardinalityToEntry(c: DraftCardinality): RelationEntry | null {
+  const entry: RelationEntry = {};
+  if (c.parent !== "") entry.parent = c.parent;
+  if (c.child !== "") entry.child = c.child;
+  if (c.notes.trim() !== "") entry.notes = c.notes.trim();
+  return Object.keys(entry).length > 0 ? entry : null;
+}
+
+/** 何も上書きしていないか（一覧の「明示設定あり」バッジの判定） */
+export function isAutoCardinality(c: DraftCardinality | undefined): boolean {
+  return c === undefined || (c.parent === "" && c.child === "" && c.notes.trim() === "");
 }
 
 // ------------------------------------------------------ バリデーション（J-06 / P-08）

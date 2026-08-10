@@ -94,6 +94,39 @@
   color: var(--text-muted);
 }
 
+/* 論理外部制約の作成モード（P-07）: いま何段目で、何をクリックすればよいのかを常に出す。
+   配置編集を止めている状態なので、レイアウトのプレビューと同じ位置・同じ見た目にする */
+.erd-fk-picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--bg);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 12%);
+  font-size: 12px;
+}
+
+.erd-fk-picker button {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.erd-fk-step {
+  padding: 1px 7px;
+  border-radius: 9px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
 /* 自動レイアウト（H-07）のプレビュー: 提案を実線、現在をゴーストで薄く重ねる（§7.2） */
 .erd-layout-preview {
   display: flex;

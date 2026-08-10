@@ -22,6 +22,7 @@ import { Link } from "./ui/Link";
 import { NotFound } from "./ui/NotFound";
 import { LeftPanel, usePageTables, useTablesPanelPage } from "./ui/LeftPanel";
 import { ConstraintInfoDialog, RelationDialog } from "./ui/DetailDialogs";
+import { RelationEditDialog } from "./canvas/RelationEditDialog";
 import { SearchDialog } from "./ui/SearchDialog";
 import { TableDetailDialog } from "./ui/TableDetailDialog";
 import { WelcomeScreen, WorkspaceNotFound } from "./ui/Workspace";
@@ -322,6 +323,7 @@ export function App() {
       </main>
       {dialog?.type === "table" && <TableDetailDialog tableId={dialog.id} />}
       {dialog?.type === "relation" && <RelationDialog relationId={dialog.id} />}
+      {dialog?.type === "relationEdit" && <RelationEditDialog relationId={dialog.id} />}
       {dialog?.type === "constraint" && (
         <ConstraintInfoDialog tableId={dialog.tableId} kind={dialog.kind} at={dialog.at} />
       )}
