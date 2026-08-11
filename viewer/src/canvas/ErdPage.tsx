@@ -6,7 +6,7 @@
  * nodes / edges の配列は選択状態に依存させない（選択で作り直すと React Flow が
  * 計測をやり直し、ダブルクリックが成立しなくなる。canvasStore.ts 参照）。
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
   BackgroundVariant,
@@ -348,10 +348,13 @@ function ErdCanvas({ diagramId, focusTableId }: ErdPageProps) {
         if (!cmd) return;
         pushCommand(diagramId, cmd);
         addToast(t("tray.added", { n: Object.keys(cmd.nodes).length }));
-        // 配置後は新規ノードが見えるようスクロールする（K-12 §7.3）
-        setTimeout(() => {
-          void rf.fitView({ nodes: toAdd.map((id) => ({ id })), duration: 400, maxZoom: 1 });
-        }, 60);
+        // 配置後は新規ノードが見えるようスクロールする（K-12 §7.3）。
+        // ただしドロップ配置はカーソル位置＝可視域に置いたので、拡大率・表示位置は動かさない
+        if (at === undefined) {
+          setTimeout(() => {
+            void rf.fitView({ nodes: toAdd.map((id) => ({ id })), duration: 400, maxZoom: 1 });
+          }, 60);
+        }
       })();
     },
     [addToast, autoPlacePositions, diagramId, pushCommand, rf, t],
@@ -682,10 +685,15 @@ function ZoomPanel() {
 function FocusOnTable({ diagramId, tableId }: { diagramId: string; tableId?: string }) {
   const rf = useReactFlow();
   const initialized = useNodesInitialized();
+  // ノード追加のたびに初期化状態が false→true に戻るので、同じ対象へ二度寄せない
+  const focused = useRef<string | null>(null);
   useEffect(() => {
     if (!initialized || tableId === undefined) return;
+    const key = `${diagramId}/${tableId}`;
+    if (focused.current === key) return;
     const node = rf.getInternalNode(tableId);
     if (!node) return;
+    focused.current = key;
     const w = node.measured.width ?? 160;
     const h = node.measured.height ?? 40;
     void rf.setCenter(node.internals.positionAbsolute.x + w / 2, node.internals.positionAbsolute.y + h / 2, {
