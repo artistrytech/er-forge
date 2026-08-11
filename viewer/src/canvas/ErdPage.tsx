@@ -30,6 +30,7 @@ import { formatName, resolveTableName } from "../model/logicalName";
 import { tokenColor } from "../model/colors";
 import { useAppStore } from "../model/store";
 import type { IndexTable, Relation } from "../model/types";
+import { isRedoKey, isUndoKey, redoHint, undoHint } from "../lib/shortcut";
 import { Dialog } from "../ui/Dialog";
 import { useCanvasStore } from "./canvasStore";
 import { LogicalFkCreateDialog } from "./RelationEditDialog";
@@ -732,7 +733,7 @@ function EditToolbar({
         type="button"
         disabled={(page?.undo.length ?? 0) === 0}
         onClick={() => undo(diagramId)}
-        title="Ctrl+Z"
+        title={undoHint()}
       >
         ↩ {t("edit.undo")}
       </button>
@@ -740,7 +741,7 @@ function EditToolbar({
         type="button"
         disabled={(page?.redo.length ?? 0) === 0}
         onClick={() => redo(diagramId)}
-        title="Ctrl+Y"
+        title={redoHint()}
       >
         ↪ {t("edit.redo")}
       </button>
@@ -771,7 +772,7 @@ function EditToolbar({
   );
 }
 
-/** N-02: Shift+1 / Shift+0、N-03: Ctrl+Z / Ctrl+Y、N-04: Delete、N-10: Ctrl+S */
+/** N-02: Shift+1 / Shift+0、N-03: Undo / Redo（→ lib/shortcut）、N-04: Delete、N-10: Cmd/Ctrl+S */
 function KeyboardShortcuts({
   diagramId,
   canRemove,
@@ -794,11 +795,11 @@ function KeyboardShortcuts({
       if (e.key === "Delete" && canRemove && st.session === "editing") {
         e.preventDefault();
         onRemove();
-      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+      } else if (isUndoKey(e)) {
         if (st.session !== "editing") return;
         e.preventDefault();
         st.undo(diagramId);
-      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y") {
+      } else if (isRedoKey(e)) {
         if (st.session !== "editing") return;
         e.preventDefault();
         st.redo(diagramId);
