@@ -740,7 +740,7 @@ function EditToolbar({
         type="button"
         disabled={(page?.redo.length ?? 0) === 0}
         onClick={() => redo(diagramId)}
-        title="Ctrl+Shift+Z"
+        title="Ctrl+Y"
       >
         ↪ {t("edit.redo")}
       </button>
@@ -771,7 +771,7 @@ function EditToolbar({
   );
 }
 
-/** N-02: Shift+1 / Shift+0、N-03: Ctrl+Z / Ctrl+Shift+Z、N-04: Delete、N-10: Ctrl+S */
+/** N-02: Shift+1 / Shift+0、N-03: Ctrl+Z / Ctrl+Y、N-04: Delete、N-10: Ctrl+S */
 function KeyboardShortcuts({
   diagramId,
   canRemove,
@@ -797,11 +797,11 @@ function KeyboardShortcuts({
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
         if (st.session !== "editing") return;
         e.preventDefault();
-        if (e.shiftKey) {
-          st.redo(diagramId);
-        } else {
-          st.undo(diagramId);
-        }
+        st.undo(diagramId);
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y") {
+        if (st.session !== "editing") return;
+        e.preventDefault();
+        st.redo(diagramId);
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
         // 保存はすべて明示（自動保存は無い。N-10）
         e.preventDefault();
