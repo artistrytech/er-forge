@@ -41,3 +41,11 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/* クリックで開くダイアログの本文。ポップアップと同じ読み味（改行そのまま）にそろえる */
+.dialog-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  line-height: 1.8;
+}

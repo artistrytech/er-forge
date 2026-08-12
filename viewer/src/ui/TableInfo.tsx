@@ -164,9 +164,18 @@ export function TableInfo({ tableId, onNavigate }: TableInfoProps) {
                   </span>
                 )}
               </td>
-              {/* 注記は本文を並べると行の高さがばらつくので、印だけ出してポップアップで読ませる */}
+              {/* 注記は本文を並べると行の高さがばらつくので、印だけ出してポップアップ
+                  （ホバー）とダイアログ（クリック）で読ませる */}
               <td className={cx("center", styles.notesCell)}>
-                <NotePopover text={meta?.notes ?? ""} testId={`column-notes-${c.name}`} />
+                <NotePopover
+                  text={meta?.notes ?? ""}
+                  testId={`column-notes-${c.name}`}
+                  dialogTitle={
+                    <>
+                      {t("table.colNotes")}: <span className="mono">{c.name}</span>
+                    </>
+                  }
+                />
               </td>
             </tr>
           );

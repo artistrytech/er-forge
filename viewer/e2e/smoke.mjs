@@ -199,6 +199,46 @@ async function main() {
   );
   await page.keyboard.press("Escape");
 
+  // 5c) カラムの注記はホバーでポップアップ、クリックでダイアログ（長い注記を落ち着いて読む用）
+  const noteTrigger = page.locator('[data-testid="column-notes-org_id"]');
+  await noteTrigger.hover();
+  await page.waitForSelector('[data-testid="column-notes-org_id-popover"]');
+  check(
+    "hovering a column note shows the popover",
+    (await page.locator('[data-testid="column-notes-org_id-popover"]').textContent()) ===
+      "NULL は個人アカウント",
+  );
+  // click は「離したとき」に来る。押している間ポップアップが残ると、開くダイアログに
+  // 重なって見える（ポップアップの方が手前の層）ので、押した時点で引っ込める
+  const noteBox = await noteTrigger.boundingBox();
+  await page.mouse.move(noteBox.x + noteBox.width / 2, noteBox.y + noteBox.height / 2);
+  await page.mouse.down();
+  check(
+    "pressing the note icon dismisses the popover before the dialog opens",
+    (await page.locator('[data-testid="column-notes-org_id-popover"]').count()) === 0,
+  );
+  await page.mouse.up();
+  await page.waitForSelector('[data-testid="column-notes-org_id-dialog"]');
+  check(
+    "clicking a column note opens the dialog with the column name",
+    (await page.locator('[data-testid="column-notes-org_id-dialog"]').textContent()) ===
+      "NULL は個人アカウント" &&
+      (await page.locator(".dialog-title").innerText()).includes("org_id"),
+  );
+  // ポップアップはダイアログより手前に出るため、同時には出さない
+  check(
+    "the popover is not shown while the dialog is open",
+    (await page.locator('[data-testid="column-notes-org_id-popover"]').count()) === 0,
+  );
+  await page.mouse.move(5, 5);
+  await page.keyboard.press("Escape");
+  await page.waitForSelector('[data-testid="column-notes-org_id-dialog"]', { state: "detached" });
+  // 閉じるとフォーカスがアイコンへ戻る。それでポップアップまで開くと「閉じたのに出る」
+  check(
+    "closing the note dialog does not re-open the popover",
+    (await page.locator('[data-testid="column-notes-org_id-popover"]').count()) === 0,
+  );
+
   // 6) テーブル画面（O-01。一覧と詳細を統合。左パネル「全て」レーンで一覧＋絞り込み）
   await page.click('a[href="#/w/default/tables"]');
   // 素の #/tables は先頭テーブルへ振り替わる（回答E: 未選択状態は作らない）
