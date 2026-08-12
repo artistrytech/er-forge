@@ -95,10 +95,10 @@ export function aggregateColumns(
     row(name);
   }
 
-  // 出現数の降順（影響の大きいものから整備できる）→ 名前の昇順
-  return [...rows.values()].sort(
-    (a, b) => b.occurrences - a.occurrences || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0),
-  );
+  // 物理名の昇順（アルファベット順）。出現数の降順にしていたが、数百行の一覧では
+  // 「目当てのカラムがどこにあるか」を名前から見当を付けられることの方が効く
+  // （出現数は見て分からないため、並びの理由が読めず探し直しになる）
+  return [...rows.values()].sort((a, b) => a.name.localeCompare(b.name, "ja"));
 }
 
 /** 一括貼り付けの1行。列が無かった項目は undefined（据え置き）、空文字は「消す」 */

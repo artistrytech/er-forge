@@ -42,6 +42,12 @@ describe("aggregateColumns", () => {
     expect(byName.get("org_id")?.nameOverrides).toEqual(["public.users"]);
   });
 
+  it("並び順は物理名の昇順（出現数では並べない）", () => {
+    const rows = aggregateColumns([users, orders], dict({ legacy_flag: {} }));
+    // id は2テーブルに出るが、出現数ではなく名前で並ぶ
+    expect(rows.map((r) => r.name)).toEqual(["created_at", "id", "legacy_flag", "org_id"]);
+  });
+
   it("論理名だけでなく色・タグの個別設定も「個別設定あり」として拾う", () => {
     const rows = aggregateColumns([users, orders], null);
     const created = rows.find((r) => r.name === "created_at");
