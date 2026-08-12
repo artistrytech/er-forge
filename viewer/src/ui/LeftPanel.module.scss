@@ -32,11 +32,18 @@
   align-items: center;
 }
 
-/* 「ページ」見出しの右側（✎ ページ管理ダイアログを開く） */
+/* 「ページ」見出しの右側（ペン = ページ管理ダイアログを開く） */
 .page-head-actions {
   display: flex;
   align-items: center;
   gap: 2px;
+}
+
+/* 中身は SVG のペン1つ。文字と違いベースラインで沈むので、中央に置く */
+.page-info-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* ページ管理ダイアログを開いている間は、その状態が見出しからも読める */

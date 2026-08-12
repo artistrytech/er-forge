@@ -20,7 +20,7 @@
  *
  * 編集の導線は2つあり、どちらか一方しか有効にならない:
  * - ER図の配置編集（editStore のセッション。保存が要る）… 未配置トレイからの配置・ドラッグ
- * - ページの管理（「ページ」見出しの ✎ で開くダイアログ。**即時にファイルへ書かれる**）…
+ * - ページの管理（「ページ」見出しのペンで開くダイアログ。**即時にファイルへ書かれる**）…
  *   追加・改名・並替・削除。**この一覧自体は編集用の見た目に変わらない**（PageManageDialog）
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -35,6 +35,7 @@ import { searchAll, type MatchMode } from "../model/search";
 import { useAppStore, type PanelLane } from "../model/store";
 import type { IndexTable } from "../model/types";
 import { Dialog } from "./Dialog";
+import { PenIcon } from "./icons";
 import { Link } from "./Link";
 import { hrefs } from "./router";
 import { cx } from "../lib/cx";
@@ -345,7 +346,7 @@ function TableEditLink({ tableId }: { tableId: string }) {
       title={t("panel.editTable")}
       aria-label={t("panel.editTable")}
     >
-      <PenIcon />
+      <PenIcon size={13} strokeWidth={2} />
     </Link>
   );
 }
@@ -523,9 +524,10 @@ function PageManageButton({ open, lockedByErd }: { open: boolean; lockedByErd: b
       data-editing={open ? "true" : "false"}
       disabled={lockedByErd}
       title={lockedByErd ? t("page.infoEditLocked") : t("page.manageTitle")}
+      aria-label={t("page.manageTitle")}
       onClick={() => setPageInfoEditing(true)}
     >
-      ✎
+      <PenIcon size={13} strokeWidth={2} />
     </button>
   );
 }
@@ -880,17 +882,8 @@ function TableRow({
   );
 }
 
-// アイコン（インライン SVG。静的モードでは外部アイコンフォントを使えないため）
-
-/** 編集（ペン）。ヘッダの [編集開始] と同じ形にして、同じ意味だと分かるようにする */
-function PenIcon() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-      <path d="M12 20h9" />
-      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z" />
-    </svg>
-  );
-}
+// アイコン（インライン SVG。静的モードでは外部アイコンフォントを使えないため）。
+// ペン（編集）はヘッダ・ページ管理と共用するので ./icons にある
 
 function PagesIcon() {
   return (

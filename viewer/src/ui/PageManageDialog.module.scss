@@ -77,6 +77,12 @@
   cursor: default;
 }
 
+/* ゴミ箱（🗑）は字面の中の余白が大きく、線画のペンと同じ寸法では小さく見える。
+   隣のアイコンと**見た目の大きさ**が揃うところまで文字だけを大きくする */
+.trash-button {
+  font-size: 20px;
+}
+
 .row-form {
   display: flex;
   align-items: center;

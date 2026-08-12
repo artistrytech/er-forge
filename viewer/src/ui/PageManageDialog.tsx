@@ -17,6 +17,7 @@ import { cx } from "../lib/cx";
 import { AddPageForm } from "./AddPage";
 import { Button } from "./Button";
 import { Dialog } from "./Dialog";
+import { PenIcon } from "./icons";
 import { hrefs } from "./router";
 import styles from "./PageManageDialog.module.scss";
 
@@ -109,13 +110,14 @@ export function PageManageDialog({ onClose }: { onClose: () => void }) {
                       className={styles.iconButton}
                       data-testid={`page-rename-${d.id}`}
                       title={t("page.rename")}
+                      aria-label={t("page.rename")}
                       onClick={() => openRow({ kind: "rename", id: d.id })}
                     >
-                      ✎
+                      <PenIcon size={14} strokeWidth={2} />
                     </button>
                     <button
                       type="button"
-                      className={styles.iconButton}
+                      className={cx(styles.iconButton, styles.trashButton)}
                       data-testid={`page-delete-${d.id}`}
                       title={t("page.delete")}
                       onClick={() => openRow({ kind: "delete", id: d.id })}

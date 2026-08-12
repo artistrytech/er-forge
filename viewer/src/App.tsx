@@ -59,7 +59,7 @@ export function App() {
   // #/tables の初期表示テーブルを左パネルの見た目と揃えるための材料（下の restoreTableId）。
   // フックなので早期 return より前に置く。パネルと同じ引数で呼び、選ぶページを一致させる
   const tablesPanelLane = useAppStore((s) => s.tablesPanelLane);
-  // ページ管理ダイアログ（左パネルの ✎ で開く）を出しているか
+  // ページ管理ダイアログ（左パネルのペンで開く）を出しているか
   const pageInfoEditing = useAppStore((s) => s.pageInfoEditing);
   const setPageInfoEditing = useAppStore((s) => s.setPageInfoEditing);
   const tablesPanelPage = useTablesPanelPage(routeTableId);
@@ -331,7 +331,7 @@ export function App() {
         <ConstraintInfoDialog tableId={dialog.tableId} kind={dialog.kind} at={dialog.at} />
       )}
       {searchOpen && <SearchDialog />}
-      {/* ページ管理（I-01〜I-03）。左パネルの ✎ から開く。パネルは ER用・テーブル用の2つが
+      {/* ページ管理（I-01〜I-03）。左パネルのペンから開く。パネルは ER用・テーブル用の2つが
           同時にマウントされているため、ダイアログはパネルの中ではなくここから1つだけ出す */}
       {pageInfoEditing && <PageManageDialog onClose={() => setPageInfoEditing(false)} />}
       <EditDialogs />
