@@ -17,11 +17,19 @@
   margin: 0;
 }
 
+/* 注記は複数行で書ける（編集側は textarea）。改行をそのまま見せ、長い語は折り返す */
+.notes {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 /* 多重度の補足（meta.relations[].notes）。親子の行に続けて一段下げて置く */
 .cardinality-note {
   margin-top: 4px;
   color: var(--text-muted);
   font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 /* 複合キーの順序（上から n 番目） */

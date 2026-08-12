@@ -87,12 +87,6 @@
   gap: 4px;
 }
 
-.row-notes {
-  color: var(--text-muted);
-  font-size: 12px;
-  overflow-wrap: anywhere;
-}
-
 .row-actions {
   flex: none;
   display: flex;
@@ -142,6 +136,13 @@
   background: var(--input-bg);
   color: inherit;
   font-size: 13px;
+}
+
+/* 注記の複数行入力。縦にだけ広げられるようにする（横に広げると枠から溢れる） */
+.textarea {
+  font-family: inherit;
+  line-height: 1.6;
+  resize: vertical;
 }
 
 .input-error {

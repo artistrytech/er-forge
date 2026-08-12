@@ -42,14 +42,16 @@ export function ConstraintList({ empty, children }: { empty: boolean; children: 
 // ------------------------------------------------------------------ 一覧の1行
 
 /**
- * 制約1件の要約行。名前・構成・注記を読むためだけの行で、変更は [編集] から行う。
+ * 制約1件の要約行。名前・構成を読むためだけの行で、変更は [編集] から行う。
  * 名前が未入力の制約は保存時に自動生成されるため、その予定名を薄く見せる。
+ *
+ * **注記は出さない**（閲覧側の一覧と同じ扱い）。注記の長さで1件の高さが変わると、
+ * 並んだ制約同士を見比べられなくなる。本文はダイアログの中で読み書きする。
  */
 export function ConstraintRow({
   name,
   autoName = "",
   detail,
-  notes,
   hasError,
   badge,
   editLabel,
@@ -61,7 +63,6 @@ export function ConstraintRow({
   /** 名前が空のときに保存で付く名前（プレビュー）。名前が必ずある制約では不要 */
   autoName?: string;
   detail: React.ReactNode;
-  notes: string;
   hasError: boolean;
   /** 名前の右に出す印（カーディナリティを明示設定しているか。P-11） */
   badge?: React.ReactNode;
@@ -85,7 +86,6 @@ export function ConstraintRow({
           {hasError && <span className="field-error">⚠</span>}
         </div>
         <div className={cx("mono", styles.rowDetail)}>{detail}</div>
-        {notes.trim() !== "" && <div className={styles.rowNotes}>{notes}</div>}
       </div>
       <div className={styles.rowActions}>
         <Button data-testid={`${testId}-edit`} onClick={onEdit}>
@@ -181,14 +181,18 @@ function NameField({
   );
 }
 
+/**
+ * 制約の注記。**複数行で書ける**（1行では「なぜこの制約があるか」を書き切れず、
+ * 経緯や例外条件が別の場所へ散る）。改行は表示側でもそのまま見せる。
+ */
 function NotesField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const { t } = useI18n();
   return (
     <label className={styles.field}>
       <span className={styles.fieldLabel}>{t("tableEdit.notes")}</span>
-      <input
-        type="text"
-        className={styles.input}
+      <textarea
+        rows={3}
+        className={cx(styles.input, styles.textarea)}
         data-testid="constraint-notes"
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -258,9 +262,10 @@ export function CardinalityFields({
               child: resolved.child ?? "?",
             })}
       </span>
-      <input
-        type="text"
-        className={styles.input}
+      {/* 多重度の根拠（P-11）。業務ルールの説明になりがちなので複数行で書ける */}
+      <textarea
+        rows={2}
+        className={cx(styles.input, styles.textarea)}
         data-testid="cardinality-notes"
         placeholder={t("tableEdit.cardinalityNotes")}
         value={value.notes}

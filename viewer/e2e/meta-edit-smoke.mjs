@@ -216,7 +216,8 @@ async function main() {
     check("the resolved cardinality comes from the saved index.js",
         (await page.getByTestId("cardinality-resolved").textContent())?.includes("0..N"));
     await page.getByTestId("cardinality-child").selectOption("1..N");
-    await typeInto(page.getByTestId("cardinality-notes"), "セッションは必ず1件以上");
+    // 注記は複数行で書ける（textarea）。改行を含めて保存できることまで確かめる
+    await typeInto(page.getByTestId("cardinality-notes"), "セッションは必ず1件以上\n（ログイン時に必ず1件作る）");
     await page.getByTestId("constraint-submit").click();
     check("the row shows a badge once the cardinality is set explicitly",
         (await page.getByTestId("cardinality-badge").count()) >= 1);
@@ -238,6 +239,9 @@ async function main() {
         cardText.includes('"fk:user_sessions_user_id_fkey"') && cardText.includes('child: "1..N"'));
     check("the logical FK cardinality is keyed by lfk:<name>",
         cardText.includes('"lfk:lfk_user_sessions_user_id"') && cardText.includes('parent: "1..1"'));
+    // 改行は \n として書き出される（生の改行を書くと .js が壊れる）
+    check("a multi-line note is written with escaped newlines",
+        cardText.includes('notes: "セッションは必ず1件以上\\n（ログイン時に必ず1件作る）"'));
 
     // ---- タグ（P-12）と色（P-13）: 空白で確定、色はタグとは独立に指定する ----
     const tagInput = page.getByTestId("table-tags");

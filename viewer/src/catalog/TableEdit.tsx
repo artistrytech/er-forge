@@ -473,7 +473,6 @@ export function TableEdit({ tableId }: { tableId: string }) {
               name={u.name}
               autoName={autoNameOf("luk", u.uid, u.columns)}
               detail={u.columns.length > 0 ? u.columns.join(", ") : t("tableEdit.noColumns")}
-              notes={u.notes}
               hasError={errorsAt(allErrors, `meta.logicalUniques[${i}]`).length > 0}
               testId="logical-unique"
               onEdit={() => setEditing({ kind: "unique", uid: u.uid })}
@@ -500,7 +499,6 @@ export function TableEdit({ tableId }: { tableId: string }) {
               name={fk.name}
               autoName={autoNameOf("lfk", fk.uid, fk.columns)}
               detail={<FkDetail fk={fk} />}
-              notes={fk.notes}
               badge={<CardinalityBadge value={fk.cardinality} />}
               hasError={errorsAt(allErrors, `meta.logicalForeignKeys[${i}]`).length > 0}
               testId="logical-fk"
@@ -678,7 +676,6 @@ function PhysicalFkSection({
                   }}
                 />
               }
-              notes={cardinality.notes}
               badge={<CardinalityBadge value={cardinality} />}
               hasError={false}
               editLabel={t("tableEdit.openDetail")}

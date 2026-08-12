@@ -116,7 +116,7 @@ export function RelationDialog({ relationId }: { relationId: string }) {
         {lfk?.notes !== undefined && lfk.notes !== "" && (
           <>
             <dt>{t("relation.notes")}</dt>
-            <dd data-testid="relation-notes">{lfk.notes}</dd>
+            <dd className={styles.notes} data-testid="relation-notes">{lfk.notes}</dd>
           </>
         )}
       </dl>
@@ -207,7 +207,7 @@ export function ConstraintInfoDialog({
         {notes !== undefined && notes !== "" && (
           <>
             <dt>{t("constraint.notes")}</dt>
-            <dd>{notes}</dd>
+            <dd className={styles.notes} data-testid="constraint-notes-value">{notes}</dd>
           </>
         )}
       </dl>
