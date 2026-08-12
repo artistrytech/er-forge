@@ -101,13 +101,6 @@
   color: var(--accent);
 }
 
-.note-inline {
-  margin-left: 8px;
-  color: var(--text-muted);
-  font-family: "Segoe UI", "Hiragino Sans", "Noto Sans JP", Meiryo, sans-serif;
-  font-size: 12px;
-}
-
 /* 制約・被参照はすべて「1件 = 1枠」で区切る（モック 2a の被参照チップに揃えた） */
 .item-list {
   display: flex;

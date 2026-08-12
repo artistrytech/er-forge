@@ -42,6 +42,12 @@ export function RelationDialog({ relationId }: { relationId: string }) {
     parts?.kind === "fk"
       ? fromTable?.foreignKeys?.find((f) => f.name === parts.constraintName)
       : undefined;
+  // 論理外部制約は制約そのものにも注記を持つ（物理FK は定義が machine-owned なので持たない）。
+  // 一覧には出さず、ここで読ませる
+  const lfk =
+    parts?.kind === "lfk"
+      ? fromTable?.meta?.logicalForeignKeys?.find((f) => f.name === parts.constraintName)
+      : undefined;
   const relationMeta =
     parts !== null
       ? fromTable?.meta?.relations?.[`${parts.kind}:${parts.constraintName}`]
@@ -100,11 +106,17 @@ export function RelationDialog({ relationId }: { relationId: string }) {
               ({explicit.includes("child") ? t("relation.explicit") : t("relation.derived")})
             </span>
           </div>
+          {/* 多重度の補足。編集ダイアログでもカーディナリティ欄の一部なので、同じ場所に置く */}
+          {relationMeta?.notes !== undefined && relationMeta.notes !== "" && (
+            <div className={styles.cardinalityNote} data-testid="relation-cardinality-notes">
+              {relationMeta.notes}
+            </div>
+          )}
         </dd>
-        {relationMeta?.notes !== undefined && (
+        {lfk?.notes !== undefined && lfk.notes !== "" && (
           <>
             <dt>{t("relation.notes")}</dt>
-            <dd>{relationMeta.notes}</dd>
+            <dd data-testid="relation-notes">{lfk.notes}</dd>
           </>
         )}
       </dl>

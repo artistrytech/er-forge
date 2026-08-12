@@ -17,6 +17,13 @@
   margin: 0;
 }
 
+/* 多重度の補足（meta.relations[].notes）。親子の行に続けて一段下げて置く */
+.cardinality-note {
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
 /* 複合キーの順序（上から n 番目） */
 .ordinal {
   display: inline-block;

@@ -205,6 +205,28 @@ async function main() {
     "relation detail dialog opens from the table detail",
     (await page.locator(".dialog").textContent()).includes("users_org_id_fkey"),
   );
+  // 物理FK の注記は多重度の補足として、カーディナリティと同じ場所に出す（編集側と同じ枠組み）
+  check(
+    "a physical FK shows its note next to the cardinality",
+    (await page.locator('[data-testid="relation-cardinality-notes"]').textContent()) ===
+      "組織には必ず1人以上の利用者がいる",
+  );
+  await page.keyboard.press("Escape");
+
+  // 5b-2) 外部制約の注記は一覧に出さず、詳細ダイアログでだけ読ませる
+  // （注記の長さで1件の幅が変わると、並んだ制約同士を見比べられなくなる）
+  check(
+    "the constraint lists carry no notes",
+    !(await page.locator('[data-testid="lfk-list"]').innerText()).includes("性能上") &&
+      !(await page.locator('[data-testid="fk-list"]').innerText()).includes("組織には") &&
+      !(await page.locator('[data-testid="lunique-list"]').innerText()).includes("組織内で"),
+  );
+  await page.locator('[data-testid="lfk-list"] [data-testid="relation-detail"]').click();
+  await page.waitForSelector(".dialog");
+  check(
+    "a logical FK shows its own note in the detail dialog",
+    (await page.locator('[data-testid="relation-notes"]').textContent()) === "性能上 FK を張っていない",
+  );
   await page.keyboard.press("Escape");
 
   // 5c) カラムの注記はホバーでポップアップ、クリックでダイアログ（長い注記を落ち着いて読む用）

@@ -245,10 +245,11 @@ export function TableInfo({ tableId, onNavigate }: TableInfoProps) {
         <>
           <h3>{t("table.logicalUniques")}</h3>
           <ul className={styles.itemList} data-testid="lunique-list">
+            {/* 注記は虫眼鏡（制約の詳細）に寄せる。物理のユニーク制約と同じ形にして、
+                注記の長さで1件の幅が変わらないようにする */}
             {table.meta?.logicalUniques?.map((u, i) => (
               <li key={u.name ?? i} className={cx(styles.item, styles.itemLogical)}>
                 <span className="mono">{u.columns.join(", ")}</span>
-                {u.notes !== undefined && <span className={styles.noteInline}>{u.notes}</span>}
                 <ConstraintDetailButton tableId={table.id} kind="logicalUnique" at={i} />
               </li>
             ))}
@@ -261,10 +262,11 @@ export function TableInfo({ tableId, onNavigate }: TableInfoProps) {
           <h3>{t("table.logicalForeignKeys")}</h3>
           <ul className={styles.itemList} data-testid="lfk-list">
             {table.meta?.logicalForeignKeys?.map((fk, i) => (
+              // 注記は虫眼鏡（リレーション詳細）に寄せる。物理FK の並びと同じ形にして、
+              // 注記の長さで1件の幅が変わらないようにする
               <li key={fk.name ?? i} className={cx(styles.item, styles.itemLogical)}>
                 <TableLink tableId={fk.ref.table} onNavigate={onNavigate} />
                 <span className="mono muted">({pairsText(fk.columns, fk.ref.columns)})</span>
-                {fk.notes !== undefined && <span className={styles.noteInline}>{fk.notes}</span>}
                 <RelationDetailButton relationId={edgeIdOf(table.id, "lfk", fk.name)} />
               </li>
             ))}
