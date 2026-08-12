@@ -660,8 +660,8 @@ function EditControls({ route }: { route: Route }) {
   const retry = useEditStore((s) => s.retry);
   const openExport = useEditStore((s) => s.openExport);
   const controller = usePageEditStore((s) => s.controller);
-  // ページ情報（追加・改名・並び替え・削除）の編集中は、ER図・テーブルの編集を始めさせない。
-  // どちらも「編集中」の見た目になり、何を編集しているのかが読めなくなるため（相互排他）
+  // ページ管理ダイアログ（追加・改名・並び替え・削除）を開いている間は、ER図・テーブルの
+  // 編集を始めさせない。何を編集しているのかが読めなくなるため（相互排他）
   const pageInfoEditing = useAppStore((s) => s.pageInfoEditing);
   // 未保存があるまま終了を押したときに開く確認（保持している関数を実行すると終了する）
   const [pendingEnd, setPendingEnd] = useState<{ run: () => void } | null>(null);
@@ -780,7 +780,6 @@ function EditControls({ route }: { route: Route }) {
  * - 色・注記のポップオーバーは capture 段階で握り潰すため、そもそもここへ届かない
  */
 function EscapeToEndEdit({ endEdit }: { endEdit: (() => void) | null }) {
-  const setPageInfoEditing = useAppStore((s) => s.setPageInfoEditing);
   const endRef = useRef(endEdit);
   useEffect(() => {
     endRef.current = endEdit;
@@ -790,17 +789,13 @@ function EscapeToEndEdit({ endEdit }: { endEdit: (() => void) | null }) {
     const onKey = (e: KeyboardEvent): void => {
       if (e.key !== "Escape" || e.isComposing || e.defaultPrevented) return;
       if (isTypingTarget(e.target)) return;
+      // ページ管理もダイアログなので、この分岐でそちらに譲る（Dialog 自身が Esc で閉じる）
       if (document.querySelector('[role="dialog"], [role="menu"]') !== null) return;
-      // ページ情報の編集（即時にファイルへ書かれるので未保存の概念が無い）はその場で閉じる
-      if (useAppStore.getState().pageInfoEditing) {
-        setPageInfoEditing(false);
-        return;
-      }
       endRef.current?.();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [setPageInfoEditing]);
+  }, []);
 
   return null;
 }
@@ -871,7 +866,7 @@ function SaveButton({
   );
 }
 
-/** locked = ページ情報の編集中（そちらを終えるまで、この画面の編集は始められない） */
+/** locked = ページ管理ダイアログを開いている（閉じるまで、この画面の編集は始められない） */
 function StartEditButton({ href, locked = false }: { href: string; locked?: boolean }) {
   const { t } = useI18n();
   if (locked) {

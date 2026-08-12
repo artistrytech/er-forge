@@ -131,7 +131,15 @@ async function main() {
   await page.click('[data-testid="page-row"] >> text=課金');
   await page.waitForFunction(() => location.hash === "#/w/default/erd/billing");
   await page.waitForSelector('[data-testid="erd-node"]');
-  check("billing page renders 3 nodes", (await page.locator('[data-testid="erd-node"]').count()) === 3);
+  // 1件目が出た時点で数えると、残りの描画が間に合わずに 2 を数えることがある（可視域の
+  // ノードだけを描くため、視点が定まるまで件数が動く）。件数が揃うのを待つ
+  const billingNodes = await page
+    .waitForFunction(() => document.querySelectorAll('[data-testid="erd-node"]').length === 3, null, {
+      timeout: 5000,
+    })
+    .then(() => true)
+    .catch(() => false);
+  check("billing page renders 3 nodes", billingNodes);
 
   // 3) ノードのダブルクリック → 閲覧専用ダイアログ（D-06 / G-01）
   await page.dblclick('[data-testid="erd-node"] >> nth=0');

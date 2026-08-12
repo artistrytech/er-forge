@@ -1,0 +1,114 @@
+/* ページ管理ダイアログ（I-01〜I-03）。共有の .sidebar-icon-button / .form-* /
+   .dialog-actions / .mono / .muted は global に残す。 */
+
+.list {
+  margin: 8px 0 12px;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--input-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+/* 1件 = 1行。改名・削除の確認もこの行の中で差し替える（別のダイアログを重ねない） */
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.row + .row {
+  border-top: 1px solid var(--divider);
+}
+
+.row-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ページID は改名しても変わらない（ファイル名）。名前と取り違えないよう控えめに置く */
+.row-id {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11.5px;
+}
+
+.row-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+  margin-left: 4px;
+}
+
+/* 一覧の行より押しやすくする（左パネルの .sidebar-icon-button は 12px の狭い行に合わせた
+   寸法で、ダイアログの中では小さすぎて何のアイコンか読み取れない） */
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.icon-button:hover:not(:disabled) {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.icon-button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.row-form {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.row-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.row-confirm {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.row-confirm-text {
+  flex: 1 1 auto;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* 追加は一覧の下。押すと同じダイアログの中でフォームが開く */
+.add-button {
+  width: 100%;
+}
+
+.add-box {
+  border: 1px solid var(--input-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+}

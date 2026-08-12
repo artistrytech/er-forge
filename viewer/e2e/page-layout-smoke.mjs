@@ -214,12 +214,12 @@ async function main() {
         dropped !== undefined && dropped[0] % 8 === 0 && dropped[1] % 8 === 0);
 
     // ---- 4. I-01: ページの追加 ----
-    // ページ情報（追加・改名・並び替え・削除）は即時反映のため、ER図の配置編集とは
-    // 別モードに分けてある。ER編集中は入れない（相互排他）
+    // ページ管理（追加・改名・並び替え・削除）は即時反映のため、ER図の配置編集とは
+    // 導線を分けてある。ER編集中は開けない（相互排他）
     check("page info editing is locked while editing the diagram",
         await page.locator(V + '[data-testid="page-info-toggle"]').isDisabled());
-    check("page management is hidden outside the page-info mode",
-        (await page.locator(V + '[data-testid="page-add"]').count()) === 0);
+    check("page management is hidden until the dialog is opened",
+        (await page.locator('[data-testid="page-add"]').count()) === 0);
 
     // ---- 3b. 左パネルの行から編集画面への近道 / Esc での編集解除 ----
     // 編集中は近道を出さない（踏むと編集ルートを離れ、未保存の配置が捨てられるため）
@@ -246,17 +246,23 @@ async function main() {
         (await page.locator(V + '[data-testid="lp-edit-table"]').first().getAttribute("href"))
           ?.endsWith("/edit") === true);
 
+    // 管理はダイアログの中で完結する（左パネルが編集用の見た目に変わらない）
     await page.click(V + '[data-testid="page-info-toggle"]');
-    await page.waitForSelector(V + '[data-testid="page-info-toggle"][data-editing="true"]', { timeout: 5000 });
-    check("diagram editing cannot start while editing page info",
+    await page.waitForSelector('[data-testid="page-manage-list"]', { timeout: 5000 });
+    check("the page management dialog opens from the panel",
+        (await page.locator('[data-testid="page-manage-row"]').count()) >= 1);
+    check("diagram editing cannot start while the page dialog is open",
         await page.locator('[data-testid="session-toggle"]').isDisabled());
-    // ページ情報の編集中も近道は出さない（そちらの操作に集中させる）
-    check("the row shortcut is hidden while editing page info",
+    // ダイアログを開いている間も近道は出さない（そちらの操作に集中させる）
+    check("the row shortcut is hidden while managing pages",
         (await page.locator(V + '[data-testid="lp-edit-table"]').count()) === 0);
 
-    await page.click(V + '[data-testid="page-add"]');
+    // 追加も同じダイアログの中で開く（ダイアログの上にダイアログを重ねない）
+    await page.click('[data-testid="page-add"]');
     await page.waitForSelector('[data-testid="page-id"]', { timeout: 5000 });
-    // 開いた直後からページID を打てる（ダイアログの枠が autoFocus を奪わない）
+    check("the add form opens inside the same dialog",
+        (await page.locator('[role="dialog"]').count()) === 1);
+    // 開いた直後からページID を打てる
     await page.keyboard.type("billing");
     check("the add-page dialog focuses the page id input",
         (await page.inputValue('[data-testid="page-id"]')) === "billing");
@@ -272,9 +278,11 @@ async function main() {
     check("I-01: every table is now unplaced-free but the tray stays empty",
         (await page.locator('[data-testid="unplaced-tray"]').count()) === 0);
 
-    // 新規ページ作成後は閲覧ルートに着地する。配置するにはページ情報の編集を終えて編集ルートへ
-    await page.click(V + '[data-testid="page-info-toggle"]');
+    // 作ったページへ移動し、管理ダイアログは閉じる（そのページを見せる）
     await page.waitForSelector(V + '[data-testid="page-info-toggle"][data-editing="false"]', { timeout: 5000 });
+    check("creating a page closes the management dialog",
+        (await page.locator('[data-testid="page-manage-list"]').count()) === 0);
+    // 新規ページ作成後は閲覧ルートに着地する。配置するには編集ルートへ
     await page.click('[data-testid="session-toggle"]');
     await page.waitForSelector('[data-testid="session-toggle"][data-editing="true"]', { timeout: 5000 });
 
@@ -329,14 +337,16 @@ async function main() {
     check("I-04: no double placement", Object.keys(nodesInFile(dir, "billing")).length === billingCount);
 
     // ---- 5. I-03: 改名 → manifest とページファイルの両方に反映される ----
-    // ページ管理は「ページ」レーンのページ情報編集モードで行う
-    // （4b で「全て」に切り替え、ER図の編集中でもあるため、どちらも戻す）
+    // ページ管理はダイアログの中（ER図の編集中は開けないので、そちらを終える）
     await page.click(V + '[data-testid="lane-pages"]');
     await page.click('[data-testid="session-toggle"][data-editing="true"]');
     await page.waitForSelector('[data-testid="session-toggle"][data-editing="false"]', { timeout: 5000 });
     await page.click(V + '[data-testid="page-info-toggle"]');
-    await page.waitForSelector(V + '[data-testid="page-rename-billing"]', { timeout: 5000 });
-    await page.click(V + '[data-testid="page-rename-billing"]');
+    await page.waitForSelector('[data-testid="page-rename-billing"]', { timeout: 5000 });
+    await page.click('[data-testid="page-rename-billing"]');
+    // 改名も行の中で行う（重ねたダイアログにしない）
+    check("renaming happens inside the same dialog",
+        (await page.locator('[role="dialog"]').count()) === 1);
     await page.locator('[data-testid="page-rename-input"]').fill("");
     await page.locator('[data-testid="page-rename-input"]').pressSequentially("課金ドメイン");
     await page.click('[data-testid="page-rename-save"]');
@@ -348,13 +358,17 @@ async function main() {
     // ---- 6. I-03: 並び替え（billing は末尾 → 1つ上へ） ----
     const orderBefore = manifestText(dir).indexOf('id: "billing"');
     await page
-        .locator(V + '[data-testid="page-row"]:has([data-testid="page-delete-billing"]) button[title="上へ"]')
+        .locator('[data-testid="page-manage-row"]:has([data-testid="page-delete-billing"]) button[title="上へ"]')
         .click();
     check("I-03: reordering moves the page up in manifest.js",
         await waitFile(() => manifestText(dir).indexOf('id: "billing"') < orderBefore));
 
     // ---- 7. I-02: 削除（スキーマ情報には影響しない） ----
-    await page.click(V + '[data-testid="page-delete-billing"]');
+    await page.click('[data-testid="page-delete-billing"]');
+    // 確認も行の中。押し間違いで即座に消えないよう一段挟む
+    check("deleting asks for confirmation in the row",
+        (await page.locator('[role="dialog"]').count()) === 1
+        && (await page.locator('[data-testid="page-delete-confirm"]').count()) === 1);
     await page.click('[data-testid="page-delete-confirm"]');
     check("I-02: page file is deleted",
         await waitFile(() => !existsSync(join(dir, "workspace-default", "data", "diagrams", "billing.js"))));
@@ -362,6 +376,12 @@ async function main() {
         !manifestText(dir).includes('id: "billing"'));
     check("I-02: table definitions are untouched",
         existsSync(join(dir, "workspace-default", "data", "schema", "public", "users.js")));
+
+    // 管理を終えるのは Esc / [閉じる]（モードの解除ではなくダイアログを閉じるだけ）
+    await page.keyboard.press("Escape");
+    await page.waitForSelector('[data-testid="page-manage-list"]', { state: "detached", timeout: 5000 });
+    check("Esc closes the page management dialog",
+        (await page.locator(V + '[data-testid="page-info-toggle"][data-editing="false"]').count()) === 1);
 
     check("no page errors (server mode)", pageErrors.length === 0);
     await page.close();

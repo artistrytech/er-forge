@@ -23,6 +23,7 @@ import { NotFound } from "./ui/NotFound";
 import { LeftPanel, usePageTables, useTablesPanelPage } from "./ui/LeftPanel";
 import { ConstraintInfoDialog, RelationDialog } from "./ui/DetailDialogs";
 import { RelationEditDialog } from "./canvas/RelationEditDialog";
+import { PageManageDialog } from "./ui/PageManageDialog";
 import { SearchDialog } from "./ui/SearchDialog";
 import { TableDetailDialog } from "./ui/TableDetailDialog";
 import { WelcomeScreen, WorkspaceNotFound } from "./ui/Workspace";
@@ -58,6 +59,9 @@ export function App() {
   // #/tables の初期表示テーブルを左パネルの見た目と揃えるための材料（下の restoreTableId）。
   // フックなので早期 return より前に置く。パネルと同じ引数で呼び、選ぶページを一致させる
   const tablesPanelLane = useAppStore((s) => s.tablesPanelLane);
+  // ページ管理ダイアログ（左パネルの ✎ で開く）を出しているか
+  const pageInfoEditing = useAppStore((s) => s.pageInfoEditing);
+  const setPageInfoEditing = useAppStore((s) => s.setPageInfoEditing);
   const tablesPanelPage = useTablesPanelPage(routeTableId);
   const tablesPanelPageTables = usePageTables(tablesPanelPage);
   const exportDiagramId = useEditStore((s) => s.exportDiagramId);
@@ -94,8 +98,8 @@ export function App() {
     }
   }, [route.kind]);
 
-  // 左パネルのページ情報編集（即時反映）は、パネルが出ていない画面と ER図の編集中には
-  // 成立しない（見えない編集モードを残さない／ER編集とは相互排他）。ここで確実に解除する
+  // ページ管理ダイアログ（即時反映）は、パネルが出ていない画面と ER図の編集中には
+  // 成立しない（開きっぱなしを残さない／ER編集とは相互排他）。ここで確実に閉じる
   const panelHidden =
     route.kind !== "erd" &&
     route.kind !== "erdHome" &&
@@ -327,6 +331,9 @@ export function App() {
         <ConstraintInfoDialog tableId={dialog.tableId} kind={dialog.kind} at={dialog.at} />
       )}
       {searchOpen && <SearchDialog />}
+      {/* ページ管理（I-01〜I-03）。左パネルの ✎ から開く。パネルは ER用・テーブル用の2つが
+          同時にマウントされているため、ダイアログはパネルの中ではなくここから1つだけ出す */}
+      {pageInfoEditing && <PageManageDialog onClose={() => setPageInfoEditing(false)} />}
       <EditDialogs />
       {exportDiagramId !== null && <ExportDialog diagramId={exportDiagramId} />}
       <Toasts />

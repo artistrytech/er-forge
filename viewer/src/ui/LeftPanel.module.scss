@@ -32,24 +32,14 @@
   align-items: center;
 }
 
-/*
- * 操作アイコンは「ページ情報の編集モード」のときだけレンダーされる（明示的に入ったモード
- * なので、以前のようにホバーでは隠さない。隠すと編集中なのに何も無いように見える）
- */
-.sidebar-page-controls {
-  display: flex;
-  gap: 0;
-  padding-right: 6px;
-}
-
-/* 「ページ」見出しの右側（＋ 追加 / ✎ 編集の開始・終了） */
+/* 「ページ」見出しの右側（✎ ページ管理ダイアログを開く） */
 .page-head-actions {
   display: flex;
   align-items: center;
   gap: 2px;
 }
 
-/* ページ情報の編集モード中は、その状態が見出しから読めるようにする */
+/* ページ管理ダイアログを開いている間は、その状態が見出しからも読める */
 .page-info-toggle[data-editing="true"] {
   background: var(--accent-soft);
   color: var(--accent);

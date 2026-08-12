@@ -20,7 +20,8 @@
  *
  * 編集の導線は2つあり、どちらか一方しか有効にならない:
  * - ER図の配置編集（editStore のセッション。保存が要る）… 未配置トレイからの配置・ドラッグ
- * - ページ情報の編集（「ページ」見出しの ✎。**即時にファイルへ書かれる**）… 追加・改名・並替・削除
+ * - ページの管理（「ページ」見出しの ✎ で開くダイアログ。**即時にファイルへ書かれる**）…
+ *   追加・改名・並替・削除。**この一覧自体は編集用の見た目に変わらない**（PageManageDialog）
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useI18n } from "../i18n/useI18n";
@@ -33,7 +34,6 @@ import { usePageEditStore } from "../model/pageEditStore";
 import { searchAll, type MatchMode } from "../model/search";
 import { useAppStore, type PanelLane } from "../model/store";
 import type { IndexTable } from "../model/types";
-import { AddPageButton } from "./AddPage";
 import { Dialog } from "./Dialog";
 import { Link } from "./Link";
 import { hrefs } from "./router";
@@ -369,14 +369,7 @@ function PagesLane({
   const placement = usePlacement();
   const onSelect = useTableSelect(scope, currentDiagramId);
   const erdHref = useErdHref();
-  /*
-   * ページ情報（追加・改名・並び替え・削除）は**即時にファイルへ書かれる**ため、ER図の配置編集
-   * （保存が要る）とは導線を分ける。ここは「ページ」見出しの ✎ で入る専用モードで、ER編集中は
-   * 入れない（逆にこのモード中は ER・テーブルの編集を始められない。Header 側で止めている）。
-   * テーブル画面の左パネルからも同じように扱える。
-   */
-  const canManage = serverMode && pageInfoEditing && !editing;
-  // 未配置トレイからの配置は ER図の編集セッション側の操作（ページ情報編集とは別物）
+  // 未配置トレイからの配置は ER図の編集セッション側の操作（ページ管理とは別物）
   const canPlace = scope === "erd" && editing && serverMode;
 
   const diagrams = useSortedDiagrams();
@@ -433,13 +426,12 @@ function PagesLane({
           {t("sidebar.pages")}
           {serverMode && (
             <span className={styles.pageHeadActions}>
-              {canManage && <AddPageButton />}
-              <PageInfoEditToggle editing={canManage} lockedByErd={editing} />
+              <PageManageButton open={pageInfoEditing} lockedByErd={editing} />
             </span>
           )}
         </div>
         <ul>
-          {diagrams.map((d, i) => (
+          {diagrams.map((d) => (
             <li
               key={d.id}
               className={styles.sidebarPageRow}
@@ -456,14 +448,6 @@ function PagesLane({
                   {t("sidebar.tableCount", { n: tableCountByDiagram.get(d.id) ?? 0 })}
                 </span>
               </button>
-              {canManage && (
-                <PageControls
-                  diagramId={d.id}
-                  title={d.title ?? d.id}
-                  first={i === 0}
-                  last={i === diagrams.length - 1}
-                />
-              )}
             </li>
           ))}
           {unplaced.length > 0 && (
@@ -523,10 +507,11 @@ function PagesLane({
 }
 
 /**
- * ページ情報の編集モードの開始・終了（「ページ」見出しの横）。
+ * ページ管理ダイアログ（PageManageDialog）を開くボタン（「ページ」見出しの横）。
+ * ダイアログ自体は App が出す（左パネルは2つ同時にマウントされるため、ここで出すと二重になる）。
  * ER図の編集セッションとは相互排他で、ER編集中は押せない。
  */
-function PageInfoEditToggle({ editing, lockedByErd }: { editing: boolean; lockedByErd: boolean }) {
+function PageManageButton({ open, lockedByErd }: { open: boolean; lockedByErd: boolean }) {
   const { t } = useI18n();
   const setPageInfoEditing = useAppStore((s) => s.setPageInfoEditing);
   return (
@@ -534,170 +519,14 @@ function PageInfoEditToggle({ editing, lockedByErd }: { editing: boolean; locked
       type="button"
       className={cx("sidebar-icon-button", styles.pageInfoToggle)}
       data-testid="page-info-toggle"
-      data-editing={editing ? "true" : "false"}
+      // 開いている間は見出しからもそれが読める（ダイアログの裏に隠れるが、閉じ際の目印になる）
+      data-editing={open ? "true" : "false"}
       disabled={lockedByErd}
-      title={
-        lockedByErd
-          ? t("page.infoEditLocked")
-          : editing
-            ? t("page.infoEditEnd")
-            : t("page.infoEditStart")
-      }
-      onClick={() => setPageInfoEditing(!editing)}
+      title={lockedByErd ? t("page.infoEditLocked") : t("page.manageTitle")}
+      onClick={() => setPageInfoEditing(true)}
     >
-      {editing ? "✕" : "✎"}
+      ✎
     </button>
-  );
-}
-
-// ---------------------------------------------- I-02 / I-03: 削除・改名・並び替え（Sidebar から移設）
-
-function PageControls({
-  diagramId,
-  title,
-  first,
-  last,
-}: {
-  diagramId: string;
-  title: string;
-  first: boolean;
-  last: boolean;
-}) {
-  const { t } = useI18n();
-  const renamePage = useEditStore((s) => s.renamePage);
-  const reorderPage = useEditStore((s) => s.reorderPage);
-  const deletePage = useEditStore((s) => s.deletePage);
-  const addToast = useAppStore((s) => s.addToast);
-  const [renaming, setRenaming] = useState(false);
-  const [confirming, setConfirming] = useState(false);
-
-  const onDeleted = (): void => {
-    setConfirming(false);
-    addToast(t("page.deleted", { title }));
-    // 削除したページを**開いていたときだけ**先頭ページへ戻す（白画面にしない。B-11）。
-    // テーブル画面や別ページから消した場合は、今いる画面に留まる
-    if (useAppStore.getState().currentDiagramId !== diagramId) return;
-    const first = useAppStore.getState().manifest?.diagrams?.[0]?.id;
-    location.hash = first !== undefined ? hrefs.erd(first) : hrefs.tables();
-  };
-
-  return (
-    <span className={styles.sidebarPageControls}>
-      <button
-        type="button"
-        className="sidebar-icon-button"
-        title={t("page.moveUp")}
-        disabled={first}
-        onClick={() => void reorderPage(diagramId, "up")}
-      >
-        ↑
-      </button>
-      <button
-        type="button"
-        className="sidebar-icon-button"
-        title={t("page.moveDown")}
-        disabled={last}
-        onClick={() => void reorderPage(diagramId, "down")}
-      >
-        ↓
-      </button>
-      <button
-        type="button"
-        className="sidebar-icon-button"
-        data-testid={`page-rename-${diagramId}`}
-        title={t("page.rename")}
-        onClick={() => setRenaming(true)}
-      >
-        ✎
-      </button>
-      <button
-        type="button"
-        className="sidebar-icon-button"
-        data-testid={`page-delete-${diagramId}`}
-        title={t("page.delete")}
-        onClick={() => setConfirming(true)}
-      >
-        🗑
-      </button>
-      {renaming && (
-        <RenamePageDialog
-          diagramId={diagramId}
-          current={title}
-          onRename={renamePage}
-          onClose={() => setRenaming(false)}
-        />
-      )}
-      {confirming && (
-        <Dialog title={t("page.deleteTitle")} onClose={() => setConfirming(false)}>
-          <p>{t("page.deleteBody", { title })}</p>
-          <div className="dialog-actions">
-            <button
-              type="button"
-              className="header-button-primary"
-              data-testid="page-delete-confirm"
-              onClick={() => void deletePage(diagramId).then((r) => (r.ok ? onDeleted() : addToast(r.error)))}
-            >
-              {t("page.deleteConfirm")}
-            </button>
-            <button type="button" onClick={() => setConfirming(false)}>
-              {t("layout.cancel")}
-            </button>
-          </div>
-        </Dialog>
-      )}
-    </span>
-  );
-}
-
-function RenamePageDialog({
-  diagramId,
-  current,
-  onRename,
-  onClose,
-}: {
-  diagramId: string;
-  current: string;
-  onRename: (id: string, title: string) => Promise<{ ok: boolean; error?: string }>;
-  onClose: () => void;
-}) {
-  const { t } = useI18n();
-  const [title, setTitle] = useState(current);
-  const [error, setError] = useState<string | null>(null);
-
-  return (
-    <Dialog title={t("page.renameTitle")} onClose={onClose}>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void onRename(diagramId, title.trim()).then((r) => (r.ok ? onClose() : setError(r.error ?? "")));
-        }}
-      >
-        <label className="form-row">
-          <span>{t("page.title")}</span>
-          <input
-            data-autofocus="true"
-            data-testid="page-rename-input"
-            type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-          />
-        </label>
-        {error !== null && <p className="form-error">{error}</p>}
-        <div className="dialog-actions">
-          <button
-            type="submit"
-            className="header-button-primary"
-            data-testid="page-rename-save"
-            disabled={title.trim() === ""}
-          >
-            {t("page.rename")}
-          </button>
-          <button type="button" onClick={onClose}>
-            {t("layout.cancel")}
-          </button>
-        </div>
-      </form>
-    </Dialog>
   );
 }
 
