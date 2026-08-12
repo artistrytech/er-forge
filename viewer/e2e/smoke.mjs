@@ -279,6 +279,44 @@ async function main() {
   check("relation dialog opens on edge dblclick", relDialogOpen);
   await page.keyboard.press("Escape");
 
+  // 8b) 視点（拡大率・表示位置）はページごとに覚え、戻ったときに復元する。
+  // 全体表示に戻ってしまうと、拡大して読んでいた場所を毎回探し直すことになる
+  const transform = () => page.locator(".react-flow__viewport").evaluate((el) => el.style.transform);
+  const fitted = await transform();
+  await page.mouse.move(600, 400);
+  await page.mouse.wheel(0, -400);
+  await page.waitForTimeout(300);
+  await page.mouse.down();
+  await page.mouse.move(500, 320, { steps: 10 });
+  await page.mouse.up();
+  await page.waitForTimeout(400);
+  const moved = await transform();
+  check("zooming and panning move the viewport", moved !== fitted);
+  // ファイルではなく sessionStorage（タブ単位）に置く。図の内容ではなく見ている人の状態のため
+  check(
+    "the viewport is remembered per page",
+    JSON.parse(await page.evaluate(() => sessionStorage.getItem("erd-viewport:default")))?.core
+      ?.zoom > 0,
+  );
+  await page.goto("file:///" + DIST + "#/w/default/tables/public.users");
+  await page.waitForSelector(".catalog-page");
+  await page.goto("file:///" + DIST + "#/w/default/erd/core");
+  await page.waitForSelector('[data-testid="erd-node"]');
+  await page.waitForTimeout(500);
+  check("the viewport is restored when coming back to the diagram", (await transform()) === moved);
+  await page.reload();
+  await page.waitForSelector('[data-testid="erd-node"]');
+  await page.waitForTimeout(500);
+  check("the viewport survives a reload (sessionStorage)", (await transform()) === moved);
+  // 覚えていないページは従来どおり全体表示から始める
+  await page.evaluate(() => sessionStorage.removeItem("erd-viewport:default"));
+  await page.goto("file:///" + DIST + "#/w/default/tables/public.users");
+  await page.waitForSelector(".catalog-page");
+  await page.goto("file:///" + DIST + "#/w/default/erd/core");
+  await page.waitForSelector('[data-testid="erd-node"]');
+  await page.waitForTimeout(500);
+  check("a diagram with no remembered viewport still opens fitted", (await transform()) === fitted);
+
   // 9) 未知ルート（B-11）
   await page.goto("file:///" + DIST + "#/w/default/nope");
   await page.waitForSelector(".empty-state");

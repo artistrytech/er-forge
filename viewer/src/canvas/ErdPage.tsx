@@ -21,6 +21,7 @@ import {
   useViewport,
   type EdgeTypes,
   type NodeTypes,
+  type Viewport,
 } from "@xyflow/react";
 import { useI18n } from "../i18n/useI18n";
 import { makeAdd, makeMove, makeRemove, snap, type Pos } from "../model/commands";
@@ -33,6 +34,7 @@ import type { IndexTable, Relation } from "../model/types";
 import { isRedoKey, isUndoKey, redoHint, undoHint } from "../lib/shortcut";
 import { Dialog } from "../ui/Dialog";
 import { useCanvasStore } from "./canvasStore";
+import { readViewport, saveViewport, type StoredViewport } from "./viewportMemory";
 import { LogicalFkCreateDialog } from "./RelationEditDialog";
 import { RelationEdge, type RelationEdgeType } from "./RelationEdge";
 import { TableNode, type TableNodeType } from "./TableNode";
@@ -119,6 +121,34 @@ function ErdCanvas({ diagramId, focusTableId }: ErdPageProps) {
     setCurrentDiagramId(diagramId);
     return () => setCurrentDiagramId(null);
   }, [diagramId, setCurrentDiagramId]);
+
+  // ------------------------------------------------- C-03 / C-04: 視点（拡大率・表示位置）の記憶
+
+  /**
+   * ReactFlow に渡す初期視点。ReactFlow は init のときにしか読まないので、
+   * **ページが読めた最初のレンダー**（= ReactFlow が現れるレンダー）で一度だけ決める。
+   * ここより前のレンダーではワークスペースが確定しておらず、保存先のキーが引けない。
+   */
+  const initialViewport = useRef<StoredViewport | null | undefined>(undefined);
+  if (initialViewport.current === undefined && diagram !== undefined) {
+    initialViewport.current = readViewport(diagramId);
+  }
+
+  // ページを切り替えたら、そのページで最後に見ていた視点へ戻す（初回表示は defaultViewport が担う）。
+  // 覚えていないページは今の視点のまま（従来どおり）にする
+  const shownDiagramId = useRef(diagramId);
+  useEffect(() => {
+    if (shownDiagramId.current === diagramId) return;
+    shownDiagramId.current = diagramId;
+    const saved = readViewport(diagramId);
+    if (saved !== null) void rf.setViewport(saved);
+  }, [diagramId, rf]);
+
+  // ドラッグ・ホイール・MiniMap・ズームボタン・fitView のいずれもここを通る
+  const onMoveEnd = useCallback(
+    (_e: MouseEvent | TouchEvent | null, viewport: Viewport) => saveViewport(diagramId, viewport),
+    [diagramId],
+  );
 
   // 未保存があっても他ルートへの遷移・リロードは妨げない（確認は「編集を終了」操作に限定。
   // ヘッダの EditControls が担う）。以前あったハッシュ遷移ガードは撤廃した。
@@ -531,7 +561,10 @@ function ErdCanvas({ diagramId, focusTableId }: ErdPageProps) {
         onNodesChange={onNodesChange}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
-        fitView
+        // 覚えている視点があればそれで開く。無ければ従来どおり全体表示から始める
+        fitView={initialViewport.current === null}
+        defaultViewport={initialViewport.current ?? undefined}
+        onMoveEnd={onMoveEnd}
         minZoom={0.1}
         maxZoom={2.5}
         // 作成モード中はクリックの意味が変わる。移動・選択は止める（onNodeClick は届く）
