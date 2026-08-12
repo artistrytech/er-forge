@@ -52,10 +52,13 @@ export function App() {
   const workspaces = useAppStore((s) => s.workspaces);
   const workspaceId = useAppStore((s) => s.workspaceId);
   const workspaceName = workspaces.find((w) => w.id === workspaceId)?.name;
+  // URL が指しているテーブル（下の activeTableId と同じもの。フックへ渡すためここで先に作る）
+  const routeTableId =
+    route.kind === "table" || route.kind === "tableEdit" ? route.tableId : undefined;
   // #/tables の初期表示テーブルを左パネルの見た目と揃えるための材料（下の restoreTableId）。
-  // フックなので早期 return より前に置く
+  // フックなので早期 return より前に置く。パネルと同じ引数で呼び、選ぶページを一致させる
   const tablesPanelLane = useAppStore((s) => s.tablesPanelLane);
-  const tablesPanelPage = useTablesPanelPage();
+  const tablesPanelPage = useTablesPanelPage(routeTableId);
   const tablesPanelPageTables = usePageTables(tablesPanelPage);
   const exportDiagramId = useEditStore((s) => s.exportDiagramId);
   // 未保存: ER図編集（正味の変更 netDirty）またはテーブル/カラム編集（pageEditStore の dirty）
@@ -187,11 +190,7 @@ export function App() {
       ? "tables"
       : null;
   const activeTableId =
-    route.kind === "erd" || route.kind === "erdEdit"
-      ? route.tableId
-      : route.kind === "table" || route.kind === "tableEdit"
-        ? route.tableId
-        : undefined;
+    route.kind === "erd" || route.kind === "erdEdit" ? route.tableId : routeTableId;
 
   let content: React.ReactNode;
   switch (route.kind) {

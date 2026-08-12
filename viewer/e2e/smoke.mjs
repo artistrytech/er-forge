@@ -253,6 +253,49 @@ async function main() {
   );
   await page.locator(V + '[data-testid="lp-filter"]').fill("");
 
+  // 6b) テーブルを直接指定して開いたとき（直リンク・ブックマーク）、「ページ」レーンの選択は
+  // そのテーブルが載っているページになる。一律で先頭ページを選ぶと、左の一覧に無いテーブルを
+  // 開いた状態になり、選択と表示が食い違う
+  const activePageTitle = () =>
+    page.locator(V + '[data-testid="page-row"][data-active="true"]').innerText();
+  const activeItems = () => page.locator(V + '[data-testid="lp-item"][data-active="true"]').count();
+  // public.products は「課金」にしかない（先頭ページは「コアドメイン」）
+  await page.goto("file:///" + DIST + "#/w/default/tables/public.products");
+  // 直前の節で「全て」レーンにしてある（ハッシュだけの goto では再読込されない）ため戻す
+  await page.click(V + '[data-testid="lane-pages"]');
+  await page.waitForSelector(V + '[data-testid="page-row"]');
+  check("a direct table link selects the page that holds the table", (await activePageTitle()).includes("課金"));
+  check("the shown table is in the panel list", (await activeItems()) === 1);
+  // 複数ページに載っているテーブルは、ページ一覧の並び順で先頭のもの
+  await page.goto("file:///" + DIST + "#/w/default/tables/public.orders");
+  await page.waitForSelector(V + '[data-testid="page-row"]');
+  check(
+    "a table on several pages picks the first one in display order",
+    (await activePageTitle()).includes("コアドメイン") && (await activeItems()) === 1,
+  );
+  // どのページにも載っていないテーブルは未配置トレイ側で見せる
+  await page.goto("file:///" + DIST + "#/w/default/tables/public.audit_logs");
+  await page.waitForSelector(V + '[data-testid="unplaced-page"]');
+  check(
+    "an unplaced table selects the unplaced tray",
+    (await page.locator(V + '[data-testid="unplaced-page"][data-active="true"]').count()) === 1 &&
+      (await activeItems()) === 1,
+  );
+  // 自分でページを選んだら、そちらが優先される（テーブルを移っても動かない）
+  await page.goto("file:///" + DIST + "#/w/default/tables/public.products");
+  await page.waitForSelector(V + '[data-testid="page-row"]');
+  await page.locator(V + '[data-testid="page-row"] button').first().click();
+  await page.locator(V + '[data-testid="lp-item"] button').first().click();
+  await page.waitForTimeout(300);
+  check("a page chosen by hand wins over the table's own page", (await activePageTitle()).includes("コアドメイン"));
+  // 素の #/tables は従来どおり先頭ページ
+  await page.goto("file:///" + DIST + "#/w/default/tables");
+  await page.waitForSelector(V + '[data-testid="page-row"]');
+  check(
+    "#/tables still lands on the first page",
+    (await activePageTitle()).includes("コアドメイン") && (await activeItems()) === 1,
+  );
+
   // 7) 検索（F-01 / F-05）: Ctrl+K で開き、カラム論理名でヒット
   await page.keyboard.press("Control+k");
   await page.waitForSelector('[data-testid="search-input"]');

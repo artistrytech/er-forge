@@ -121,14 +121,27 @@ function useSortedDiagrams() {
 
 /**
  * テーブル画面側の左パネルの「ページ」レーンで選択中のページ。
- * 未選択（初回）と、消えたページを指したままの場合は先頭ページへ寄せる。
+ * 未選択（初回）と、消えたページを指したままの場合は表示中のテーブルから決める。
  * 未配置の疑似ページはそのまま返す（尽きたら PagesLane が実ページへ戻す）。
+ *
+ * `activeTableId` は URL が指しているテーブル。テーブルを直接指定して開いたとき
+ * （`#/w/<ws>/tables/<id>` の直リンク・ブックマーク）に一律で先頭ページを選ぶと、
+ * **左の一覧に無いテーブルを開いている**状態になり、選択とページ内容が食い違う。
+ * 自分で一度ページを選べば（store に載る）以後はその選択が優先される。
  */
-export function useTablesPanelPage(): string | undefined {
+export function useTablesPanelPage(activeTableId?: string): string | undefined {
   const stored = useAppStore((s) => s.tablesPanelPage);
   const diagrams = useSortedDiagrams();
+  const placement = usePlacement();
   if (stored === UNPLACED) return UNPLACED;
   if (stored !== null && diagrams.some((d) => d.id === stored)) return stored;
+  if (activeTableId !== undefined && placement.has(activeTableId)) {
+    // 「先頭」はページ一覧に並んでいる順（manifest の order）で数える
+    const pages = placement.get(activeTableId) ?? [];
+    const onPage = diagrams.find((d) => pages.includes(d.id));
+    // どのページにも載っていないテーブルは未配置トレイに並ぶ。そちらを開く
+    return onPage?.id ?? UNPLACED;
+  }
   return diagrams[0]?.id;
 }
 
@@ -371,7 +384,7 @@ function PagesLane({
   // 選択中ページ。ER はルート（現在のページ）に追従、テーブルは store（#/tables の初期表示
   // テーブルを App が同じページから選ぶため、ローカル状態にはしない）
   const [erdPage, setErdPage] = useState<string | undefined>(currentDiagramId ?? diagrams[0]?.id);
-  const tablesPage = useTablesPanelPage();
+  const tablesPage = useTablesPanelPage(activeTableId);
   const setTablesPage = useAppStore((s) => s.setTablesPanelPage);
   const selectedPage = scope === "erd" ? erdPage : tablesPage;
   const setSelectedPage = useCallback(
@@ -427,7 +440,12 @@ function PagesLane({
         </div>
         <ul>
           {diagrams.map((d, i) => (
-            <li key={d.id} className={styles.sidebarPageRow} data-testid="page-row">
+            <li
+              key={d.id}
+              className={styles.sidebarPageRow}
+              data-testid="page-row"
+              data-active={d.id === selectedPage ? "true" : undefined}
+            >
               <button
                 type="button"
                 className={cx(styles.lpPageRow, d.id === selectedPage && styles.active)}
@@ -453,6 +471,7 @@ function PagesLane({
               <button
                 type="button"
                 data-testid="unplaced-page"
+                data-active={selectedPage === UNPLACED ? "true" : undefined}
                 className={cx(styles.lpPageRow, selectedPage === UNPLACED && styles.active)}
                 onClick={() => selectPage(UNPLACED)}
               >
