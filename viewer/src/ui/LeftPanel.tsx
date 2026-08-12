@@ -781,7 +781,13 @@ function SearchLane({
             return (
               <li
                 key={hit.tableId}
-                className={cx(styles.lpItem, hit.tableId === activeTableId && styles.active)}
+                // カラム一致はテーブル名の**下**に積む（既定の .lp-item は横並びで、
+                // 一致一覧と左右に分け合うとテーブル名が1文字ずつに潰れてしまう）
+                className={cx(
+                  styles.lpItem,
+                  styles.lpItemStacked,
+                  hit.tableId === activeTableId && styles.active,
+                )}
                 data-testid="lp-item"
                 data-active={hit.tableId === activeTableId ? "true" : undefined}
                 data-color={colorAttr(it.color)}
@@ -794,7 +800,13 @@ function SearchLane({
                 {hit.columnHits.length > 0 && (
                   <ul className={styles.lpColhits}>
                     {hit.columnHits.slice(0, 6).map((c) => (
-                      <li key={c.column} className="mono">
+                      // 長いカラム名はパネルの幅に収まらない。1件1行のまま端を省略し、
+                      // 全体は title で読ませる（折り返すと1件が何行にもなり件数を見失う）
+                      <li
+                        key={c.column}
+                        className="mono"
+                        title={c.matched === c.column ? c.column : `${c.column} · ${c.matched}`}
+                      >
                         {c.column}
                         {c.matched !== c.column && <span className="muted"> · {c.matched}</span>}
                       </li>

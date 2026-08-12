@@ -373,12 +373,32 @@
   white-space: nowrap;
 }
 
+/* 検索結果の1件。テーブル名の下にカラム一致を積む（VSCode の検索結果と同じ読み方）。
+   既定の .lp-item は横並びなので、そのままだと名前と一致一覧が幅を取り合い、
+   幅の足りなくなったテーブル名が1文字ずつの縦書きに潰れる */
+.lp-item-stacked {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+/* 縦積みでは flex: 1 が「高さを伸ばす」意味になってしまうので戻す */
+.lp-item-stacked .lp-item-btn {
+  flex: none;
+}
+
 .lp-colhits {
   list-style: none;
   margin: 0 0 6px;
-  padding: 0 0 0 14px;
+  padding: 0 0 0 20px;
   font-size: 11.5px;
   color: var(--text-muted);
+}
+
+/* 1件 = 1行。パネルは狭く、長いカラム名は折り返さず端を省略する（全体は title で読める） */
+.lp-colhits li {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .lp-hint {
