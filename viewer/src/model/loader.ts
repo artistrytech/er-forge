@@ -9,7 +9,7 @@
  * → 段階5: 残り全テーブル（アイドル時）
  */
 import { apiToken } from "./api";
-import { useAppStore } from "./store";
+import { useAppStore, type AppState } from "./store";
 import {
   SUPPORTED_SCHEMA_VERSION,
   zConfig,
@@ -20,6 +20,7 @@ import {
   zTable,
   zWorkspaces,
   type Diagram,
+  type Manifest,
   type Table,
 } from "./types";
 import { workspaceIdFromHash } from "../ui/router";
@@ -443,7 +444,7 @@ export async function reloadManifest(version?: string): Promise<void> {
     staged.manifest = undefined;
     const parsed = zManifest.safeParse(raw);
     if (raw !== undefined && parsed.success) {
-      useAppStore.setState({ manifest: parsed.data });
+      useAppStore.setState((s) => ({ manifest: parsed.data, ...prunedErrors(s, parsed.data) }));
       // テーブルが増えていることがある（外部での追加・逆生成の適用）。増えた分を読みに行かないと
       // 「読み込み済み < 全体」のまま進捗が完了しない
       scheduleBackgroundLoad();
@@ -454,12 +455,25 @@ export async function reloadManifest(version?: string): Promise<void> {
 }
 
 /**
- * スキーマファイルの外部変更でキャッシュを無効化する（読み直させる）。
+ * manifest から消えたテーブルの読み込み失敗を捨てる。
  *
- * 捨てるだけだと「読み込み済み < 全体」の状態が残り、ヘッダの進捗バーが完了しない。
- * 段階5 のバックグラウンドロードを再点火して、手元の内容を最新に追随させる。
+ * 消えたファイルを取りに行って失敗した記録が残ると、そのテーブルはもう存在しないのに
+ * 「読み込みに失敗したテーブルがあります」の赤帯が出たままになる（画面を移っても消えない）。
+ * 存在しないテーブルは「失敗」ではないので、manifest を読み直すたびに落とす。
  */
-export function invalidateTable(id: string): void {
+function prunedErrors(
+  s: Pick<AppState, "tableErrors" | "failedTableCount">,
+  manifest: Manifest,
+): Partial<Pick<AppState, "tableErrors" | "failedTableCount">> {
+  const gone = Object.keys(s.tableErrors).filter((id) => manifest.tables?.[id] === undefined);
+  if (gone.length === 0) return {};
+  const tableErrors = { ...s.tableErrors };
+  for (const id of gone) delete tableErrors[id];
+  return { tableErrors, failedTableCount: s.failedTableCount - gone.length };
+}
+
+/** 手元のキャッシュから1件落とす（読み込み済み・失敗のどちらでも数を合わせる） */
+function dropTable(id: string): void {
   useAppStore.setState((s) => {
     const tables = { ...s.tables };
     const hadTable = tables[id] !== undefined;
@@ -474,7 +488,28 @@ export function invalidateTable(id: string): void {
       failedTableCount: s.failedTableCount - (hadError ? 1 : 0),
     };
   });
+}
+
+/**
+ * スキーマファイルの外部変更でキャッシュを無効化する（読み直させる）。
+ *
+ * 捨てるだけだと「読み込み済み < 全体」の状態が残り、ヘッダの進捗バーが完了しない。
+ * 段階5 のバックグラウンドロードを再点火して、手元の内容を最新に追随させる。
+ */
+export function invalidateTable(id: string): void {
+  dropTable(id);
   scheduleBackgroundLoad();
+}
+
+/**
+ * テーブルが消えたとき（J-02 の削除）に手元から落とす。
+ *
+ * {@link invalidateTable} と違って読み直しを仕掛けない。削除の直後は manifest がまだ
+ * 古く、再点火するとバックグラウンドロードが消えたファイルを取りに行って失敗し、
+ * 消したはずのテーブルが「読み込みに失敗した」として残る。
+ */
+export function forgetTable(id: string): void {
+  dropTable(id);
 }
 
 // ---- 段階4/5: テーブルスキーマ ----
@@ -519,10 +554,17 @@ export function loadTable(id: string): Promise<Table | null> {
 }
 
 function markTableError(id: string, error: string): void {
-  useAppStore.setState((s) => ({
-    tableErrors: { ...s.tableErrors, [id]: error },
-    failedTableCount: s.failedTableCount + 1,
-  }));
+  useAppStore.setState((s) => {
+    // manifest に無いテーブルは「読めなかった」のではなく存在しない（削除された・逆生成で
+    // 消えた）。飛行中の読み込みが manifest の読み直しに追い越されるとここへ来るため、
+    // 失敗として数えない（詳細画面は index を見て「見つかりません」を出す）
+    if (s.manifest !== null && s.manifest.tables?.[id] === undefined) return {};
+    if (s.tableErrors[id] !== undefined) return {};
+    return {
+      tableErrors: { ...s.tableErrors, [id]: error },
+      failedTableCount: s.failedTableCount + 1,
+    };
+  });
 }
 
 /**

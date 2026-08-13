@@ -20,6 +20,7 @@ import { apiDelete, apiGet, apiPatch, apiPost, apiPut, wpath } from "./api";
 import { applyCommands, foldToPayload, invert, type Command } from "./commands";
 import {
   forceReloadDiagram,
+  forgetTable,
   invalidateTable,
   loadTable,
   reloadDictionary,
@@ -415,7 +416,10 @@ export const useEditStore = create<EditState>((set, get) => ({
       () =>
         apiDelete(wpath(`/tables/${encodeURIComponent(tableId)}`), { baseHash, removeNodes }),
       (revision, files) => {
-        invalidateTable(tableId);
+        // 消えたテーブルは読み直させない（forget）。この時点では manifest がまだ古く、
+        // 再点火するとバックグラウンドロードが消えたファイルを取りに行って失敗し、
+        // 「読み込みに失敗したテーブルがあります」の赤帯が残る
+        forgetTable(tableId);
         const pages = files.filter((f) => f.startsWith("diagrams/"));
         if (pages.length > 0) applyOtherChanges(pages, revision);
       },

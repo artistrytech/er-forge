@@ -451,6 +451,13 @@ async function main() {
     check("the diagram loses the node as well",
         (await page.locator('[data-testid="erd-node"][data-missing="true"]').count()) === 0);
 
+    // 消したテーブルを「読み込みに失敗した」と言わない。削除直後に（まだ古い manifest を
+    // 見ている）バックグラウンドロードが消えたファイルを取りに行くと tableErrors に残り、
+    // 画面を移っても消えない赤帯になる（回帰防止）
+    await new Promise((r) => setTimeout(r, 2000));
+    check("deleting a table does not report it as failed to load",
+        (await page.locator(".error-banner").count()) === 0);
+
     // チェックを外せば従来どおりノードは孤児として残る（K-13 / §6.2）
     await page.goto(`${url}#/w/default/tables/public.user_addresses`);
     await page.waitForSelector('[data-testid="delete-table"]', { timeout: 15000 });
