@@ -383,6 +383,30 @@ async function main() {
     check("Esc closes the page management dialog",
         (await page.locator(V + '[data-testid="page-info-toggle"][data-editing="false"]').count()) === 1);
 
+    // ---- 7b. I-03: 一度も編集セッションに入らずに改名できる（baseHash の取り直し） ----
+    // ページ管理は ER図の編集（enterEditing）とは相互排他なので、読み込んだだけの画面から
+    // 開かれる。baseHash を編集開始時にしか取っていないと、ここが必ず 409 STALE になり、
+    // 「外部で変更されています」が再読込しても消えなくなる（回帰防止）
+    // ハッシュだけの goto は同一ドキュメント遷移になり JS の状態が残るため reload で読み直す。
+    // 直前の書き込みに対するファイル監視イベント（SSE）が読み直しの後に届くと、その追随で
+    // baseHash が埋まってしまい再現しない。落ち着くまで待ってから読み直す
+    await page.goto(`${url}#/w/default/erd/users`);
+    await new Promise((r) => setTimeout(r, 3000));
+    await page.reload();
+    await page.waitForSelector('.react-flow__node', { timeout: 15000 });
+    await page.click(V + '[data-testid="lane-pages"]');
+    await page.click(V + '[data-testid="page-info-toggle"]');
+    await page.waitForSelector('[data-testid="page-rename-users"]', { timeout: 5000 });
+    await page.click('[data-testid="page-rename-users"]');
+    await page.locator('[data-testid="page-rename-input"]').fill("");
+    await page.locator('[data-testid="page-rename-input"]').pressSequentially("利用者ドメイン");
+    await page.click('[data-testid="page-rename-save"]');
+    check("I-03: renaming works without ever entering the edit session",
+        await waitFile(() => manifestText(dir).includes("利用者ドメイン")));
+    check("I-03: no stale error is shown after that rename",
+        (await page.locator(".form-error").count()) === 0);
+    await page.keyboard.press("Escape");
+
     check("no page errors (server mode)", pageErrors.length === 0);
     await page.close();
 

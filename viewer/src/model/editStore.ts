@@ -354,9 +354,9 @@ export const useEditStore = create<EditState>((set, get) => ({
     pageOp(() => apiPost(wpath("/diagrams"), { id, title })),
 
   renamePage: (diagramId, title) =>
-    pageOp(() =>
+    pageOp(async () =>
       apiPatch(wpath(`/diagrams/${encodeURIComponent(diagramId)}`), {
-        baseHash: baseHashes.get(`diagrams/${diagramId}.js`) ?? "",
+        baseHash: await baseHashOf(diagramId),
         title,
       }),
     ),
@@ -379,17 +379,17 @@ export const useEditStore = create<EditState>((set, get) => ({
       ? (direction === "up" ? [otherOrder - 1, otherOrder] : [otherOrder + 1, otherOrder])
       : [otherOrder, selfOrder];
 
-    return pageOp(() =>
+    return pageOp(async () =>
       apiPatch(wpath(`/diagrams/${encodeURIComponent(self.id)}`), {
-        baseHash: baseHashes.get(`diagrams/${self.id}.js`) ?? "",
+        baseHash: await baseHashOf(self.id),
         order: a,
       }),
     ).then((first) =>
       !first.ok
         ? first
-        : pageOp(() =>
+        : pageOp(async () =>
             apiPatch(wpath(`/diagrams/${encodeURIComponent(other.id)}`), {
-              baseHash: baseHashes.get(`diagrams/${other.id}.js`) ?? "",
+              baseHash: await baseHashOf(other.id),
               order: b,
             }),
           ),
@@ -398,9 +398,9 @@ export const useEditStore = create<EditState>((set, get) => ({
 
   deletePage: (diagramId) =>
     pageOp(
-      () =>
+      async () =>
         apiDelete(wpath(`/diagrams/${encodeURIComponent(diagramId)}`), {
-          baseHash: baseHashes.get(`diagrams/${diagramId}.js`) ?? "",
+          baseHash: await baseHashOf(diagramId),
         }),
       () => forgetDiagram(diagramId),
     ),
@@ -776,6 +776,25 @@ function clearStacks(diagramId: string): void {
     const pages = { ...s.pages, [diagramId]: { pending: [], undo: [], redo: [] } };
     return { pages, pendingCount: countPending(pages) };
   });
+}
+
+/**
+ * ページファイルの baseHash を返す。まだ一度も取っていなければ取り直す。
+ *
+ * ページ管理（I-01〜I-03）は ER図の編集セッションの外（閲覧中のダイアログ）から動くため、
+ * enterEditing 起点の refreshHashes を当てにできない。空文字のまま送ると必ず 409 STALE に
+ * なり、画面を再読込しても直らない（再読込しても編集セッションには入らないため）。
+ * 手元にハッシュがあるときは触らない（外部変更の検出＝INV-5 はそのまま効く）。
+ */
+async function baseHashOf(diagramId: string): Promise<string> {
+  const rel = `diagrams/${diagramId}.js`;
+  if (!baseHashes.has(rel)) await refreshHashes();
+  return baseHashes.get(rel) ?? "";
+}
+
+/** ページ管理ダイアログを開いた時点の baseHash を取り直す（§4.3 の「編集開始時」に相当） */
+export function refreshBaseHashes(): void {
+  if (serverMode()) void refreshHashes();
 }
 
 async function refreshHashes(): Promise<void> {

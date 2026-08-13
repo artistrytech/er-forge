@@ -11,7 +11,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../i18n/useI18n";
-import { useEditStore } from "../model/editStore";
+import { refreshBaseHashes, useEditStore } from "../model/editStore";
 import { useAppStore } from "../model/store";
 import { cx } from "../lib/cx";
 import { AddPageForm } from "./AddPage";
@@ -36,6 +36,12 @@ export function PageManageDialog({ onClose }: { onClose: () => void }) {
     () => [...(manifest?.diagrams ?? [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
     [manifest],
   );
+
+  // ここでの操作は ER図の編集セッションの外で走る（enterEditing を通らない）ため、
+  // 開いた時点を「編集開始」とみなして baseHash を取り直す（§4.3）
+  useEffect(() => {
+    refreshBaseHashes();
+  }, []);
 
   /** 開くのは常に1か所だけ（改名の途中で削除の確認が並ぶと、どれを確定するのか読めない） */
   const openRow = (next: RowMode): void => {
