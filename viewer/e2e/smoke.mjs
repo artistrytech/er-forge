@@ -281,6 +281,50 @@ async function main() {
     "all-tables filter works (注文 → 2)",
     (await page.locator(V + '[data-testid="lp-item"]').count()) === 2,
   );
+
+  // 6a) 打った言葉はレーンを移って戻っても残る（レーンの中身は再マウントされるため
+  //     ローカル状態のままだと消える）。「検索」のワードと一致条件も同じく残る
+  await page.click(V + '[data-testid="lane-pages"]');
+  await page.waitForSelector(V + '[data-testid="page-row"]');
+  await page.click(V + '[data-testid="lane-all"]');
+  await page.waitForSelector(V + '[data-testid="lp-filter"]');
+  check(
+    "the all-tables filter survives a lane switch",
+    (await page.inputValue(V + '[data-testid="lp-filter"]')) === "注文"
+      && (await page.locator(V + '[data-testid="lp-item"]').count()) === 2,
+  );
+
+  await page.click(V + '[data-testid="lane-search"]');
+  await page.waitForSelector(V + '[data-testid="lp-match-mode"]');
+  await page.locator(V + '[data-testid="lp-filter"]').pressSequentially("org");
+  await page.selectOption(V + '[data-testid="lp-match-mode"]', "prefix");
+  await page.click(V + '[data-testid="lane-all"]');
+  await page.waitForSelector(V + '[data-testid="lp-item"]');
+  await page.click(V + '[data-testid="lane-search"]');
+  await page.waitForSelector(V + '[data-testid="lp-match-mode"]');
+  check(
+    "the search word and match mode survive a lane switch",
+    (await page.inputValue(V + '[data-testid="lp-filter"]')) === "org"
+      && (await page.inputValue(V + '[data-testid="lp-match-mode"]')) === "prefix",
+  );
+
+  // リロードしてからも残る（sessionStorage。タブ単位）。レーンの選択そのものは保持しない
+  // 仕様なので、読み直した後は「検索」を選び直してから見る
+  await page.reload();
+  await page.waitForSelector(V + '[data-testid="lane-search"]', { timeout: 15000 });
+  await page.click(V + '[data-testid="lane-search"]');
+  await page.waitForSelector(V + '[data-testid="lp-match-mode"]');
+  check(
+    "the search word and match mode survive a reload",
+    (await page.inputValue(V + '[data-testid="lp-filter"]')) === "org"
+      && (await page.inputValue(V + '[data-testid="lp-match-mode"]')) === "prefix",
+  );
+
+  // 次の節に持ち越さないよう、打った言葉は消しておく（消せば保持もされない）
+  await page.locator(V + '[data-testid="lp-filter"]').fill("");
+  await page.selectOption(V + '[data-testid="lp-match-mode"]', "partial");
+  await page.click(V + '[data-testid="lane-all"]');
+  await page.waitForSelector(V + '[data-testid="lp-filter"]');
   await page.locator(V + '[data-testid="lp-filter"]').fill("");
 
   // 6b) テーブルを直接指定して開いたとき（直リンク・ブックマーク）、「ページ」レーンの選択は

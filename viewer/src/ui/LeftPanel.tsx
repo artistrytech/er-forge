@@ -13,6 +13,10 @@
  * 状態が保持される（回答2）。ただしテーブル用のレーンと「ページ」レーンの選択ページだけは
  * appStore に置く（#/tables を開いたときの初期表示テーブルを App が同じ基準で選ぶため）。
  *
+ * 「全て」の絞り込みと「検索」のワード・一致条件は、さらに sessionStorage へ預ける。
+ * レーンの中身はレーンを切り替えると再マウントされ、ローカル状態だけでは打った言葉が
+ * 消えてしまうため（{@link useSessionState}）。
+ *
  * テーブルを選択したときの遷移（回答3 / 6）:
  * - ER画面: 現在のページにあればフォーカス、別ページにあればそのページでフォーカス、
  *   未配置なら詳細ダイアログ（ダブルクリック相当）。**編集中は編集ルートのままフォーカスする**。
@@ -39,6 +43,7 @@ import { PenIcon } from "./icons";
 import { Link } from "./Link";
 import { hrefs } from "./router";
 import { cx } from "../lib/cx";
+import { useSessionState } from "../lib/useSessionState";
 import styles from "./LeftPanel.module.scss";
 
 export type PanelScope = "erd" | "tables";
@@ -46,6 +51,21 @@ type Lane = PanelLane;
 
 /** 未配置の疑似ページを表す選択センチネル（回答3） */
 const UNPLACED = "__unplaced__";
+
+/**
+ * 「全て」の絞り込み・「検索」のワードと一致条件の保持キー（**タブ単位**）。
+ *
+ * レーンを切り替えるとレーンのコンポーネントは再マウントされ、そのままだと打った言葉が
+ * 消える。打ち直しを強いないよう sessionStorage に預けて、戻ったときに復元する。
+ *
+ * ER用・テーブル用の2インスタンスは**別々に持つ**（両方が同時にマウントされており、
+ * 一方で打った言葉がもう一方の一覧を勝手に絞ると、見えていないところで件数が変わる）。
+ * ワークスペースでは分けない（ID と違って言葉はワークスペースをまたいで意味を持つし、
+ * 復元された言葉は入力欄にそのまま見えている）。
+ */
+const filterKey = (scope: PanelScope): string => `erd-panel-filter:${scope}`;
+const queryKey = (scope: PanelScope): string => `erd-panel-query:${scope}`;
+const modeKey = (scope: PanelScope): string => `erd-panel-match:${scope}`;
 
 interface LeftPanelProps {
   scope: PanelScope;
@@ -661,7 +681,7 @@ function AllLane({
   const placeTables = useCanvasStore((s) => s.placeTables);
   const placement = usePlacement();
   const { select: onSelect, pickerNode } = useListTableSelect(scope);
-  const [filter, setFilter] = useState("");
+  const [filter, setFilter] = useSessionState<string>(filterKey(scope), "");
 
   const canPlace =
     scope === "erd" && editing && serverMode && currentDiagramId !== undefined && placeTables !== null;
@@ -722,6 +742,11 @@ function AllLane({
 
 const MODES: MatchMode[] = ["partial", "prefix", "suffix", "exact"];
 
+/** 保持された一致条件を採用してよいか（知らない値なら既定の「部分一致」に戻す） */
+function isMatchMode(value: string): boolean {
+  return (MODES as string[]).includes(value);
+}
+
 function SearchLane({
   scope,
   activeTableId,
@@ -735,8 +760,8 @@ function SearchLane({
   const dictionary = useAppStore((s) => s.dictionary);
   const nameDisplay = useAppStore((s) => s.nameDisplay);
   const { select: onSelect, pickerNode } = useListTableSelect(scope);
-  const [query, setQuery] = useState("");
-  const [mode, setMode] = useState<MatchMode>("partial");
+  const [query, setQuery] = useSessionState<string>(queryKey(scope), "");
+  const [mode, setMode] = useSessionState<MatchMode>(modeKey(scope), "partial", isMatchMode);
 
   const hits = useMemo(
     () => (index ? searchAll(query, index, tables, dictionary, 100, mode) : []),
@@ -757,6 +782,7 @@ function SearchLane({
         />
         <select
           className={styles.lpMode}
+          data-testid="lp-match-mode"
           value={mode}
           onChange={(e) => setMode(e.target.value as MatchMode)}
           title={t("panel.lane.search")}
