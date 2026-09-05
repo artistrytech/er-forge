@@ -30,9 +30,9 @@ MCP クライアント (Claude Code)
    │  POST /__erd/mcp   Authorization: Bearer <MCP トークン>
    ▼
 Javalin（既存プロセス・既存ポート）
-   ├── McpGuard        有効判定 / トークン / Origin / Host          … §2
+   ├── (ガード)        有効判定 / トークン / Origin / Host          … §2
    ├── McpEndpoint     JSON-RPC 2.0 の入出力（自前実装）            … §3
-   └── ErdTools        ツールの実体（トランスポート非依存）          … §4・§5
+   └── McpTools        ツールの実体（トランスポート非依存）          … §4・§5
          ├── ProjectStore / IndexGenerator          （読み取り）
          ├── TableService / DictionaryService / ConfigService （書き込み）
          ├── DiagramService                          （書き込み）
@@ -40,7 +40,7 @@ Javalin（既存プロセス・既存ポート）
          └── Backups                                 （書き込み前スナップショット）
 ```
 
-**`ErdTools` はトランスポートを知らない。** 将来 stdio を足す場合も、`McpEndpoint` を差し替えるだけで済む。
+**`McpTools` はトランスポートを知らない。** 将来 stdio を足す場合も、`McpEndpoint` を差し替えるだけで済む。
 
 ---
 
@@ -65,7 +65,7 @@ Javalin（既存プロセス・既存ポート）
 - `lastAccess` は毎リクエスト更新するが、**書き込みのたびにファイルを書くと差分ノイズになる**ため、
   メモリ上で保持し、変化があれば数秒デバウンスして書く（Git 管理外なので競合の心配はない）。
 
-### 2.2 ガード（`McpGuard`）
+### 2.2 ガード（`McpEndpoint` 内）
 
 **既存の `authorized()` とは別の関数にする**（INV-3）。判定順と応答は次のとおり。
 
@@ -95,22 +95,57 @@ Javalin（既存プロセス・既存ポート）
 
 ## 3. トランスポートと JSON-RPC
 
+### 3.0 2 世代を同時に喋る（dual-era）
+
+MCP の仕様は改訂 **`2026-07-28`** で **`initialize` のハンドシェイクを廃止**し、
+リクエストごとにメタ情報を載せるステートレス方式（仕様の言う **modern**）になった。
+`2025-11-25` 以前（**legacy**）とは開始手順も版の運び方も違う。
+
+**両方を実装する。** 仕様の互換性マトリクスでは「legacy クライアント × modern のみのサーバー」は
+**失敗する**とされており、片方だけでは手元のクライアントか将来のクライアントのどちらかで動かない。
+仕様自身が dual-era を認めている。
+
+**世代の判定はリクエストの形で行う**（仕様どおり）:
+
+| 条件 | 世代 |
+|---|---|
+| `params._meta` に `io.modelcontextprotocol/protocolVersion` がある | **modern** |
+| `initialize` が来た | **legacy** |
+| どちらでもない（`_meta` なしの `tools/list` 等） | legacy として扱う |
+
 ### 3.1 実装するメソッド
 
-| メソッド | 応答 |
-|---|---|
-| `initialize` | `protocolVersion`（対応版の定数）、`serverInfo`（`erforge` + `VERSION`）、`capabilities: { tools: {} }` |
-| `notifications/initialized` | 応答なし（通知） |
-| `tools/list` | ツール定義の配列。**書き込み許可がオフなら読み取りツールのみ** |
-| `tools/call` | §4・§5 のディスパッチ |
-| `ping` | 空応答 |
+| メソッド | legacy | modern | 応答 |
+|---|---|---|---|
+| `initialize` | ✓ | — | `protocolVersion`（提示版をサポートしていればそのまま返す）、`serverInfo`、`capabilities: { tools: {} }`、`instructions` |
+| `notifications/initialized` | ✓ | — | 通知（id なし）はすべて **202 Accepted** で本文なし |
+| `server/discover` | — | ✓ | `supportedVersions`・`capabilities`・`_meta['io.modelcontextprotocol/serverInfo']`・`instructions`。**modern ではサーバーに実装義務がある** |
+| `tools/list` | ✓ | ✓ | ツール定義の配列。**書き込み許可がオフなら読み取りツールのみ**（INV-6） |
+| `tools/call` | ✓ | ✓ | §4・§5 のディスパッチ |
+| `ping` | ✓ | ✓ | 空応答 |
 
-- `GET /__erd/mcp` は **405**。サーバー起点の通知を送らないため SSE ストリームを開かない。
+- modern の結果には **`resultType: "complete"`** を付ける。
+- `GET` / `DELETE` は **405**（旧リビジョンの SSE ストリームとセッション終了。実装しない）。
 - **セッションを持たない**（`Mcp-Session-Id` を発行しない）。
-- `protocolVersion` は 1 箇所の定数に置く。クライアントの提示版をサポートしていればそのまま返し、
-  していなければ自分の対応版を返す。
+- 応答は常に `application/json`（通知を送らないため SSE 応答ストリームを開かない。仕様上許容される）。
+- 対応版は 1 箇所の定数に置き、テストで固定する。
 
-### 3.2 エラーの出し分け
+### 3.2 modern のヘッダ検証
+
+modern では、本文の一部が HTTP ヘッダにも載る。**ヘッダと本文が食い違うリクエストは拒否する**
+（経路上の中継が本文と違う値で判断する余地を作らないため、仕様が要求している）。
+
+| ヘッダ | 対応する本文 | 欠落・不一致のとき |
+|---|---|---|
+| `MCP-Protocol-Version` | `params._meta['io.modelcontextprotocol/protocolVersion']` | **400 + `-32020`**（`HeaderMismatch`） |
+| `Mcp-Method` | `method` | 同上 |
+| `Mcp-Name` | `params.name`（`tools/call`） | 同上 |
+
+- `Mcp-Name` は非 ASCII を **`=?base64?…?=`** の形で運ぶことがあるため、比較前にデコードする。
+- 未対応の版は **400 + `-32022`**（`UnsupportedProtocolVersionError`）で、`data.supported` に対応版を列挙する。
+- 未知のメソッドは **404 + `-32601`**（HTTP+SSE の旧サーバーが返す 404 と区別できるよう、本文に JSON-RPC エラーを載せる）。
+
+### 3.3 エラーの出し分け
 
 **「プロトコルの誤り」と「ツール実行の失敗」を混同しない。**
 
@@ -140,15 +175,17 @@ Existing page IDs: core, billing, inventory.
 | ツール | 引数 | 実装 |
 |---|---|---|
 | `erd_list_workspaces` | — | `WorkspaceStore.list` + 各 `manifest` の `schemaVersion` とテーブル数 |
-| `erd_list_tables` | `query?` `tag?` `diagram?` `limit?`(既定200) `offset?` | `index.js` を読む（スキーマファイルは開かない） |
-| `erd_get_table` | `tableId` | `ProjectStore` でテーブル1件 + **カラム辞書を解決した論理名**（`resolved` / `source: "column" \| "dictionary" \| "physical"` を併記） |
+| `erd_list_tables` | `query?` `tag?` `diagram?` `limit?`(既定200) `offset?` | `IndexGenerator` が作る索引相当（id / 物理名 / 論理名 / カラム数 / タグ / 色 / 所属ページ） |
+| `erd_get_table` | `tableId` | `ProjectStore` でテーブル1件 + **カラム辞書を解決した論理名**（`displayName` と、由来を示す `displayNameSource: "column" \| "dictionary"` を併記） |
 | `erd_list_relations` | `tableId?` | `index.js` の `relations`（カーディナリティは解決済みの値をそのまま） |
 | `erd_search` | `query` `target?`(`table`/`column`/`note`) `limit?` | F-04 と同じ対象。`note` は `meta.notes` を含む |
 | `erd_list_diagrams` | — | `manifest.diagrams` + 各ページのノード数 |
 | `erd_get_diagram` | `diagramId` | `diagrams/<id>.js` のノード・エッジ |
 | `erd_get_dictionary` | — | `dictionary.js` |
 
-- **キャッシュしない。** GUI からの保存直後に古い値を返さないため、毎回ディスクから読む。
+- **キャッシュしない。** GUI からの保存直後に古い値を返さないため、毎回ディスクから読む
+  （`ProjectStore.read` + `IndexGenerator.generate`）。索引ファイルを直接読まないのは、
+  `index.js` が派生物であり、パーサを別途持つと生成規則の二重管理になるためである。
 - 一覧系は打ち切ったとき `"showing 200 of 431 tables"` を必ず添える（モデルが全件と誤認しないように）。
 
 ### 4.2 Q-03 書き込み（論理情報）
@@ -269,6 +306,8 @@ MCP のツールは部分更新なので、間に薄いマージ層を1枚置く
 | T-1 | 認証 | トークンなし / 誤トークン / **セッショントークンの提示**は 403。無効化中は 404 |
 | T-2 | `Host` | `Host: localhost:5173`（dev の vite プロキシ相当）と `127.0.0.1:<実ポート>` が**両方通り**、`evil.example.com` は 403。**全ルートに掛ける変更なので、落とすと dev 環境ごと死ぬ** |
 | T-3 | `Origin` | 欠落は許可、別オリジンは 403 |
+| T-3a | legacy | `initialize` が提示版をそのまま返し、`tools/call` が実データを返す |
+| T-3b | modern | `server/discover` が対応版を返す。ヘッダと本文の不一致は 400 + `-32020`、未対応の版は 400 + `-32022`（`data.supported` 付き）、未知のメソッドは 404 + `-32601`、通知は 202 |
 | T-4 | INV-1 | `erd_set_table_meta` に `columns[].type` などの machine-owned を混ぜたら `isError`。**書き込みは発生しない** |
 | T-5 | INV-6 | 書き込み許可オフのとき、書き込みツールが `tools/list` に**出ず**、直接 `tools/call` しても拒否される |
 | T-6 | INV-2 | `tools/list` に逆生成・接続設定・テーブル削除 / 作成 / リネーム・ワークスペース操作・データリセット・ZIP 書き出しが**存在しない** |
@@ -292,4 +331,4 @@ viewer のビルドと同じで、配布物には影響しない。
 | ワークスペースの作成 / 削除 / 改名 | 削除は ID の打ち込み確認を要する破壊操作（A-10） |
 | データリセット・閲覧用 ZIP の書き出し | 破壊的、あるいは成果物を外へ出す操作。人が明示的に行う |
 | MCP の resources / prompts | クライアントの対応がまちまちで、必要なことは tools で表現できる |
-| stdio トランスポート | ライフサイクルが Web サーバーと別になり、説明が難しい（設計書 §8.8 の比較表）。`ErdTools` を分離してあるため、必要になれば後から足せる |
+| stdio トランスポート | ライフサイクルが Web サーバーと別になり、説明が難しい（設計書 §8.8 の比較表）。`McpTools` を分離してあるため、必要になれば後から足せる |

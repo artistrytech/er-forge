@@ -54,6 +54,9 @@ dependencies {
 tasks.test {
     useJUnitPlatform()
     systemProperty("fixtures.dir", file("../fixtures").absolutePath)
+    // Host 検証（§8.5）のテストで Host ヘッダを差し替えるため。JDK の HttpClient は
+    // 既定で Host を制限ヘッダとして拒否する（HostGuardTest）
+    systemProperty("jdk.httpclient.allowRestrictedHeaders", "host")
     // 追加 DB 検証用の DDL 置き場（Phase 7）。SQL Server / Oracle のテストは
     // dev-db の docker compose に接続し、ここの DDL を流してから内省する。
     systemProperty("devdb.dir", file("../dev-db").absolutePath)

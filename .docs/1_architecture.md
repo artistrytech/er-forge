@@ -409,8 +409,8 @@ erd-tool/                       （ツール本体のリポジトリ）
 │   ├── core/                   モデル、決定論的プリンタ、Jackson パーサ、差分検出、リネーム検出、論理名辞書
 │   ├── introspect/             JDBC 標準内省 + DialectEnhancer（postgres / mysql）
 │   ├── layout/                 Eclipse ELK による自動レイアウト
-│   ├── web/                    Javalin ルーティング、SSE、ファイルI/O、ドライバローダ
-│   └── web/mcp/                MCP エンドポイント（JSON-RPC）とツール実装（§8.8）
+│   └── web/                    Javalin ルーティング、SSE、ファイルI/O、ドライバローダ、
+│                               MCP（Mcp* 一式。JSON-RPC とツール実装。§8.8）
 └── viewer/                     TypeScript / Vite
     ├── model/                  モデル型定義（zod）、データローダ、論理名の解決
     ├── canvas/                 React Flow ノード（テーブル名のみ）/ エッジ（物理FK・論理FK）
@@ -1228,13 +1228,32 @@ MCP の認証は**セッショントークンとは別建て**とし、`erd/.loc
 代償として、**サーバーを止めると AI からツールが見えなくなる**。またポートは自動インクリメントするため、
 再起動でポートが変われば AI 側の設定が切れる（症状は接続失敗であり、トークン不一致により誤接続はしない）。
 
-#### トランスポート
+#### トランスポート（2 世代を同時に喋る）
 
-- **Streamable HTTP**。`POST /__erd/mcp` が JSON-RPC 2.0 を受け、`application/json` で返す。
-- **`GET /__erd/mcp` は 405 を返す。** サーバー起点の通知を送らないため SSE ストリームを開かない（仕様上許容される）。
-- **セッションを持たない**（`Mcp-Session-Id` を発行しない）。1 リクエスト = 1 レスポンスで完結する。
-- 実装するメソッドは `initialize` / `notifications/initialized` / `tools/list` / `tools/call` / `ping` のみ。
-- `protocolVersion` は 1 箇所の定数に置き、テストで固定する。
+**Streamable HTTP**。`POST /__erd/mcp` が JSON-RPC 2.0 を受け、`application/json` で返す。
+
+MCP の仕様は改訂 **`2026-07-28`** で大きく変わり、**`initialize` のハンドシェイクが廃止**されて
+**リクエストごとにメタ情報を載せるステートレス方式**になった。仕様は前者を legacy、後者を modern と呼ぶ。
+
+| | legacy（`2025-11-25` 以前） | modern（`2026-07-28` 以降） |
+|---|---|---|
+| 開始 | `initialize` → `notifications/initialized` | **なし**。各リクエストの `params._meta` が版を運ぶ |
+| 版の宣言 | initialize で 1 回 | **毎リクエスト**（`MCP-Protocol-Version` ヘッダにも載り、本文と一致しなければ拒否） |
+| 能力の照会 | initialize の応答 | **`server/discover`**（サーバーは実装必須） |
+| セッション | `Mcp-Session-Id` | 廃止 |
+| GET による SSE ストリーム | あり | 廃止 |
+
+**両方を実装する（dual-era）。** 仕様の互換性マトリクスでは「legacy クライアント × modern のみのサーバー」は
+**失敗する**とされており、どちらか一方だけでは手元のクライアントか将来のクライアントのどちらかで動かない。
+仕様自身が「dual-era サーバーは同一エンドポイントで両方を提供してよい」と認めている。
+
+- **世代の判定はリクエストの形で行う**（仕様どおり）。`params._meta` に
+  `io.modelcontextprotocol/protocolVersion` があれば modern、`initialize` が来たら legacy。
+- 実装するメソッドは **legacy**: `initialize` / `notifications/initialized` / `tools/list` / `tools/call` / `ping`、
+  **modern**: `server/discover` / `tools/list` / `tools/call` / `ping`。
+- **`GET` / `DELETE` は 405 を返す。** サーバー起点の通知を送らないため SSE ストリームを開かず、
+  セッションも発行しない（いずれも仕様上許容される）。
+- 対応版は 1 箇所の定数に置き、テストで固定する。
 - **ツールの実体はトランスポートから分離する**（純粋なクラスに置き、JSON-RPC 層から呼ぶだけにする）。
 
 #### 書き込み境界 — 物理情報は書けない

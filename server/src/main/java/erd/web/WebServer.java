@@ -56,14 +56,19 @@ public final class WebServer {
     private final ConnectionStore connections = new ConnectionStore();
     private final IntrospectService introspect = new IntrospectService();
     private final WorkspaceStore workspaces = new WorkspaceStore();
+    private final McpSettings mcpSettings = new McpSettings();
+    private final McpEndpoint mcp;
     private final ConcurrentLinkedQueue<SseClient> sseClients = new ConcurrentLinkedQueue<>();
     /** ワークスペースごとの監視とリビジョン（自己書き込みの帰属はワークスペース内で完結する） */
     private final Map<String, Runtime> runtimes = new ConcurrentHashMap<>();
     private Javalin app;
+    /** 実際に bind したポート（基点が埋まっていれば増える）。MCP の設定スニペットに埋める（Q-01）。 */
+    private int port;
 
     public WebServer(Path root, String token) {
         this.root = root;
         this.token = token;
+        this.mcp = new McpEndpoint(root, mcpSettings);
     }
 
     /** ワークスペース1つ分のサーバー側状態。 */
@@ -78,6 +83,7 @@ public final class WebServer {
             try {
                 app = create();
                 app.start("127.0.0.1", port);
+                this.port = port;
                 // 起動時点のワークスペースをすべて監視する（作成・削除・改名で貼り替える）
                 for (String id : WorkspaceStore.scan(root)) {
                     startWatching(id);
@@ -104,6 +110,16 @@ public final class WebServer {
             cfg.jetty.defaultHost = "127.0.0.1";
         });
 
+        // Host 検証（DNS リバインディング対策。§8.5）。トークンや Origin と違い
+        // 「このサーバーを名指ししているか」の確認なので、health・index.html も含めた
+        // 全ルートに掛ける。ポートを見てはならない理由は Guards.isLocalHost を参照
+        javalin.before(ctx -> {
+            if (!Guards.isLocalHost(ctx.header("Host"))) {
+                ctx.status(403).contentType("text/plain; charset=utf-8").result("forbidden");
+                ctx.skipRemainingHandlers();
+            }
+        });
+
         // appVersion はビューアの information がサーバー版として表示する（A-02）。
         // index.html と jar は別々に差し替えられるため、ビューア側の版と食い違うことがある
         javalin.get("/__erd/health", ctx -> ctx.json(Map.of(
@@ -127,6 +143,17 @@ public final class WebServer {
 
         // 閲覧用 ZIP（A-11）。複数ワークスペースを跨ぐため /w/{ws} には属さない
         javalin.post("/__erd/export/viewer", this::exportViewer);
+
+        // MCP の設定（Q-01）。全ワークスペース共通のため /w/{ws} には属さない。
+        // ここはセッショントークンで守る（画面が呼ぶ API であり、MCP 本体とは資格情報が違う）
+        javalin.get("/__erd/mcp/settings", this::getMcpSettings);
+        javalin.put("/__erd/mcp/settings", this::putMcpSettings);
+
+        // MCP 本体（§8.8）。認証は MCP トークンであり、セッショントークンでは通らない。
+        // GET / DELETE は旧リビジョンの SSE ストリームとセッション終了で、実装しない（405）
+        javalin.post("/__erd/mcp", mcp::handle);
+        javalin.get("/__erd/mcp", mcp::methodNotAllowed);
+        javalin.delete("/__erd/mcp", mcp::methodNotAllowed);
 
         javalin.get("/__erd/w/{ws}/project", this::project);
         javalin.post("/__erd/w/{ws}/bootstrap", this::bootstrap);
@@ -637,6 +664,51 @@ public final class WebServer {
         ctx.result(buffer.toByteArray());
     }
 
+    // ------------------------------------------------------------------ MCP
+
+    /** MCP の設定（Q-01）。トークンの生値は返さない（発行の応答だけが返す）。 */
+    private void getMcpSettings(Context ctx) {
+        if (!authorized(ctx)) {
+            ctx.status(403).json(Map.of("error", "forbidden"));
+            return;
+        }
+        ctx.json(mcpSettings.forClient(root, port));
+    }
+
+    /**
+     * MCP の設定の更新。{@code { enabled?, write?, token?: "issue" | "delete" }}。
+     *
+     * <p>{@code token: "issue"} のときだけ、応答に生のトークン（{@code issuedToken}）を含める。
+     * 画面はこの1回で利用者にコピーさせ、以後は再表示できない旨を案内する。
+     */
+    private void putMcpSettings(Context ctx) throws Exception {
+        if (!authorized(ctx)) {
+            ctx.status(403).json(Map.of("error", "forbidden"));
+            return;
+        }
+        JsonNode body = ctx.body().isEmpty() ? mapper.createObjectNode() : mapper.readTree(ctx.body());
+        String tokenOp = body.path("token").asText("");
+        if (!tokenOp.isEmpty() && !tokenOp.equals("issue") && !tokenOp.equals("delete")) {
+            ctx.status(400).json(Map.of("code", "VALIDATION", "field", "token",
+                    "message", "token must be \"issue\" or \"delete\""));
+            return;
+        }
+        Boolean enabled = body.hasNonNull("enabled") ? body.get("enabled").asBoolean() : null;
+        Boolean write = body.hasNonNull("write") ? body.get("write").asBoolean() : null;
+        if (enabled != null || write != null) {
+            mcpSettings.setFlags(root, enabled, write);
+        }
+        String issued = null;
+        if (tokenOp.equals("issue")) {
+            issued = mcpSettings.issueToken(root);
+        } else if (tokenOp.equals("delete")) {
+            mcpSettings.deleteToken(root);
+        }
+        Map<String, Object> out = new java.util.LinkedHashMap<>(mcpSettings.forClient(root, port));
+        if (issued != null) out.put("issuedToken", issued);
+        ctx.json(out);
+    }
+
     /**
      * 日本語などを含むファイル名でも壊れないようにする（RFC 5987）。ASCII だけに落とした
      * 名前を filename に、実際の名前を filename* に入れる（古いブラウザは前者を使う）。
@@ -930,11 +1002,14 @@ public final class WebServer {
     }
 
     /**
-     * 共通ガード（§8.5 の最小形）: トークン一致 + Origin 検証。
+     * 共通ガード（§8.5）: Host 検証 + トークン一致 + Origin 検証。
      *
      * <p>書き込み API だけでなく**データ配信にも掛ける**。トークンを見ないのは
      * {@code /}・{@code /index.html}（データを含まない）と {@code /__erd/health}
      * （モード判定。トークン以前に到達性を確かめるためのもの）だけである。
+     *
+     * <p>{@code Host} 検証（DNS リバインディング対策）はここではなく {@code create()} の
+     * {@code before} で**全ルートに掛けている**（{@link Guards#isLocalHost}）。
      */
     private boolean authorized(Context ctx) {
         String presented = ctx.queryParam("t");
