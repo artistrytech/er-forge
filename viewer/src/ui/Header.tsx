@@ -27,6 +27,7 @@ import { downloadText } from "../lib/download";
 import { AboutDialog } from "./AboutDialog";
 import { Button } from "./Button";
 import { Dialog } from "./Dialog";
+import { McpDialog } from "./McpDialog";
 import { PenIcon } from "./icons";
 import { ViewerExportDialog } from "./ViewerExportDialog";
 import { Link } from "./Link";
@@ -311,6 +312,7 @@ function SettingsMenu() {
   const [savingName, setSavingName] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [mcpOpen, setMcpOpen] = useState(false);
   const { open, setOpen, toggle, ref } = useDropdown();
 
   // メニューを開いた時点の保存済みの値で下書きを同期する
@@ -467,6 +469,23 @@ function SettingsMenu() {
             )}
           </div>
 
+          {/* AI 連携（MCP。Q-01）。接続口はこのサーバー自身なのでサーバーモード専用 */}
+          {serverMode && (
+            <div className={styles.settingsBlock}>
+              <span className={styles.settingsLabel}>{t("settings.mcp")}</span>
+              <Button
+                className={styles.blockButton}
+                data-testid="mcp-settings"
+                onClick={() => {
+                  setMcpOpen(true);
+                  setOpen(false);
+                }}
+              >
+                {t("settings.mcpAction")}
+              </Button>
+            </div>
+          )}
+
           {/* データリセット（このワークスペースのスキーマ情報だけを消す）とワークスペース削除。
               破壊力が違うため別々の操作として並べる（§11） */}
           {serverMode && (
@@ -497,6 +516,8 @@ function SettingsMenu() {
           )}
         </div>
       )}
+
+      {mcpOpen && <McpDialog onClose={() => setMcpOpen(false)} />}
 
       {confirmDelete && workspace !== null && (
         <WorkspaceDeleteDialog workspace={workspace} onClose={() => setConfirmDelete(false)} />

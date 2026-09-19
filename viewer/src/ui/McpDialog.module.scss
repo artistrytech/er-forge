@@ -1,0 +1,77 @@
+/* AI 連携（MCP）の設定ダイアログ（Q-01）。共有の .dialog-actions は global に残す。 */
+
+.hint {
+  margin: 0 0 14px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.field {
+  margin-bottom: 16px;
+}
+
+.label {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.note {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* 「先にコミットしておく」「トークンは再表示できない」など、読み飛ばされると困る一文 */
+.warn {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--danger, #d33);
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.token-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+
+.token-state {
+  flex: 1;
+  min-width: 160px;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.snippet-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+/* テキストエリアの高さに引き伸ばされず、文字数でも縮まないようにする */
+.copy-button {
+  flex: none;
+}
+
+.snippet {
+  flex: 1;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px;
+  background: var(--bg);
+  color: inherit;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  resize: vertical;
+  box-sizing: border-box;
+}

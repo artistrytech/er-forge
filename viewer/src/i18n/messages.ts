@@ -66,6 +66,47 @@ const ja = {
   "viewerExport.error.reserved": "この名前は Windows で予約されています（CON, PRN, NUL など）",
   "viewerExport.error.noWorkspace": "ワークスペースを1つ以上選んでください",
   "nameDisplay.label": "表示名",
+  // ---- AI 連携（MCP。Q-01 / 設計書 §8.8） ----
+  "settings.mcp": "AI 連携（MCP）",
+  "settings.mcpAction": "設定を開く",
+  "mcp.title": "AI 連携（MCP）",
+  "mcp.hint":
+    "Claude Code などの AI クライアントから、テーブル定義・論理名・注記・ER図を参照できるようにします。接続先はこのサーバー自身なので、サーバーを起動しているあいだだけ使えます。",
+  "mcp.loading": "読み込んでいます…",
+  "mcp.loadFailed": "MCP の設定を読み込めませんでした",
+  "mcp.saveFailed": "MCP の設定を保存できませんでした",
+  "mcp.enabled": "MCP を有効にする",
+  "mcp.enabledHint":
+    "無効のあいだは接続口そのものが存在しません。有効にしてトークンを発行すると接続できます。",
+  "mcp.token": "トークン",
+  "mcp.tokenPresent": "発行済み（末尾 {hint}）",
+  "mcp.tokenAbsent": "未発行",
+  "mcp.tokenIssue": "発行",
+  "mcp.tokenReissue": "再発行",
+  "mcp.tokenDelete": "削除",
+  "mcp.tokenIssued": "トークンを発行しました",
+  "mcp.tokenDeleted": "トークンを削除しました",
+  "mcp.tokenOnce":
+    "このトークンを表示できるのは今だけです。下の設定をコピーして貼り付けてください。分からなくなったら再発行してください。",
+  "mcp.tokenPlaceholder": "<発行したトークン>",
+  "mcp.reissueTitle": "トークンを再発行しますか？",
+  "mcp.reissueBody":
+    "いまのトークンはすぐに使えなくなります。AI クライアント側の設定も貼り直しが必要です。",
+  "mcp.write": "書き込みを許可する",
+  "mcp.writeHint":
+    "許可すると、論理名・注記・タグ・色・論理制約・ER図のページと配置・カラム辞書・無視リストを AI が書き換えられます。カラム・型・主キー・外部キー・索引（DB から取り込む物理情報）は、許可しても書き換えられません。",
+  "mcp.writeCommit":
+    "AI に書かせる前にコミットしておくことをおすすめします（変更は git diff で確認・取り消しできます）。",
+  "mcp.snippet": "AI クライアントに貼り付ける設定",
+  "mcp.snippetHint":
+    "Claude Code なら .mcp.json に貼ります。ポートは起動のたびに変わることがあるため、切れたらこの画面を開いて貼り直してください。",
+  "mcp.copy": "コピー",
+  "mcp.snippetCopied": "設定をコピーしました",
+  "mcp.lastAccess": "最終アクセス",
+  "mcp.lastAccessNone": "まだ利用されていません",
+  "mcp.lifecycleNote":
+    "接続できないときは、サーバーが起動しているか、ポートとトークンが最新かを確認してください。",
+  "mcp.close": "閉じる",
   "settings.dataReset": "データリセット",
   "settings.dataResetAction": "スキーマ情報を削除",
   "reset.title": "データをリセットしますか？",
@@ -766,6 +807,47 @@ const en: Record<MsgKey, string> = {
   "viewerExport.error.reserved": "That name is reserved on Windows (CON, PRN, NUL, ...)",
   "viewerExport.error.noWorkspace": "Select at least one workspace",
   "nameDisplay.label": "Name display",
+  // ---- AI integration (MCP) ----
+  "settings.mcp": "AI integration (MCP)",
+  "settings.mcpAction": "Open settings",
+  "mcp.title": "AI integration (MCP)",
+  "mcp.hint":
+    "Let an AI client such as Claude Code read your table definitions, logical names, notes and ER diagrams. It connects to this server, so it only works while the server is running.",
+  "mcp.loading": "Loading...",
+  "mcp.loadFailed": "Could not load the MCP settings",
+  "mcp.saveFailed": "Could not save the MCP settings",
+  "mcp.enabled": "Enable MCP",
+  "mcp.enabledHint":
+    "While this is off the endpoint does not exist at all. Turn it on and issue a token to connect.",
+  "mcp.token": "Token",
+  "mcp.tokenPresent": "Issued (ends with {hint})",
+  "mcp.tokenAbsent": "Not issued",
+  "mcp.tokenIssue": "Issue",
+  "mcp.tokenReissue": "Reissue",
+  "mcp.tokenDelete": "Delete",
+  "mcp.tokenIssued": "Token issued",
+  "mcp.tokenDeleted": "Token deleted",
+  "mcp.tokenOnce":
+    "This is the only time the token is shown. Copy the configuration below and paste it into your client. If you lose it, issue a new one.",
+  "mcp.tokenPlaceholder": "<the token you issued>",
+  "mcp.reissueTitle": "Reissue the token?",
+  "mcp.reissueBody":
+    "The current token stops working immediately. You will have to paste the new one into your AI client.",
+  "mcp.write": "Allow writing",
+  "mcp.writeHint":
+    "When allowed, the AI can change logical names, notes, tags, colors, logical constraints, diagram pages and layouts, the column dictionary and the ignore list. Columns, types, primary keys, foreign keys and indexes (physical information imported from the database) stay read-only either way.",
+  "mcp.writeCommit":
+    "Commit your work before letting the AI write. Every change is reviewable — and revertable — with git diff.",
+  "mcp.snippet": "Configuration to paste into your AI client",
+  "mcp.snippetHint":
+    "For Claude Code, paste this into .mcp.json. The port can change between restarts, so come back here and paste it again if the connection breaks.",
+  "mcp.copy": "Copy",
+  "mcp.snippetCopied": "Configuration copied",
+  "mcp.lastAccess": "Last access",
+  "mcp.lastAccessNone": "Not used yet",
+  "mcp.lifecycleNote":
+    "If the client cannot connect, check that the server is running and that the port and token are current.",
+  "mcp.close": "Close",
   "settings.dataReset": "Reset data",
   "settings.dataResetAction": "Delete schema data",
   "reset.title": "Reset all data?",
