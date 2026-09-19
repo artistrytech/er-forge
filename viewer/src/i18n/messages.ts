@@ -105,7 +105,7 @@ const ja = {
   "mcp.lastAccess": "最終アクセス",
   "mcp.lastAccessNone": "まだ利用されていません",
   "mcp.lifecycleNote":
-    "接続できないときは、サーバーが起動しているか、ポートとトークンが最新かを確認してください。",
+    "AI クライアントは起動したときに接続します。サーバーを後から起動した場合や、ここで設定を変えた場合は、クライアント側で接続し直してください（Claude Code なら /mcp から reconnect）。それでも繋がらないときは、ポートとトークンが最新かを確認してください。",
   "mcp.close": "閉じる",
   "settings.dataReset": "データリセット",
   "settings.dataResetAction": "スキーマ情報を削除",
@@ -846,7 +846,7 @@ const en: Record<MsgKey, string> = {
   "mcp.lastAccess": "Last access",
   "mcp.lastAccessNone": "Not used yet",
   "mcp.lifecycleNote":
-    "If the client cannot connect, check that the server is running and that the port and token are current.",
+    "AI clients connect when they start. If you started this server afterwards, or changed anything here, reconnect from the client (in Claude Code, /mcp then reconnect). If it still fails, check that the port and token are current.",
   "mcp.close": "Close",
   "settings.dataReset": "Reset data",
   "settings.dataResetAction": "Delete schema data",

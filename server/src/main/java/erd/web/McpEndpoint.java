@@ -115,6 +115,12 @@ final class McpEndpoint {
         }
 
         boolean modern = params.path(META).hasNonNull(META_VERSION);
+        // 「繋がっているか」「どちらの世代で来ているか」を残す。接続の切り分けで最初に見る情報で、
+        // ツールを1回も呼ばずに終わる接続もあるため、ツール呼び出しに限らず記録する。
+        // tools/call はメソッド名よりツール名のほうが役に立つので、callTool 側で記録する
+        if (!method.equals("tools/call")) {
+            settings.touch(root, method, modern ? "modern" : "legacy", false);
+        }
         try {
             if (modern) {
                 handleModern(ctx, id, method, params);
@@ -231,7 +237,7 @@ final class McpEndpoint {
             respond(ctx, 200, errorBody(id, INVALID_PARAMS, "Unknown tool: " + name));
             return;
         }
-        settings.touch(root, name, false);
+        settings.touch(root, name, modern ? "modern" : "legacy", false);
         JsonNode arguments = params.path("arguments");
         try {
             String text = tools.call(root, name, arguments);

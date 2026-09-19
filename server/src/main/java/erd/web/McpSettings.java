@@ -118,10 +118,18 @@ final class McpSettings {
     /**
      * 最終アクセスの記録（Q-01。意図しない利用に気づけるようにする）。
      *
+     * <p><b>ツール呼び出しだけでなく、あらゆる MCP リクエストで記録する。</b>
+     * 「クライアントは繋がっているのか」「どちらの世代で来ているのか」は、
+     * 接続がうまくいかないときに最初に知りたいことであり、ツールを1回も呼ばずに
+     * 終わる接続（initialize だけ通って tools/list で切れる等）もあるためである。
+     *
      * <p>毎リクエスト書くとディスクを無駄に叩くため、一定間隔でだけ書く。
      * Git 管理外のファイルであり、取りこぼしても実害はない。
+     *
+     * @param label 呼ばれたツール名、またはツール以外のメソッド名
+     * @param era   {@code "modern"} / {@code "legacy"}（§8.8 の世代）
      */
-    void touch(Path root, String tool, boolean write) {
+    void touch(Path root, String label, String era, boolean write) {
         long now = System.currentTimeMillis();
         if (now - lastTouchWrite < TOUCH_INTERVAL_MILLIS) return;
         lastTouchWrite = now;
@@ -129,7 +137,8 @@ final class McpSettings {
             ObjectNode s = load(root);
             ObjectNode last = mapper.createObjectNode();
             last.put("at", Instant.now().toString());
-            last.put("tool", tool);
+            last.put("tool", label);
+            last.put("era", era);
             last.put("write", write);
             s.set("lastAccess", last);
             save(root, s);

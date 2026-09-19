@@ -25,7 +25,8 @@ interface McpSettings {
   hasToken: boolean;
   tokenHint: string;
   issuedAt: string;
-  lastAccess: { at: string; tool: string; write: boolean } | null;
+  /** era は MCP の世代（modern / legacy）。接続がうまくいかないときの切り分けに使う */
+  lastAccess: { at: string; tool: string; era?: string; write: boolean } | null;
   endpoint: string;
 }
 
@@ -133,7 +134,8 @@ export function McpDialog({ onClose }: { onClose: () => void }) {
     const when = Number.isNaN(at.getTime())
       ? settings.lastAccess.at
       : at.toLocaleString(lang === "ja" ? "ja-JP" : "en-US");
-    return `${when} — ${settings.lastAccess.tool}`;
+    const era = settings.lastAccess.era;
+    return `${when} — ${settings.lastAccess.tool}${era == null ? "" : ` (${era})`}`;
   };
 
   return (

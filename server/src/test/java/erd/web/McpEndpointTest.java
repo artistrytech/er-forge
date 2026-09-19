@@ -241,6 +241,22 @@ class McpEndpointTest {
     }
 
     @Test
+    @DisplayName("最終アクセスに世代（modern / legacy）が残る")
+    void lastAccessRecordsEra() throws Exception {
+        enableMcp(false);
+        // ツールを呼ばずに終わる接続もあるため、tools/list でも記録されなければならない
+        mcp(mcpToken, modern("tools/list", null),
+                Map.of("MCP-Protocol-Version", McpEndpoint.MODERN_VERSION, "Mcp-Method", "tools/list"));
+
+        HttpRequest req = HttpRequest.newBuilder(
+                URI.create(origin + "/__erd/mcp/settings?t=" + SESSION_TOKEN)).GET().build();
+        JsonNode settings = mapper.readTree(
+                http.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)).body());
+        assertEquals("modern", settings.path("lastAccess").path("era").asText());
+        assertEquals("tools/list", settings.path("lastAccess").path("tool").asText());
+    }
+
+    @Test
     @DisplayName("通知（id なし）は 202 を返す")
     void notificationAccepted() throws Exception {
         enableMcp(false);
