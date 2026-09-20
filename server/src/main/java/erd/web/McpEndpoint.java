@@ -190,6 +190,26 @@ final class McpEndpoint {
         result.putObject("capabilities").putObject("tools");
         result.putObject(META).set(META_SERVER_INFO, serverInfo());
         result.put("instructions", instructions());
+        return cacheHints(result);
+    }
+
+    /**
+     * キャッシュのヒント。modern では {@code resultType: "complete"} を返す
+     * {@code server/discover} と {@code tools/list} に<b>必須</b>である（付けないとクライアントの
+     * スキーマ検証で落ちる）。{@code tools/call} は対象外。
+     *
+     * <p><b>キャッシュさせない（{@code ttlMs: 0}）。</b> ツール一覧は画面の「書き込みを許可」で
+     * 変わるが、こちらは {@code listChanged} も購読も実装していないため、クライアントに
+     * 無効化の合図を送る手段が無い。キャッシュを許すと、トグルを切り替えても
+     * 反映されない時間ができる。相手は同じマシンの中に居るので、毎回取り直しても実質ただである。
+     *
+     * <p>{@code cacheScope} は {@code private}。内容は呼び出し元によらず同じだが、
+     * {@code public} は「別の資格情報のキャッシュと共有してよい」という意味になる。
+     * スキーマを外へ出さないことがこの機能の前提（INV-2）なので、共有を許す側には倒さない。
+     */
+    private ObjectNode cacheHints(ObjectNode result) {
+        result.put("ttlMs", 0);
+        result.put("cacheScope", "private");
         return result;
     }
 
@@ -222,7 +242,8 @@ final class McpEndpoint {
         ObjectNode result = mapper.createObjectNode();
         if (modern) result.put("resultType", "complete");
         result.set("tools", tools.definitions(settings.writeAllowed(root)));
-        return result;
+        // legacy にはキャッシュヒントの概念が無いので付けない
+        return modern ? cacheHints(result) : result;
     }
 
     private void callTool(Context ctx, JsonNode id, JsonNode params, boolean modern) {

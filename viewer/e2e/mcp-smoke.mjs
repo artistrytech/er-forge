@@ -114,6 +114,33 @@ async function main() {
       names.every((n) => n.startsWith("erd_list") || n.startsWith("erd_get") || n === "erd_search"),
     );
 
+    // modern（2026-07-28）で来たときの形。ここが崩れるとクライアントのスキーマ検証で落ち、
+    // 「接続はできているのにツールが取れない」という分かりにくい壊れ方をする
+    const modernList = await page.request.post(`${origin}/__erd/mcp`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+        "MCP-Protocol-Version": "2026-07-28",
+        "Mcp-Method": "tools/list",
+      },
+      data: {
+        jsonrpc: "2.0",
+        id: 10,
+        method: "tools/list",
+        params: {
+          _meta: {
+            "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+            "io.modelcontextprotocol/clientInfo": { name: "smoke", version: "1.0" },
+            "io.modelcontextprotocol/clientCapabilities": {},
+          },
+        },
+      },
+    });
+    const modernBody = (await modernList.json()).result ?? {};
+    check("modern: resultType が complete", modernBody.resultType === "complete");
+    check("modern: ttlMs が 0 以上の整数", Number.isInteger(modernBody.ttlMs) && modernBody.ttlMs >= 0);
+    check("modern: cacheScope が public / private", ["public", "private"].includes(modernBody.cacheScope));
+
     // 実データが引けるか（ツールがサーバーの data/** を本当に読んでいるか）
     const call = await page.request.post(`${origin}/__erd/mcp`, {
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },

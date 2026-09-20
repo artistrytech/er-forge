@@ -129,6 +129,7 @@ MCP の仕様は改訂 **`2026-07-28`** で **`initialize` のハンドシェイ
 | `ping` | ✓ | ✓ | 空応答 |
 
 - modern の結果には **`resultType: "complete"`** を付ける。
+- **`server/discover` と `tools/list` にはキャッシュのヒント（`ttlMs` / `cacheScope`）が必須**である（§3.2a）。
 - `GET` / `DELETE` は **405**（旧リビジョンの SSE ストリームとセッション終了。実装しない）。
 - **セッションを持たない**（`Mcp-Session-Id` を発行しない）。
 - 応答は常に `application/json`（通知を送らないため SSE 応答ストリームを開かない。仕様上許容される）。
@@ -148,6 +149,21 @@ modern では、本文の一部が HTTP ヘッダにも載る。**ヘッダと�
 - `Mcp-Name` は非 ASCII を **`=?base64?…?=`** の形で運ぶことがあるため、比較前にデコードする。
 - 未対応の版は **400 + `-32022`**（`UnsupportedProtocolVersionError`）で、`data.supported` に対応版を列挙する。
 - 未知のメソッドは **404 + `-32601`**（HTTP+SSE の旧サーバーが返す 404 と区別できるよう、本文に JSON-RPC エラーを載せる）。
+
+### 3.2a modern のキャッシュヒント（必須）
+
+modern では、`resultType: "complete"` を返す **`server/discover` と `tools/list` に
+`ttlMs`（0 以上の整数）と `cacheScope`（`public` / `private`）が必須**である。
+`tools/call` は対象外。
+
+**欠けるとクライアントのスキーマ検証で落ちる。** そのときの見え方は
+「接続はできている（`Connected`）のにツールが取れない」であり、原因が非常に分かりにくい。
+実際に一度これで詰まったので、**単体テストと e2e の両方で固定する**。
+
+| 値 | 決定 | 理由 |
+|---|---|---|
+| `ttlMs` | **0**（キャッシュさせない） | ツール一覧は画面の「書き込みを許可」で変わるが、`listChanged` も購読も実装していないため、クライアントに無効化の合図を送る手段が無い。キャッシュを許すと、トグルを切り替えても反映されない時間ができる。相手は同じマシンの中に居るので、毎回取り直しても実質ただ |
+| `cacheScope` | **`private`** | 内容は呼び出し元によらず同じだが、`public` は「別の資格情報のキャッシュと共有してよい」という意味になる。スキーマを外へ出さないことがこの機能の前提（INV-2）なので、共有を許す側には倒さない |
 
 ### 3.3 エラーの出し分け
 
@@ -312,6 +328,7 @@ MCP のツールは部分更新なので、間に薄いマージ層を1枚置く
 | T-3 | `Origin` | 欠落は許可、別オリジンは 403 |
 | T-3a | legacy | `initialize` が提示版をそのまま返し、`tools/call` が実データを返す |
 | T-3b | modern | `server/discover` が対応版を返す。ヘッダと本文の不一致は 400 + `-32020`、未対応の版は 400 + `-32022`（`data.supported` 付き）、未知のメソッドは 404 + `-32601`、通知は 202 |
+| T-3c | modern のキャッシュヒント | `server/discover` と `tools/list` に `resultType` / `ttlMs`（0 以上の整数）/ `cacheScope`（`public` \| `private`）が揃う。`tools/call` と legacy には付かない。**実クライアントのスキーマ検証はここで落ちる**ので、単体テストと e2e の両方で見る |
 | T-4 | INV-1 | `erd_set_table_meta` に `columns[].type` などの machine-owned を混ぜたら `isError`。**書き込みは発生しない** |
 | T-5 | INV-6 | 書き込み許可オフのとき、書き込みツールが `tools/list` に**出ず**、直接 `tools/call` しても拒否される |
 | T-6 | INV-2 | `tools/list` に逆生成・接続設定・テーブル削除 / 作成 / リネーム・ワークスペース操作・データリセット・ZIP 書き出しが**存在しない** |

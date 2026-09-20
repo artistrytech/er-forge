@@ -241,6 +241,40 @@ class McpEndpointTest {
     }
 
     @Test
+    @DisplayName("modern: server/discover と tools/list にキャッシュヒントが必須")
+    void modernCacheHints() throws Exception {
+        enableMcp(false);
+        // これが欠けるとクライアントのスキーマ検証で落ち、
+        // 「接続はできているのにツールが取れない」という分かりにくい壊れ方をする
+        for (String method : List.of("server/discover", "tools/list")) {
+            JsonNode result = ok(mcp(mcpToken, modern(method, null),
+                    Map.of("MCP-Protocol-Version", McpEndpoint.MODERN_VERSION, "Mcp-Method", method)));
+            assertEquals("complete", result.path("resultType").asText(), method);
+            assertTrue(result.path("ttlMs").isInt(), method + ": ttlMs が整数でない");
+            assertTrue(result.path("ttlMs").asInt() >= 0, method + ": ttlMs は 0 以上");
+            assertTrue(List.of("public", "private").contains(result.path("cacheScope").asText()),
+                    method + ": cacheScope は public / private のみ");
+        }
+    }
+
+    @Test
+    @DisplayName("キャッシュヒントは対象の結果にだけ付ける（tools/call と legacy には付けない）")
+    void cacheHintsOnlyWhereRequired() throws Exception {
+        enableMcp(false);
+        var params = mapper.createObjectNode();
+        params.put("name", "erd_list_workspaces");
+        params.set("arguments", mapper.createObjectNode());
+        JsonNode call = ok(mcp(mcpToken, modern("tools/call", params),
+                Map.of("MCP-Protocol-Version", McpEndpoint.MODERN_VERSION,
+                        "Mcp-Method", "tools/call", "Mcp-Name", "erd_list_workspaces")));
+        assertFalse(call.has("ttlMs"), "tools/call はキャッシュ対象ではない");
+
+        JsonNode legacyList = ok(mcp(mcpToken, legacy("tools/list", null), Map.of()));
+        assertFalse(legacyList.has("ttlMs"), "legacy にキャッシュヒントの概念は無い");
+        assertFalse(legacyList.has("resultType"), "legacy に resultType は無い");
+    }
+
+    @Test
     @DisplayName("最終アクセスに世代（modern / legacy）が残る")
     void lastAccessRecordsEra() throws Exception {
         enableMcp(false);
