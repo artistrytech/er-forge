@@ -13,6 +13,8 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../i18n/useI18n";
+import { cx } from "../lib/cx";
+import { MCP_CLIENTS, mcpClient, mcpSnippet, type McpClientId } from "../lib/mcpClients";
 import { apiGet, apiPut } from "../model/api";
 import { useAppStore } from "../model/store";
 import { Button } from "./Button";
@@ -30,23 +32,6 @@ interface McpSettings {
   endpoint: string;
 }
 
-/** 貼り付ける設定（Claude Code の `.mcp.json`）。トークンが無いときはプレースホルダを入れる。 */
-export function mcpSnippet(endpoint: string, token: string, placeholder: string): string {
-  return JSON.stringify(
-    {
-      mcpServers: {
-        erforge: {
-          type: "http",
-          url: endpoint,
-          headers: { Authorization: `Bearer ${token === "" ? placeholder : token}` },
-        },
-      },
-    },
-    null,
-    2,
-  );
-}
-
 export function McpDialog({ onClose }: { onClose: () => void }) {
   const { t, lang } = useI18n();
   const addToast = useAppStore((s) => s.addToast);
@@ -56,6 +41,7 @@ export function McpDialog({ onClose }: { onClose: () => void }) {
   /** 発行直後だけ手元に残る生トークン。リロードすれば消える（サーバーは返さない） */
   const [issued, setIssued] = useState("");
   const [confirmReissue, setConfirmReissue] = useState(false);
+  const [client, setClient] = useState<McpClientId>("claude");
   const snippetRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -112,8 +98,8 @@ export function McpDialog({ onClose }: { onClose: () => void }) {
     () =>
       settings === null
         ? ""
-        : mcpSnippet(settings.endpoint, issued, t("mcp.tokenPlaceholder")),
-    [settings, issued, t],
+        : mcpSnippet(client, settings.endpoint, issued, t("mcp.tokenPlaceholder")),
+    [client, settings, issued, t],
   );
 
   const copySnippet = () => {
@@ -206,10 +192,29 @@ export function McpDialog({ onClose }: { onClose: () => void }) {
             {settings.write && <p className={styles.warn}>{t("mcp.writeCommit")}</p>}
           </div>
 
-          {/* 貼り付ける設定。ポートは起動ごとに変わりうるので、必ずサーバーの値を使う */}
+          {/* 貼り付ける設定。ポートは起動ごとに変わりうるので、必ずサーバーの値を使う。
+              形はクライアントごとに違う（貼り付け先もキーもヘッダの書き方も揃っていない） */}
           <div className={styles.field}>
             <span className={styles.label}>{t("mcp.snippet")}</span>
             <p className={styles.note}>{t("mcp.snippetHint")}</p>
+            <div className={styles.tabs} role="tablist" aria-label={t("mcp.snippet")}>
+              {MCP_CLIENTS.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={client === c.id}
+                  className={cx(styles.tab, client === c.id && styles.tabActive)}
+                  data-testid={`mcp-client-${c.id}`}
+                  onClick={() => setClient(c.id)}
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
+            <p className={styles.note} data-testid="mcp-snippet-where">
+              {t("mcp.snippetFile")}: <code>{t(mcpClient(client).whereKey)}</code>
+            </p>
             <div className={styles.snippetRow}>
               <textarea
                 ref={snippetRef}

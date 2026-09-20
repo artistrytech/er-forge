@@ -96,6 +96,27 @@ async function main() {
     check("スニペットに生トークンが入る", /Bearer [0-9a-f]{64}/.test(snippet));
     check("プレースホルダが残っていない", !snippet.includes("発行したトークン"));
 
+    // クライアントごとにタブを切り替えると、形と貼り付け先が入れ替わる
+    await page.getByTestId("mcp-client-copilot").click();
+    const copilot = await page.getByTestId("mcp-snippet").inputValue();
+    check("Copilot: トップレベルが servers", JSON.parse(copilot).servers !== undefined);
+    check("Copilot: mcpServers ではない", JSON.parse(copilot).mcpServers === undefined);
+    check(
+      "Copilot: 貼り付け先が .vscode/mcp.json",
+      (await page.getByTestId("mcp-snippet-where").innerText()).includes(".vscode/mcp.json"),
+    );
+
+    await page.getByTestId("mcp-client-codex").click();
+    const codex = await page.getByTestId("mcp-snippet").inputValue();
+    check("Codex: TOML になる", codex.includes("[mcp_servers.erforge]"));
+    check("Codex: http_headers で渡す", codex.includes("http_headers = { Authorization ="));
+
+    await page.getByTestId("mcp-client-cursor").click();
+    const cursor = JSON.parse(await page.getByTestId("mcp-snippet").inputValue());
+    check("Cursor: type を付けない（url があれば HTTP）", cursor.mcpServers.erforge.type === undefined);
+
+    await page.getByTestId("mcp-client-claude").click();
+
     // 画面が案内したとおりの設定で、実際に MCP が喋れるか
     const token = snippet.match(/Bearer ([0-9a-f]{64})/)[1];
     const origin = new URL(url).origin;

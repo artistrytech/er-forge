@@ -51,6 +51,37 @@
   color: var(--text-muted);
 }
 
+/* クライアントの切り替え。数が少ないので下線タブにする */
+.tabs {
+  display: flex;
+  gap: 2px;
+  margin-top: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tab {
+  appearance: none;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.tab:hover {
+  color: inherit;
+}
+
+.tab-active {
+  color: inherit;
+  font-weight: 600;
+  border-bottom-color: var(--accent, currentColor);
+}
+
 .snippet-row {
   display: flex;
   align-items: flex-start;

@@ -99,7 +99,13 @@ const ja = {
     "AI に書かせる前にコミットしておくことをおすすめします（変更は git diff で確認・取り消しできます）。",
   "mcp.snippet": "AI クライアントに貼り付ける設定",
   "mcp.snippetHint":
-    "Claude Code なら .mcp.json に貼ります。ポートは起動のたびに変わることがあるため、切れたらこの画面を開いて貼り直してください。",
+    "使っているツールのタブを選んでコピーしてください。ポートは起動のたびに変わることがあるため、切れたらこの画面を開いて貼り直してください。",
+  "mcp.snippetFile": "貼り付け先",
+  // 貼り付け先はツールごとに違う（公式ドキュメントに合わせている）
+  "mcp.where.claude": "プロジェクト直下の .mcp.json",
+  "mcp.where.codex": "~/.codex/config.toml（プロジェクト単位なら .codex/config.toml）",
+  "mcp.where.cursor": "プロジェクト直下の .cursor/mcp.json（全体に効かせるなら ~/.cursor/mcp.json）",
+  "mcp.where.copilot": "プロジェクト直下の .vscode/mcp.json",
   "mcp.copy": "コピー",
   "mcp.snippetCopied": "設定をコピーしました",
   "mcp.lastAccess": "最終アクセス",
@@ -840,7 +846,12 @@ const en: Record<MsgKey, string> = {
     "Commit your work before letting the AI write. Every change is reviewable — and revertable — with git diff.",
   "mcp.snippet": "Configuration to paste into your AI client",
   "mcp.snippetHint":
-    "For Claude Code, paste this into .mcp.json. The port can change between restarts, so come back here and paste it again if the connection breaks.",
+    "Pick the tab for the tool you use, then copy. The port can change between restarts, so come back here and paste it again if the connection breaks.",
+  "mcp.snippetFile": "Paste into",
+  "mcp.where.claude": ".mcp.json in the project root",
+  "mcp.where.codex": "~/.codex/config.toml (or .codex/config.toml per project)",
+  "mcp.where.cursor": ".cursor/mcp.json in the project root (~/.cursor/mcp.json for all projects)",
+  "mcp.where.copilot": ".vscode/mcp.json in the project root",
   "mcp.copy": "Copy",
   "mcp.snippetCopied": "Configuration copied",
   "mcp.lastAccess": "Last access",
