@@ -177,11 +177,15 @@ class McpEndpointTest {
         enableMcp(true);
         List<String> withWrite = toolNames();
         assertTrue(withWrite.containsAll(McpWriteTools.NAMES), "書き込み許可で書き込みツールが出る: " + withWrite);
-        for (String forbidden : List.of("introspect", "connection", "driver", "delete",
-                "reset", "export", "workspace", "rename", "create_table")) {
-            assertTrue(withWrite.stream().noneMatch(n -> n.contains(forbidden) && !n.equals("erd_list_workspaces")),
+        // 出してはならない領域（§5.4 / INV-2）。ページの削除（erd_delete_diagram）はスキーマに
+        // 影響しないので許されるが、テーブル・ワークスペースの削除や逆生成は決して出ない
+        for (String forbidden : List.of("introspect", "connection", "driver", "delete_table",
+                "delete_workspace", "create_workspace", "reset", "export", "rename", "create_table")) {
+            assertTrue(withWrite.stream().noneMatch(n -> n.contains(forbidden)),
                     "出してはならないツールがある: " + forbidden + " / " + withWrite);
         }
+        assertTrue(withWrite.stream().filter(n -> n.contains("delete")).allMatch("erd_delete_diagram"::equals),
+                "削除できるのはページだけ: " + withWrite);
     }
 
     // ------------------------------------------------------------ 書き込み（Q-03）
@@ -342,6 +346,141 @@ class McpEndpointTest {
 
         ok(mcp(mcpToken, call("erd_set_table_meta", args.put("notes", "x")), Map.of()));
         assertEquals(1, countDirs(backups), "直後の書き込みでは増えない");
+    }
+
+    // -------------------------------------------------- ER図の構成（Q-04 / Q-05）
+
+    @Test
+    @DisplayName("T-8: ページを作り、テーブルを置くと座標はサーバーが決め、manifest / index が追随する")
+    void createAndPlace() throws Exception {
+        enableMcp(true);
+        JsonNode created = ok(mcp(mcpToken, call("erd_create_diagram",
+                mapper.createObjectNode().put("id", "orders").put("title", "受注")), Map.of()));
+        assertFalse(created.path("isError").asBoolean(), created.toString());
+
+        var place = mapper.createObjectNode().put("diagramId", "orders");
+        place.putArray("add").add("public.users").add("public.orders");
+        JsonNode placed = ok(mcp(mcpToken, call("erd_place_tables", place), Map.of()));
+        assertFalse(placed.path("isError").asBoolean(), placed.toString());
+        JsonNode placedBody = mapper.readTree(placed.path("content").get(0).path("text").asText());
+        assertEquals("auto", placedBody.path("layout").asText());
+        assertTrue(placedBody.path("written").toString().contains("index.js"), placedBody.toString());
+
+        JsonNode page = diagram("orders");
+        assertEquals(2, page.path("nodes").size(), page.toString());
+        int[] a = pos(page.path("nodes").get(0));
+        int[] b = pos(page.path("nodes").get(1));
+        assertTrue(a[0] != b[0] || a[1] != b[1], "2つのノードが同じ座標: " + page);
+        assertTrue(a[0] >= 0 && a[1] >= 0 && b[0] >= 0 && b[1] >= 0, "負の座標: " + page);
+
+        // index.js の tables[].diagrams と manifest.diagrams に載る
+        JsonNode tables = mapper.readTree(ok(mcp(mcpToken,
+                call("erd_list_tables", mapper.createObjectNode()), Map.of()))
+                .path("content").get(0).path("text").asText());
+        for (JsonNode t : tables.path("tables")) {
+            assertTrue(t.path("diagrams").toString().contains("orders"), t.toString());
+        }
+        assertTrue(Files.readString(root.resolve("workspace-default/data/manifest.js")).contains("orders"));
+    }
+
+    @Test
+    @DisplayName("自動レイアウトは決定論的（2回走らせても同じファイル）で、keep は既存を動かさない")
+    void layoutIsDeterministicAndKeepPreserves() throws Exception {
+        enableMcp(true);
+        // 論理外部制約を1本足してから置く（エッジがレイアウトに効く経路を通す）
+        var lfk = mapper.createObjectNode().put("name", "lfk_orders_user").put("references", "public.users");
+        lfk.putArray("columns").add("user_id");
+        lfk.putArray("referencedColumns").add("id");
+        var c = mapper.createObjectNode().put("tableId", "public.orders");
+        c.putArray("logicalForeignKeys").add(lfk);
+        ok(mcp(mcpToken, call("erd_set_logical_constraints", c), Map.of()));
+
+        var place = mapper.createObjectNode().put("diagramId", "core");
+        place.putArray("add").add("public.orders");
+        ok(mcp(mcpToken, call("erd_place_tables", place), Map.of()));
+        Path file = root.resolve("workspace-default/data/diagrams/core.js");
+        String first = Files.readString(file);
+
+        ok(mcp(mcpToken, call("erd_auto_layout", mapper.createObjectNode().put("diagramId", "core")), Map.of()));
+        assertEquals(first, Files.readString(file), "同じ入力で違う座標が出ている（差分ノイズになる）");
+
+        // keep: users を外して戻すと、orders は動かず users は下に置かれる
+        JsonNode before = diagram("core");
+        int[] ordersBefore = posOf(before, "public.orders");
+        var keep = mapper.createObjectNode().put("diagramId", "core").put("layout", "keep");
+        keep.putArray("remove").add("public.users");
+        ok(mcp(mcpToken, call("erd_place_tables", keep), Map.of()));
+        var keep2 = mapper.createObjectNode().put("diagramId", "core").put("layout", "keep");
+        keep2.putArray("add").add("public.users");
+        ok(mcp(mcpToken, call("erd_place_tables", keep2), Map.of()));
+        JsonNode after = diagram("core");
+        assertArrayEquals(ordersBefore, posOf(after, "public.orders"), "keep で既存が動いた");
+        assertTrue(posOf(after, "public.users")[1] > ordersBefore[1], "新規が既存の下に置かれていない");
+    }
+
+    @Test
+    @DisplayName("ページの改名・並び替え・削除。削除してもテーブル定義は残る")
+    void updateAndDeleteDiagram() throws Exception {
+        enableMcp(true);
+        ok(mcp(mcpToken, call("erd_update_diagram",
+                mapper.createObjectNode().put("diagramId", "core").put("title", "中核").put("order", 5)), Map.of()));
+        JsonNode page = diagram("core");
+        assertEquals("中核", page.path("title").asText());
+        assertEquals(5, page.path("order").asInt());
+
+        JsonNode deleted = ok(mcp(mcpToken, call("erd_delete_diagram",
+                mapper.createObjectNode().put("diagramId", "core")), Map.of()));
+        assertFalse(deleted.path("isError").asBoolean(), deleted.toString());
+        assertFalse(Files.exists(root.resolve("workspace-default/data/diagrams/core.js")));
+        assertTrue(Files.exists(root.resolve("workspace-default/data/schema/public/users.js")), "スキーマが消えた");
+        JsonNode list = mapper.readTree(ok(mcp(mcpToken,
+                call("erd_list_diagrams", mapper.createObjectNode()), Map.of()))
+                .path("content").get(0).path("text").asText());
+        assertEquals(0, list.path("diagrams").size(), list.toString());
+    }
+
+    @Test
+    @DisplayName("誤り: 無いテーブル・重複ページ・ページ上に無いノードは isError で候補を示す")
+    void diagramErrorsAreActionable() throws Exception {
+        enableMcp(true);
+        var place = mapper.createObjectNode().put("diagramId", "core");
+        place.putArray("add").add("public.nope");
+        JsonNode r1 = ok(mcp(mcpToken, call("erd_place_tables", place), Map.of()));
+        assertTrue(r1.path("isError").asBoolean());
+        assertTrue(r1.path("content").get(0).path("text").asText().contains("public.nope"));
+
+        JsonNode r2 = ok(mcp(mcpToken, call("erd_create_diagram",
+                mapper.createObjectNode().put("id", "core").put("title", "x")), Map.of()));
+        assertTrue(r2.path("isError").asBoolean());
+        assertTrue(r2.path("content").get(0).path("text").asText().contains("already exists"));
+
+        JsonNode r3 = ok(mcp(mcpToken, call("erd_create_diagram",
+                mapper.createObjectNode().put("id", "受注 v2").put("title", "x")), Map.of()));
+        assertTrue(r3.path("isError").asBoolean());
+        assertTrue(r3.path("content").get(0).path("text").asText().contains("core"), "既存ページを列挙する");
+
+        var move = mapper.createObjectNode().put("diagramId", "core");
+        move.putObject("nodes").putArray("public.orders").add(10).add(20);
+        JsonNode r4 = ok(mcp(mcpToken, call("erd_set_node_positions", move), Map.of()));
+        assertTrue(r4.path("isError").asBoolean());
+        assertTrue(r4.path("content").get(0).path("text").asText().contains("erd_place_tables"));
+    }
+
+    private JsonNode diagram(String id) throws Exception {
+        return mapper.readTree(ok(mcp(mcpToken,
+                call("erd_get_diagram", mapper.createObjectNode().put("diagramId", id)), Map.of()))
+                .path("content").get(0).path("text").asText());
+    }
+
+    private static int[] pos(JsonNode node) {
+        return new int[] {node.path("pos").get(0).asInt(), node.path("pos").get(1).asInt()};
+    }
+
+    private static int[] posOf(JsonNode page, String tableId) {
+        for (JsonNode n : page.path("nodes")) {
+            if (n.path("table").asText().equals(tableId)) return pos(n);
+        }
+        throw new AssertionError(tableId + " is not on the page: " + page);
     }
 
     private List<String> toolNames() throws Exception {

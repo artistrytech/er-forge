@@ -57,14 +57,20 @@ final class McpWriteTools {
     private final DictionaryService dictionary = new DictionaryService();
     private final ConfigService config = new ConfigService();
     private final McpBackups backups = new McpBackups();
+    private final McpDiagramTools diagramTools = new McpDiagramTools();
 
     // ----------------------------------------------------------- tools/list
 
-    static final List<String> NAMES = List.of(
+    /** 論理情報（Q-03）のツール。ER図の構成（Q-04）は {@link McpDiagramTools#NAMES}。 */
+    static final List<String> META_NAMES = List.of(
             "erd_set_table_meta",
             "erd_set_logical_constraints",
             "erd_set_dictionary_entry",
             "erd_set_ignore_tables");
+
+    /** 書き込みツールの全体（許可の判定と振り分けはこれで行う）。 */
+    static final List<String> NAMES = java.util.stream.Stream.concat(
+            META_NAMES.stream(), McpDiagramTools.NAMES.stream()).toList();
 
     void define(ArrayNode tools, McpTools.Defs defs) {
         tools.add(defs.tool("erd_set_table_meta",
@@ -163,6 +169,9 @@ final class McpWriteTools {
                     props.set("workspace", defs.str("Workspace id. Optional when only one exists."));
                     props.set("patterns", defs.strArray("The complete new list."));
                 }, "patterns"));
+
+        // ER図の構成（Q-04 / Q-05）
+        diagramTools.define(tools, defs);
     }
 
     // ----------------------------------------------------------- tools/call
@@ -170,6 +179,9 @@ final class McpWriteTools {
     String call(Path root, String workspaceId, Path dataDir, String name, JsonNode args) {
         // どの書き込みも、その前に data/** をスナップショットする（Q-06。回復の最後から2番目の砦）
         backups.beforeWrite(root, workspaceId, dataDir);
+        if (McpDiagramTools.NAMES.contains(name)) {
+            return diagramTools.call(dataDir, name, args);
+        }
         return switch (name) {
             case "erd_set_table_meta" -> setTableMeta(dataDir, args);
             case "erd_set_logical_constraints" -> setLogicalConstraints(dataDir, args);
@@ -398,11 +410,11 @@ final class McpWriteTools {
     }
 
     /** 1回の試行。{@code null} を返したら STALE（読み直して再試行する）。 */
-    private interface Attempt {
+    interface Attempt {
         String run();
     }
 
-    private String retry(Attempt attempt) {
+    static String retry(Attempt attempt) {
         for (int i = 0; i < ATTEMPTS; i++) {
             String result = attempt.run();
             if (result != null) return result;
@@ -435,7 +447,7 @@ final class McpWriteTools {
      * 知らないキーは拒否する（INV-1 の実効的な担保）。物理情報（{@code columns[].type} 等）を
      * 混ぜられても黙って捨てず、「書けない」と伝える。
      */
-    private static void rejectUnknownKeys(JsonNode node, Set<String> allowed, String where) {
+    static void rejectUnknownKeys(JsonNode node, Set<String> allowed, String where) {
         if (node == null || !node.isObject()) return;
         List<String> unknown = new ArrayList<>();
         node.fieldNames().forEachRemaining(k -> {
@@ -465,7 +477,7 @@ final class McpWriteTools {
         return strings(v);
     }
 
-    private static List<String> strings(JsonNode array) {
+    static List<String> strings(JsonNode array) {
         List<String> out = new ArrayList<>();
         if (array != null && array.isArray()) array.forEach(n -> out.add(n.asText("")));
         return out;
