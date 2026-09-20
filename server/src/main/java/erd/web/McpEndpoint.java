@@ -252,13 +252,14 @@ final class McpEndpoint {
             respond(ctx, 200, errorBody(id, INVALID_PARAMS, "\"name\" is required"));
             return;
         }
-        if (!tools.isKnown(name)) {
-            // 「書き込み許可がオフのときは直接呼んでも拒否する」（INV-6）もここで効く:
-            // 未公開のツールは isKnown が false になる
+        boolean write = McpWriteTools.NAMES.contains(name);
+        if (!tools.isKnown(name, settings.writeAllowed(root))) {
+            // 「書き込み許可がオフのときは直接呼んでも拒否する」（INV-6）はここで効く:
+            // 許可されていない書き込みツールは isKnown が false になる
             respond(ctx, 200, errorBody(id, INVALID_PARAMS, "Unknown tool: " + name));
             return;
         }
-        settings.touch(root, name, modern ? "modern" : "legacy", false);
+        settings.touch(root, name, modern ? "modern" : "legacy", write);
         JsonNode arguments = params.path("arguments");
         try {
             String text = tools.call(root, name, arguments);

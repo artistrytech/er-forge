@@ -80,18 +80,6 @@ public final class TableService {
         Path file = tableFile(dataDir, tableId);
         if (file == null || !Files.isRegularFile(file)) return new NotFound();
 
-        byte[] current;
-        try {
-            current = Files.readAllBytes(file);
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
-        String currentHash = Hashes.sha256(current);
-        boolean force = body.path("force").asBoolean(false);
-        if (!force && !currentHash.equals(body.path("baseHash").asText(""))) {
-            return new Stale(currentHash);
-        }
-
         JsonNode tableNode = body.path("table");
         if (!tableNode.isObject()) {
             return new Invalid(List.of(new Issue("table", "BAD_REQUEST", "table object is required")),
@@ -105,6 +93,29 @@ public final class TableService {
         } catch (DataFileException e) {
             return new Invalid(List.of(new Issue("table", "PARSE", e.getMessage())), List.of());
         }
+        return put(dataDir, tableId, incoming, body.path("baseHash").asText(""),
+                body.path("force").asBoolean(false));
+    }
+
+    /**
+     * モデルを直接受ける入口。MCP（§8.8）はここを使う — JSON に直してパースし直す往復を省くため。
+     * 検証・正規化・{@code index.js} の再生成は JSON 版と完全に同じ経路を通る（INV-4）。
+     */
+    public Outcome put(Path dataDir, String tableId, Table incoming, String baseHash, boolean force) {
+        Path file = tableFile(dataDir, tableId);
+        if (file == null || !Files.isRegularFile(file)) return new NotFound();
+
+        byte[] current;
+        try {
+            current = Files.readAllBytes(file);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        String currentHash = Hashes.sha256(current);
+        if (!force && !currentHash.equals(baseHash)) {
+            return new Stale(currentHash);
+        }
+
         // タグ・色は保存前に正規化する（trim / 空要素・重複の除去）。検証は validate で行う
         incoming = normalizeMeta(incoming);
 
@@ -454,6 +465,15 @@ public final class TableService {
     }
 
     // ---------------------------------------------------------------- helper
+
+    /**
+     * MCP の read-modify-write が現在値を読むために使う（{@link #tableFile} と同じ閉じ込め規則を通す。
+     * manifest に無い・{@code data/} の外を指す場合は null）。
+     */
+    Path tableFileOrNull(Path dataDir, String tableId) {
+        Path file = tableFile(dataDir, tableId);
+        return file != null && Files.isRegularFile(file) ? file : null;
+    }
 
     /** manifest からテーブルID → スキーマファイルを引く（パス正規化込み）。 */
     private Path tableFile(Path dataDir, String tableId) {

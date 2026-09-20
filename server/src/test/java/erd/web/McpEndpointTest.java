@@ -33,6 +33,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -87,9 +88,13 @@ class McpEndpointTest {
         TableMeta meta = displayName == null ? TableMeta.EMPTY
                 : new TableMeta(displayName, List.of(), null, null, Map.of(),
                         List.of(), List.of(), Map.of(), Map.of());
+        // orders は user_id を持つ（論理外部制約のテストで users を参照させる）
+        List<Column> columns = name.equals("orders")
+                ? List.of(new Column("id", "int4", LogicalType.INT, false),
+                        new Column("user_id", "int4", LogicalType.INT, true))
+                : List.of(new Column("id", "int4", LogicalType.INT, false));
         return new Table("public." + name,
-                new TableSchema(name, "public", null,
-                        List.of(new Column("id", "int4", LogicalType.INT, false)),
+                new TableSchema(name, "public", null, columns,
                         List.of("id"), List.of(), List.of(), List.of(), Map.of()),
                 meta, Map.of());
     }
@@ -161,20 +166,201 @@ class McpEndpointTest {
     // -------------------------------------------------------------------- T-6
 
     @Test
-    @DisplayName("公開範囲: 読み取り8種のみ。逆生成・接続情報・削除系は存在しない")
+    @DisplayName("公開範囲: 書き込み許可オフなら読み取り8種のみ。逆生成・接続情報・削除系は存在しない")
     void toolSurfaceIsBounded() throws Exception {
-        enableMcp(true);   // 書き込みを許可しても、まだ書き込みツールは無い
-        JsonNode result = ok(mcp(mcpToken, legacy("tools/list", null), Map.of()));
-        List<String> names = new ArrayList<>();
-        result.path("tools").forEach(t -> names.add(t.path("name").asText()));
-
+        enableMcp(false);
+        List<String> names = toolNames();
         assertEquals(List.of("erd_list_workspaces", "erd_list_tables", "erd_get_table",
                 "erd_list_relations", "erd_search", "erd_list_diagrams", "erd_get_diagram",
                 "erd_get_dictionary"), names);
+
+        enableMcp(true);
+        List<String> withWrite = toolNames();
+        assertTrue(withWrite.containsAll(McpWriteTools.NAMES), "書き込み許可で書き込みツールが出る: " + withWrite);
         for (String forbidden : List.of("introspect", "connection", "driver", "delete",
-                "reset", "export", "workspace_create", "rename")) {
-            assertTrue(names.stream().noneMatch(n -> n.contains(forbidden)),
-                    "出してはならないツールがある: " + forbidden + " / " + names);
+                "reset", "export", "workspace", "rename", "create_table")) {
+            assertTrue(withWrite.stream().noneMatch(n -> n.contains(forbidden) && !n.equals("erd_list_workspaces")),
+                    "出してはならないツールがある: " + forbidden + " / " + withWrite);
+        }
+    }
+
+    // ------------------------------------------------------------ 書き込み（Q-03）
+
+    @Test
+    @DisplayName("INV-6: 書き込み許可オフでは、直接呼んでも Unknown tool")
+    void writeRejectedWhenNotAllowed() throws Exception {
+        enableMcp(false);
+        var args = mapper.createObjectNode().put("tableId", "public.orders").put("displayName", "注文");
+        HttpResponse<String> res = mcp(mcpToken, call("erd_set_table_meta", args), Map.of());
+        assertEquals(200, res.statusCode());
+        JsonNode error = body(res).path("error");
+        assertEquals(-32602, error.path("code").asInt(), res.body());
+        assertTrue(error.path("message").asText().contains("Unknown tool"), res.body());
+        assertFalse(Files.readString(root.resolve("workspace-default/data/schema/public/orders.js"))
+                .contains("注文"), "書き込まれてはならない");
+    }
+
+    @Test
+    @DisplayName("INV-1: 物理情報のキーを混ぜたら isError で拒否し、1バイトも書かない")
+    void physicalFieldsAreRejected() throws Exception {
+        enableMcp(true);
+        Path file = root.resolve("workspace-default/data/schema/public/orders.js");
+        byte[] before = Files.readAllBytes(file);
+
+        var column = mapper.createObjectNode().put("name", "user_id").put("type", "bigint");
+        var args = mapper.createObjectNode().put("tableId", "public.orders");
+        args.putArray("columns").add(column);
+        JsonNode result = ok(mcp(mcpToken, call("erd_set_table_meta", args), Map.of()));
+        assertTrue(result.path("isError").asBoolean(), result.toString());
+        String text = result.path("content").get(0).path("text").asText();
+        assertTrue(text.contains("type"), "何が駄目かを言う: " + text);
+        assertTrue(text.contains("database"), "理由を言う: " + text);
+        assertArrayEquals(before, Files.readAllBytes(file), "ファイルが変わっている");
+
+        // トップレベルでも同じ
+        var top = mapper.createObjectNode().put("tableId", "public.orders").put("primaryKey", "id");
+        JsonNode r2 = ok(mcp(mcpToken, call("erd_set_table_meta", top), Map.of()));
+        assertTrue(r2.path("isError").asBoolean());
+        assertArrayEquals(before, Files.readAllBytes(file));
+    }
+
+    @Test
+    @DisplayName("erd_set_table_meta: 部分更新で meta だけが変わり、index.js が再生成される")
+    void setTableMeta() throws Exception {
+        enableMcp(true);
+        var column = mapper.createObjectNode().put("name", "user_id").put("displayName", "ユーザーID");
+        column.putArray("tags").add("fk");
+        var args = mapper.createObjectNode().put("tableId", "public.orders")
+                .put("displayName", "注文").put("notes", "受注の親");
+        args.putArray("tags").add("core");
+        args.putArray("columns").add(column);
+        JsonNode result = ok(mcp(mcpToken, call("erd_set_table_meta", args), Map.of()));
+        assertFalse(result.path("isError").asBoolean(), result.toString());
+        String text = result.path("content").get(0).path("text").asText();
+        assertTrue(text.contains("index.js"), "index.js が再生成されていない: " + text);
+
+        // 読み返して反映を確かめる（辞書ではなくカラム個別の論理名）
+        JsonNode table = ok(mcp(mcpToken,
+                call("erd_get_table", mapper.createObjectNode().put("tableId", "public.orders")), Map.of()));
+        JsonNode t = mapper.readTree(table.path("content").get(0).path("text").asText());
+        assertEquals("注文", t.path("displayName").asText());
+        assertEquals("受注の親", t.path("notes").asText());
+        JsonNode userId = t.path("columns").get(1);
+        assertEquals("user_id", userId.path("name").asText());
+        assertEquals("ユーザーID", userId.path("displayName").asText());
+        assertEquals("column", userId.path("displayNameSource").asText());
+        // 物理情報は無傷
+        assertEquals("int4", userId.path("type").asText());
+
+        // 省略した項目は変わらない（displayName を渡さずに notes だけ消す）
+        var patch = mapper.createObjectNode().put("tableId", "public.orders");
+        patch.putNull("notes");
+        ok(mcp(mcpToken, call("erd_set_table_meta", patch), Map.of()));
+        JsonNode again = mapper.readTree(ok(mcp(mcpToken,
+                call("erd_get_table", mapper.createObjectNode().put("tableId", "public.orders")), Map.of()))
+                .path("content").get(0).path("text").asText());
+        assertEquals("注文", again.path("displayName").asText(), "省略した displayName が消えた");
+        assertFalse(again.has("notes"), "null で消した notes が残っている");
+    }
+
+    @Test
+    @DisplayName("erd_set_logical_constraints: 論理外部制約が index.js のリレーションに現れ、不正な参照先は拒否される")
+    void setLogicalConstraints() throws Exception {
+        enableMcp(true);
+        var lfk = mapper.createObjectNode().put("name", "lfk_orders_user").put("references", "public.users");
+        lfk.putArray("columns").add("user_id");
+        lfk.putArray("referencedColumns").add("id");
+        var args = mapper.createObjectNode().put("tableId", "public.orders");
+        args.putArray("logicalForeignKeys").add(lfk);
+        JsonNode result = ok(mcp(mcpToken, call("erd_set_logical_constraints", args), Map.of()));
+        assertFalse(result.path("isError").asBoolean(), result.toString());
+
+        JsonNode rels = mapper.readTree(ok(mcp(mcpToken,
+                call("erd_list_relations", mapper.createObjectNode().put("tableId", "public.orders")), Map.of()))
+                .path("content").get(0).path("text").asText());
+        assertEquals(1, rels.path("relations").size(), rels.toString());
+        JsonNode r = rels.path("relations").get(0);
+        assertEquals("logical", r.path("kind").asText());
+        assertEquals("public.orders#lfk:lfk_orders_user", r.path("id").asText());
+        assertEquals("public.users", r.path("to").asText());
+
+        // 参照先が無い → P-08 の検証で isError（ファイルは書かれない）
+        Path file = root.resolve("workspace-default/data/schema/public/orders.js");
+        byte[] before = Files.readAllBytes(file);
+        var bad = mapper.createObjectNode().put("name", "lfk_bad").put("references", "public.nope");
+        bad.putArray("columns").add("user_id");
+        bad.putArray("referencedColumns").add("id");
+        var badArgs = mapper.createObjectNode().put("tableId", "public.orders");
+        badArgs.putArray("logicalForeignKeys").add(bad);
+        JsonNode rejected = ok(mcp(mcpToken, call("erd_set_logical_constraints", badArgs), Map.of()));
+        assertTrue(rejected.path("isError").asBoolean(), rejected.toString());
+        assertArrayEquals(before, Files.readAllBytes(file));
+    }
+
+    @Test
+    @DisplayName("erd_set_dictionary_entry / erd_set_ignore_tables: 辞書と無視リストを書ける")
+    void setDictionaryAndIgnoreTables() throws Exception {
+        enableMcp(true);
+        var entry = mapper.createObjectNode().put("column", "id").put("displayName", "ID");
+        assertFalse(ok(mcp(mcpToken, call("erd_set_dictionary_entry", entry), Map.of()))
+                .path("isError").asBoolean());
+        JsonNode dict = mapper.readTree(ok(mcp(mcpToken,
+                call("erd_get_dictionary", mapper.createObjectNode()), Map.of()))
+                .path("content").get(0).path("text").asText());
+        assertEquals("ID", dict.path("columns").get(0).path("displayName").asText(), dict.toString());
+        // 辞書経由で解決されたことが erd_get_table で分かる
+        JsonNode t = mapper.readTree(ok(mcp(mcpToken,
+                call("erd_get_table", mapper.createObjectNode().put("tableId", "public.users")), Map.of()))
+                .path("content").get(0).path("text").asText());
+        assertEquals("dictionary", t.path("columns").get(0).path("displayNameSource").asText());
+
+        var ignore = mapper.createObjectNode();
+        ignore.putArray("patterns").add("public.tmp_*").add("public.flyway_schema_history");
+        assertFalse(ok(mcp(mcpToken, call("erd_set_ignore_tables", ignore), Map.of()))
+                .path("isError").asBoolean());
+        String config = Files.readString(root.resolve("workspace-default/data/config.js"));
+        assertTrue(config.contains("public.tmp_*"), config);
+
+        // 壊れた正規表現は拒否（黙って全マッチする無視リストを作らせない）
+        var broken = mapper.createObjectNode();
+        broken.putArray("patterns").add("/[unclosed/");
+        assertTrue(ok(mcp(mcpToken, call("erd_set_ignore_tables", broken), Map.of()))
+                .path("isError").asBoolean());
+    }
+
+    @Test
+    @DisplayName("Q-06: 書き込み前に data/** のバックアップを取り、短時間の連続書き込みでは増やさない")
+    void backupBeforeWrite() throws Exception {
+        enableMcp(true);
+        Path backups = root.resolve(".local/workspace-default/backup");
+        assertFalse(Files.isDirectory(backups), "書き込み前にバックアップがある");
+
+        var args = mapper.createObjectNode().put("tableId", "public.orders").put("displayName", "注文");
+        ok(mcp(mcpToken, call("erd_set_table_meta", args), Map.of()));
+        assertEquals(1, countDirs(backups), "最初の書き込みで1世代できる");
+        assertTrue(Files.isRegularFile(backups.resolve(firstDir(backups)).resolve("schema/public/orders.js")));
+
+        ok(mcp(mcpToken, call("erd_set_table_meta", args.put("notes", "x")), Map.of()));
+        assertEquals(1, countDirs(backups), "直後の書き込みでは増えない");
+    }
+
+    private List<String> toolNames() throws Exception {
+        JsonNode result = ok(mcp(mcpToken, legacy("tools/list", null), Map.of()));
+        List<String> names = new ArrayList<>();
+        result.path("tools").forEach(t -> names.add(t.path("name").asText()));
+        return names;
+    }
+
+    private static int countDirs(Path dir) throws Exception {
+        if (!Files.isDirectory(dir)) return 0;
+        try (var s = Files.list(dir)) {
+            return (int) s.filter(Files::isDirectory).count();
+        }
+    }
+
+    private static String firstDir(Path dir) throws Exception {
+        try (var s = Files.list(dir)) {
+            return s.filter(Files::isDirectory).findFirst().orElseThrow().getFileName().toString();
         }
     }
 

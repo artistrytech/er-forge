@@ -49,6 +49,8 @@ final class McpTools {
     private final ProjectStore store = new ProjectStore();
     private final IndexGenerator indexGenerator = new IndexGenerator();
     private final WorkspaceStore workspaces = new WorkspaceStore();
+    private final McpWriteTools writes = new McpWriteTools();
+    private final Defs defs = new Defs(mapper);
 
     /** ツールの実行失敗（モデルが自力で直せるもの）。JSON-RPC error ではなく isError で返す。 */
     static final class ToolException extends RuntimeException {
@@ -127,10 +129,9 @@ final class McpTools {
                         + "with the same physical name across the whole workspace.",
                 props -> props.set("workspace", str("Workspace id. Optional when only one exists."))));
 
-        // 書き込みツール（Q-03 / Q-04）は後続フェーズで追加する。
-        // 許可がオフのときは一覧にも出さないという規則だけ、ここで先に効かせておく
+        // 書き込みツール（Q-03）。許可がオフのときは一覧に出さない（INV-6。直接呼ばれても isKnown で弾く）
         if (writeAllowed) {
-            // 追加時はここに載せる
+            writes.define(tools, defs);
         }
         return tools;
     }
@@ -139,6 +140,10 @@ final class McpTools {
 
     /** ツールを実行してテキストを返す。失敗は {@link ToolException}（呼び出し側が isError にする）。 */
     String call(Path root, String name, JsonNode args) {
+        if (McpWriteTools.NAMES.contains(name)) {
+            Ws ws = resolveWorkspace(root, args);
+            return writes.call(root, ws.id(), ws.dataDir(), name, args);
+        }
         return switch (name) {
             case "erd_list_workspaces" -> listWorkspaces(root);
             case "erd_list_tables" -> listTables(root, args);
@@ -152,9 +157,18 @@ final class McpTools {
         };
     }
 
-    boolean isKnown(String name) {
-        return name.startsWith("erd_") && definitions(true).findValuesAsText("name").contains(name);
+    /**
+     * 呼んでよいツールか。<b>書き込みツールは許可がオフなら「知らない」と答える</b>（INV-6）。
+     * 一覧に出さないだけでは、モデルが名前を推測して呼べてしまう。
+     */
+    boolean isKnown(String name, boolean writeAllowed) {
+        if (McpWriteTools.NAMES.contains(name)) return writeAllowed;
+        return READ_NAMES.contains(name);
     }
+
+    private static final List<String> READ_NAMES = List.of(
+            "erd_list_workspaces", "erd_list_tables", "erd_get_table", "erd_list_relations",
+            "erd_search", "erd_list_diagrams", "erd_get_diagram", "erd_get_dictionary");
 
     // -------------------------------------------------------------- 各ツール
 
@@ -491,6 +505,16 @@ final class McpTools {
      * 「どれか」を明示させる（別の DB のデータを書き換える事故を防ぐ）。
      */
     private Loaded load(Path root, JsonNode args) {
+        Ws ws = resolveWorkspace(root, args);
+        ProjectStore.LoadResult loaded = store.read(ws.dataDir());
+        IndexModel index = indexGenerator.generate(loaded.model().tables(), loaded.model().diagrams());
+        return new Loaded(ws.id(), loaded.model(), index);
+    }
+
+    record Ws(String id, Path dataDir) { }
+
+    /** ワークスペースの決定だけを行う（モデルは読まない。書き込み側は自分で現在値を読むため）。 */
+    Ws resolveWorkspace(Path root, JsonNode args) {
         String id = text(args, "workspace");
         List<String> available = WorkspaceStore.scan(root);
         if (id.isEmpty()) {
@@ -511,9 +535,7 @@ final class McpTools {
             throw new ToolException("Workspace \"" + id + "\" has no data yet "
                     + "(no manifest.js). Import a schema in the ERForge window first.");
         }
-        ProjectStore.LoadResult loaded = store.read(dataDir);
-        IndexModel index = indexGenerator.generate(loaded.model().tables(), loaded.model().diagrams());
-        return new Loaded(id, loaded.model(), index);
+        return new Ws(id, dataDir);
     }
 
     // ---------------------------------------------------------------- 小道具
@@ -540,12 +562,12 @@ final class McpTools {
         return Math.min(MAX_LIMIT, Math.max(1, intValue(args, "limit", DEFAULT_LIMIT)));
     }
 
-    private static String text(JsonNode args, String field) {
+    static String text(JsonNode args, String field) {
         JsonNode node = args == null ? null : args.get(field);
         return node == null || node.isNull() ? "" : node.asText("").trim();
     }
 
-    private static String required(JsonNode args, String field) {
+    static String required(JsonNode args, String field) {
         String value = text(args, field);
         if (value.isEmpty()) throw new ToolException("\"" + field + "\" is required.");
         return value;
@@ -576,38 +598,69 @@ final class McpTools {
 
     // ------------------------------------------------------- ツール定義の組み立て
 
-    private interface Props {
-        void fill(ObjectNode properties);
-    }
-
-    private ObjectNode tool(String name, String description, Props props, String... required) {
-        ObjectNode tool = mapper.createObjectNode();
-        tool.put("name", name);
-        tool.put("description", description);
-        ObjectNode schema = tool.putObject("inputSchema");
-        schema.put("type", "object");
-        ObjectNode properties = schema.putObject("properties");
-        props.fill(properties);
-        if (required.length > 0) {
-            ArrayNode req = schema.putArray("required");
-            for (String r : required) req.add(r);
-        }
-        schema.put("additionalProperties", false);
-        return tool;
+    private ObjectNode tool(String name, String description, Defs.Props props, String... required) {
+        return defs.tool(name, description, props, required);
     }
 
     private ObjectNode str(String description) {
-        return mapper.createObjectNode().put("type", "string").put("description", description);
+        return defs.str(description);
     }
 
     private ObjectNode integer(String description) {
-        return mapper.createObjectNode().put("type", "integer").put("description", description);
+        return defs.integer(description);
     }
 
     private ObjectNode enumStr(String description, String... values) {
-        ObjectNode node = str(description);
-        ArrayNode allowed = node.putArray("enum");
-        for (String v : values) allowed.add(v);
-        return node;
+        return defs.enumStr(description, values);
+    }
+
+    /** ツール定義（JSON Schema）の組み立て。読み取り・書き込みの両方が同じ形で作るためにここに置く。 */
+    static final class Defs {
+        interface Props {
+            void fill(ObjectNode properties);
+        }
+
+        private final ObjectMapper mapper;
+
+        Defs(ObjectMapper mapper) {
+            this.mapper = mapper;
+        }
+
+        ObjectNode tool(String name, String description, Props props, String... required) {
+            ObjectNode tool = mapper.createObjectNode();
+            tool.put("name", name);
+            tool.put("description", description);
+            ObjectNode schema = tool.putObject("inputSchema");
+            schema.put("type", "object");
+            ObjectNode properties = schema.putObject("properties");
+            props.fill(properties);
+            if (required.length > 0) {
+                ArrayNode req = schema.putArray("required");
+                for (String r : required) req.add(r);
+            }
+            schema.put("additionalProperties", false);
+            return tool;
+        }
+
+        ObjectNode str(String description) {
+            return mapper.createObjectNode().put("type", "string").put("description", description);
+        }
+
+        ObjectNode integer(String description) {
+            return mapper.createObjectNode().put("type", "integer").put("description", description);
+        }
+
+        ObjectNode enumStr(String description, String... values) {
+            ObjectNode node = str(description);
+            ArrayNode allowed = node.putArray("enum");
+            for (String v : values) allowed.add(v);
+            return node;
+        }
+
+        ObjectNode strArray(String description) {
+            ObjectNode node = mapper.createObjectNode().put("type", "array").put("description", description);
+            node.putObject("items").put("type", "string");
+            return node;
+        }
     }
 }
