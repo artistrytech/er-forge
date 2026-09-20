@@ -56,11 +56,20 @@ final class ViewerExport {
             Pattern.compile("^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\\..*)?$");
 
     /**
-     * ルート直下からそのまま入れるファイル（無いものは黙って飛ばす。index.html だけは必須）。
+     * ルート直下からそのまま入れるファイル（無いものは黙って飛ばす）。index.html は必須なので
+     * ここではなく {@link #viewerIndex} で扱う。
      * {@code workspaces.js} はここに含めない — 選択に合わせて作り直す（{@link #registry}）。
      */
-    private static final List<String> ROOT_FILES =
-            List.of("index.html", "THIRD-PARTY-NOTICES.txt");
+    private static final List<String> ROOT_FILES = List.of("THIRD-PARTY-NOTICES.txt");
+
+    /**
+     * 開発時だけ index.html の場所を差し替える環境変数（gradlew devServer が設定する）。
+     *
+     * <p>dev では index.html は vite が配信していて dev/（= root）には無い。そのままだと
+     * 「閲覧用 ZIP を書き出す」が必ず失敗するため、ビルド済みの viewer/dist/index.html を
+     * 指させる。配布物では設定されず、root 直下の index.html をそのまま使う。
+     */
+    static final String INDEX_OVERRIDE_ENV = "ERD_VIEWER_INDEX";
 
     private ViewerExport() {}
 
@@ -156,13 +165,28 @@ final class ViewerExport {
         }
     }
 
-    private static List<Entry> collect(Path root, List<String> workspaces) throws IOException {
+    /** ZIP に入れる index.html。無ければ、どこを見たか・どうすればよいかを含めて失敗させる。 */
+    private static Path viewerIndex(Path root) throws IOException {
+        String override = System.getenv(INDEX_OVERRIDE_ENV);
+        if (override != null && !override.isBlank()) {
+            Path index = Path.of(override);
+            if (!Files.isRegularFile(index)) {
+                throw new IOException("index.html not found at " + index + " (" + INDEX_OVERRIDE_ENV
+                        + " is set; build the viewer with `npm run build` first)");
+            }
+            return index;
+        }
         Path index = root.resolve("index.html");
         if (!Files.isRegularFile(index)) {
             throw new IOException("index.html not found in " + root
                     + " (run this from the directory where the tool was extracted)");
         }
+        return index;
+    }
+
+    private static List<Entry> collect(Path root, List<String> workspaces) throws IOException {
         List<Entry> entries = new ArrayList<>();
+        entries.add(Entry.of("index.html", viewerIndex(root)));
         for (String name : ROOT_FILES) {
             Path file = root.resolve(name);
             if (Files.isRegularFile(file)) entries.add(Entry.of(name, file));

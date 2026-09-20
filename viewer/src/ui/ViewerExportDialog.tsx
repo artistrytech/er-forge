@@ -23,6 +23,16 @@ import { Button } from "./Button";
 import { Dialog } from "./Dialog";
 import styles from "./ViewerExportDialog.module.scss";
 
+/** エラー応答（`{ code, message }`）から message を取り出す。JSON でなければ null。 */
+async function serverMessage(body: Blob): Promise<string | null> {
+  try {
+    const parsed = JSON.parse(await body.text()) as { message?: unknown };
+    return typeof parsed.message === "string" && parsed.message !== "" ? parsed.message : null;
+  } catch {
+    return null;
+  }
+}
+
 export function ViewerExportDialog({ onClose }: { onClose: () => void }) {
   const { t } = useI18n();
   const workspaces = useAppStore((s) => s.workspaces);
@@ -61,7 +71,13 @@ export function ViewerExportDialog({ onClose }: { onClose: () => void }) {
         workspaces: all ? [] : selected,
       });
       if (res.status !== 200) {
-        addToast(t("viewerExport.failed"), "error");
+        // 失敗の理由はサーバーが JSON で返す（index.html が無い、など）。黙って落とすと
+        // 手の打ちようがないので、そのまま添えて出す
+        const reason = await serverMessage(res.blob);
+        addToast(
+          reason === null ? t("viewerExport.failed") : `${t("viewerExport.failed")}: ${reason}`,
+          "error",
+        );
         return;
       }
       downloadBlob(res.fileName === "" ? `${prefix}.zip` : res.fileName, res.blob);

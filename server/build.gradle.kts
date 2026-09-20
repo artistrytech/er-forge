@@ -95,6 +95,10 @@ tasks.register<JavaExec>("generateSampleData") {
 // index.html はここからは配信しない（vite dev が配信し、/__erd と /data をここへプロキシする）。
 // トークンは vite 側が URL に埋められるよう固定する（Main の ERD_TOKEN。127.0.0.1 限定は不変）。
 //
+// 「閲覧用 ZIP を書き出す」は ZIP に index.html を入れるが、dev/ には無い。ビルド済みの
+// ../viewer/dist/index.html を ERD_VIEWER_INDEX で指す（先に npm run build が必要。
+// 無ければ書き出しはその旨のメッセージで失敗する）。
+//
 // 注意: ここを /** ... */ の KDoc にしないこと。Kotlin のブロックコメントは入れ子になるため、
 // 本文に "drivers/*.jar" のような /* を含む文字列があると、そこから内側のコメントが開き、
 // 閉じ */ は内側を閉じるだけになる。以降のスクリプト全体が静かにコメント化され、
@@ -109,6 +113,7 @@ tasks.register<JavaExec>("devServer") {
     workingDir = devDir
     environment("ERD_NO_BROWSER", "1")
     environment("ERD_TOKEN", System.getenv("ERD_TOKEN") ?: "erd-dev")
+    environment("ERD_VIEWER_INDEX", file("../viewer/dist/index.html").absolutePath)
     System.getenv("ERD_PORT")?.let { environment("ERD_PORT", it) }
     doFirst {
         devDir.resolve("drivers").mkdirs()
