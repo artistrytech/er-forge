@@ -88,6 +88,31 @@ Recipients can open it in a browser and view ER diagrams and table definitions w
   `erd.bat export`. You can choose the file name and the workspaces to include, then hand the ZIP
   as is to people who do not use Git. Connection information and drivers are not included.
 
+## Working With AI Agents (MCP)
+
+AI agents such as Claude Code can read and write your ER diagrams and table definitions directly.
+Because the agent reads the current schema definitions managed by ERForge, it is useful for discussing
+implementation and producing documentation.
+
+### Reading: give the AI accurate context
+
+Instead of pasting the schema into every prompt for code generation or SQL, the agent looks up the definitions itself.
+
+- The agent gets not only the table definitions but also the logical names, notes, and tags that people have written
+- Questions like "which tables reference this column?" or "which tables belong to this business area?" can be answered by the agent on its own
+- What the agent reads is the very document ERForge maintains, so implementation is no longer based on stale documents or someone's memory
+
+### Writing: hand off the tedious documentation work
+
+When you allow it, the agent can draft ER diagrams and documentation. It can only touch information that people write;
+physical information imported from the database stays out of reach.
+
+- Let it read the source code and draft ER diagram pages split by business domain.
+  The agent decides which tables belong together; the server lays them out automatically
+- Delegate work such as finding relationships that exist in code but have no foreign key in the database, or filling in logical names and notes
+- The agent's changes are represented as changes to text files, so you can review them with `git diff` and revert anything you do not like
+- Columns, types, and keys cannot be changed by the agent by design, so delegating this work to the agent cannot corrupt the physical definitions
+
 ## Supported Databases
 
 ERForge can be used with many databases as long as a JDBC driver is available.
@@ -99,7 +124,7 @@ It can retrieve database-specific information from PostgreSQL / MySQL, and SQL S
 
 | Directory | Contents |
 |---|---|
-| `server/` | Java 17 / Gradle. Core code for models, deterministic printers, index generation, and migrations, plus the Javalin web layer. |
+| `server/` | Java 17 / Gradle. Core code for models, deterministic printers, index generation, and migrations, plus the Javalin web layer (including the MCP endpoint, `Mcp*`). |
 | `viewer/` | TypeScript / React / Vite. All assets are inlined into a single `index.html`. |
 | `fixtures/` | Golden fixtures shared by Java and TypeScript. Ensure that printer output matches across both. |
 | `distribution/` | Static files bundled in the distribution ZIP, including startup scripts, README, and `.gitignore` / `.gitattributes` for the extracted `erd/` directory. |
@@ -183,6 +208,11 @@ cd server && ./gradlew shadowJar
 cd viewer && npm run typecheck && npm test && npm run e2e   # e2e performs a file:// smoke test after the build
 cd server && ./gradlew test
 ```
+
+`npm run e2e:mcp` checks the MCP integration end to end. Run `gradlew shadowJar` and `npm run build` first.
+It starts the server using the same layout as the distribution, enables MCP and issues a token through the UI, and
+verifies that the displayed configuration connects without modification. To manually test the server from the client side,
+[MCP Inspector](https://github.com/modelcontextprotocol/inspector) (`npx @modelcontextprotocol/inspector`) is useful.
 
 ## Release
 

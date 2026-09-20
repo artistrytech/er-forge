@@ -85,6 +85,29 @@ ER 図や定義書の更新も、コードと同じようにプルリクエス�
   `erd.bat export`）。ファイル名と含めるワークスペースを選べ、Git を使わない相手にも
   そのまま渡せます（接続情報やドライバは入りません）
 
+## AI エージェントとの連携（MCP）
+
+Claude Code などの AI エージェントから、ER 図とテーブル定義を直接読み書きできます。
+ERForge が管理している現在のスキーマ定義を AI が正確に参照できるため、実装の相談にも、ドキュメント作成にも活用できます。
+
+### 読み取り: AI に正確な前提を渡す
+
+コード生成や SQL 作成のたびにスキーマを貼り付けなくても、AI が自分で定義を参照できるようになります。
+
+- テーブル定義だけでなく、論理名・注記・タグといった人が書いた業務知識まで AI の前提になる
+- 「このカラムを参照しているテーブルは？」「この業務に関わるテーブル一式は？」を AI が自分で調べられる
+- 渡すのは ERForge が管理している定義書そのもの。古い資料や記憶違いを元に実装が進むのを防げる
+
+### 書き込み: 地道なドキュメント作業を任せる
+
+許可すれば、AI に ER 図と定義書の下書き作成を任せられます。任せられるのは人が書く情報だけで、DB から取り込む物理情報には触れません。
+
+- ソースコードを読ませて、業務ドメインごとにページを分けた ER 図の下書きを作らせる。
+  テーブルの組み合わせは AI が決め、配置はサーバーが自動で整える
+- コード上は参照しているのに DB に外部キーが無い関係の洗い出しや、論理名・注記の記入を任せられる
+- AI の変更もテキストファイルへの差分になるので、`git diff` でレビューし、気に入らなければ戻せる
+- カラム・型・キーなどの物理情報は AI では書き換えられないように設計されています。AI に任せても定義書は壊れません
+
 ## 対応 DB
 
 JDBC ドライバがあれば、多くの DB で利用できます。
@@ -96,7 +119,7 @@ PostgreSQL / MySQL では DB 固有の情報も取得でき、SQL Server / Oracl
 
 | ディレクトリ | 内容 |
 |---|---|
-| `server/` | Java 17 / Gradle。core（モデル・決定論的プリンタ・index 生成・移行）と web（Javalin） |
+| `server/` | Java 17 / Gradle。core（モデル・決定論的プリンタ・index 生成・移行）と web（Javalin。MCP エンドポイント `Mcp*` を含む） |
 | `viewer/` | TypeScript / React / Vite。単一の `index.html` に全アセットをインライン化 |
 | `fixtures/` | Java / TS 共通の golden fixture。プリンタ出力の一致を保証 |
 | `distribution/` | 配布 ZIP に同梱する固定ファイル（起動スクリプト・README・展開先 `erd/` の `.gitignore` / `.gitattributes`） |
@@ -181,6 +204,11 @@ cd server && ./gradlew shadowJar
 cd viewer && npm run typecheck && npm test && npm run e2e   # e2e はビルド後に file:// でスモークテストを行う
 cd server && ./gradlew test
 ```
+
+MCP 連携は `npm run e2e:mcp` でエンドツーエンドの確認ができます。事前に `gradlew shadowJar` と `npm run build` を実行してください。
+テストでは配布物と同じ構成で起動し、画面から有効化・トークン発行を行い、表示された設定で接続できることまで確認します。
+MCP クライアント側から手動で確認するには [MCP Inspector](https://github.com/modelcontextprotocol/inspector)
+（`npx @modelcontextprotocol/inspector`）が便利です。
 
 ## リリース
 

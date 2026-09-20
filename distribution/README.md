@@ -43,7 +43,7 @@ To upgrade, extract the new ZIP over the same location and commit the diff.
 | `index.html`, `erd-server.jar`, `erd.sh`, `erd.bat` | Yes | Marked as binary in `.gitattributes` to reduce diff noise. |
 | `workspaces.js`, `config.js`, `workspace-*/data/**` | Yes | Review targets. |
 | `drivers/README.txt` | Yes | Explains how to place drivers. |
-| `.local/` | No | Personal data, including database connection information (passwords only when explicitly saved), backups taken before reverse engineering is applied, and personal settings. |
+| `.local/` | No | Personal data, including database connection information (passwords only when explicitly saved), backups taken before reverse engineering is applied and before AI writes, the AI integration (MCP) settings and token, and personal settings. |
 | `drivers/*.jar` | No | Downloaded by each user for licensing reasons. |
 
 ## Usage
@@ -113,6 +113,45 @@ The ZIP is created in this directory. Both options can be omitted.
 
 The file name becomes `<name>-<timestamp>.zip`. The name may contain Japanese characters and spaces.
 Characters that are invalid in file names, such as `\ / : * ? " < > |`, cannot be used.
+
+### Reading and Writing with AI Agents (MCP, Server Mode)
+
+AI agents such as Claude Code can connect to ERForge over [MCP](https://modelcontextprotocol.io/).
+Because the agent connects directly to this server, it works only **while the server is running**.
+
+#### Enabling it
+
+1. Open **Settings (gear) → [AI integration (MCP)]** in the header
+2. Turn on **[Enable MCP]** and press **[Issue]** to create a token
+3. Pick the tab for your AI client (Claude Code / Codex / Cursor / GitHub Copilot), press **[Copy]**,
+   and paste the configuration into that client's configuration file (the file to paste into is shown on screen)
+4. Reconnect from the AI client (in Claude Code, `/mcp` then reconnect)
+
+**The token is shown only right after it is issued.** Once you close the dialog, only its last few characters remain visible.
+If you lose it, press **[Reissue]** (the old token stops working immediately).
+
+**Last access** on the same screen tells you whether the client is actually connected. If nothing shows up, check that
+the server is running, that you reconnected from the client, and that the port has not changed
+(the port can change between restarts; paste the configuration again if it did).
+
+> **The configuration you pasted contains the token.** Do not commit files such as `.mcp.json` to your repository.
+> ERForge's own copy of the token lives in `.local/`, which is excluded from Git.
+
+#### What the agent can do
+
+| | Contents |
+|---|---|
+| **Read** (always) | Table list, definitions, relationships, the column dictionary, and diagram pages. Useful as context for code generation and SQL. |
+| **Write** (only when **[Allow writing]** is on) | Logical names, notes, tags, colors, logical constraints (relationships and uniqueness that do not exist in the database), creating pages and placing tables, the column dictionary, and the ignore list. |
+| **Cannot write** | Columns, types, primary keys, foreign keys, and indexes. These are physical attributes imported from the database; anything the agent wrote would be overwritten by the next import, so they stay read-only even when writing is allowed. |
+
+For diagram layout, **the agent decides which tables go on the same page and the server computes the coordinates**.
+You can ask for things like "read the source code, split the ER diagram into pages by business domain, and register
+relationships that exist in code but have no foreign key in the database as logical foreign keys".
+
+**Commit before allowing writes.** Every change the agent makes lands in the text files under
+`workspace-*/data/**`, so you can review it with `git diff` and revert what you do not like.
+As an extra safety net, a backup is taken into `.local/` before the agent writes (the last three are kept).
 
 ### Exporting Schema Information
 
