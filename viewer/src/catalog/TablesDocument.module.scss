@@ -173,10 +173,12 @@
   gap: 6px;
 }
 
+/* キー1件（FK バッジ + 参照先 + 種別）は途中で折り返さず、件の間で折り返す */
 .key-ref {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  white-space: nowrap;
 }
 
 .key-unique {

@@ -20,8 +20,11 @@ import { cx } from "../lib/cx";
 import { Dialog } from "./Dialog";
 import styles from "./InfoPopover.module.scss";
 
-/** ポップアップの幅（px）。位置合わせに使うので CSS と一致させること */
-const POPOVER_WIDTH = 320;
+/**
+ * ポップアップの幅の上限（px）。中身なりに広がり（カラム属性はキーの行が長い）、これを超えたら折り返す。
+ * 実際の幅を測るまでの仮の値にも使うので CSS の max-width と一致させること
+ */
+const POPOVER_MAX_WIDTH = 520;
 
 /**
  * 離れてから閉じるまでの猶予（ms）。アイコンとポップアップの間には隙間があり、
@@ -49,6 +52,8 @@ export function InfoPopover({ content, icon, label, testId, dialogTitle, classNa
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
   const [anchor, setAnchor] = useState<DOMRect | null>(null);
+  /** 描いたポップアップの実際の幅（中身なりに広がる）。右端にはみ出さない位置合わせに使う */
+  const [popoverWidth, setPopoverWidth] = useState(POPOVER_MAX_WIDTH);
   const closeTimer = useRef<number | null>(null);
   const popoverId = useId();
   /**
@@ -118,6 +123,8 @@ export function InfoPopover({ content, icon, label, testId, dialogTitle, classNa
     const measure = (): void => {
       const rect = triggerRef.current?.getBoundingClientRect();
       if (rect !== undefined) setAnchor(rect);
+      const w = popoverRef.current?.offsetWidth;
+      if (w !== undefined && w > 0) setPopoverWidth(w);
     };
     measure();
     window.addEventListener("scroll", measure, true);
@@ -164,7 +171,7 @@ export function InfoPopover({ content, icon, label, testId, dialogTitle, classNa
     const below = window.innerHeight - anchor.bottom;
     const openUp = below < 140 && anchor.top > below;
     return {
-      left: Math.max(8, Math.min(anchor.left, window.innerWidth - POPOVER_WIDTH - 8)),
+      left: Math.max(8, Math.min(anchor.left, window.innerWidth - popoverWidth - 8)),
       ...(openUp ? { bottom: window.innerHeight - anchor.top + 6 } : { top: anchor.bottom + 6 }),
     };
   };
