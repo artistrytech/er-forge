@@ -31,16 +31,16 @@ import {
   resolveTableName,
 } from "../model/logicalName";
 import type { MetaDraft } from "../model/metaDraft";
+import { notesLabel, readNotes, writeNotes, type NotesTarget } from "../model/notesTarget";
 import { useAppStore, type TablesView } from "../model/store";
 import type { Column, Dictionary, IndexTable, Table } from "../model/types";
 import { cx } from "../lib/cx";
-import { PenIcon } from "../ui/icons";
 import { InfoPopover } from "../ui/InfoPopover";
 import { Link } from "../ui/Link";
 import { NotFound } from "../ui/NotFound";
 import { hrefs } from "../ui/router";
 import { ScrollTable } from "../ui/ScrollTable";
-import { TableInfo, TableLink, TableMetaHeader } from "../ui/TableInfo";
+import { NotesPen, TableInfo, TableLink, TableMetaHeader } from "../ui/TableInfo";
 import { NotesDialog } from "./NotesDialog";
 import { TableDeleteSection } from "./TableDelete";
 import { ViewSwitch } from "./ViewSwitch";
@@ -48,10 +48,9 @@ import styles from "./TablesDocument.module.scss";
 // カラム表の行の色・タグ・キー標識は詳細（TableInfo）と同じ見た目にする。専用の複製は持たない
 import infoStyles from "../ui/TableInfo.module.scss";
 
-/** 編集中の注記（テーブル注記は column 無し） */
-interface NotesTarget {
-  tableId: string;
-  column?: string;
+/** 編集中の注記（対象と、開いたときの本文） */
+interface NotesEditing {
+  target: NotesTarget;
   value: string;
 }
 
@@ -92,7 +91,7 @@ export const TablesDocument = memo(function TablesDocument({
   const rootRef = useRef<HTMLDivElement>(null);
   /** 貼り付いたバー。見出しはこの下端にそろう（CSS の scroll-margin-top と対応） */
   const barRef = useRef<HTMLDivElement>(null);
-  const [editing, setEditing] = useState<NotesTarget | null>(null);
+  const [editing, setEditing] = useState<NotesEditing | null>(null);
   const [busy, setBusy] = useState(false);
 
   // 範囲（index に無い ID は落とす。削除直後の一瞬など）
@@ -279,18 +278,20 @@ export const TablesDocument = memo(function TablesDocument({
     };
   }, [setDocActiveTableId]);
 
-  // 注記の保存（R-05）。読み直し → baseHash → PUT の1本道（saveTableMeta）に載せる
+  // ペンが押されたら、今の本文を読んでダイアログを開く（読めていないテーブルのペンは出ない）
+  const openNotes = useCallback((target: NotesTarget): void => {
+    const table = useAppStore.getState().tables[target.tableId];
+    if (table === undefined) return;
+    setEditing({ target, value: readNotes(table, target) });
+  }, []);
+
+  // 注記の保存（R-05）。読み直し → baseHash → PUT の1本道（saveTableMeta）に載せる。
+  // 対象が見当たらなければ（他で消された）null で中止 = stale 扱い
   const submitNotes = async (text: string): Promise<void> => {
     if (editing === null || busy) return;
-    const target = editing;
+    const target = editing.target;
     setBusy(true);
-    const result = await saveTableMeta(target.tableId, (draft: MetaDraft) => {
-      if (target.column === undefined) return { ...draft, notes: text };
-      const cm = draft.columns[target.column];
-      // カラムが消えている（逆生成で落ちた）= 他で変更された扱いで中止
-      if (cm === undefined) return null;
-      return { ...draft, columns: { ...draft.columns, [target.column]: { ...cm, notes: text } } };
-    });
+    const result = await saveTableMeta(target.tableId, (draft: MetaDraft) => writeNotes(draft, target, text));
     setBusy(false);
     if (result.ok) {
       addToast(t("doc.notesSaved"));
@@ -333,19 +334,19 @@ export const TablesDocument = memo(function TablesDocument({
             view={view}
             canEdit={serverMode}
             lazy={entries.length >= LAZY_RENDER_FROM}
-            onEditNotes={setEditing}
+            onEditNotes={openNotes}
           />
         ))
       )}
       {editing !== null && (
         <NotesDialog
-          columnName={editing.column ?? editing.tableId}
+          columnName={notesLabel(editing.target)}
           value={editing.value}
           busy={busy}
           title={
-            editing.column === undefined ? (
+            editing.target.kind === "table" ? (
               <>
-                {t("doc.tableNotesTitle")}: <span className="mono">{editing.tableId}</span>
+                {t("doc.tableNotesTitle")}: <span className="mono">{editing.target.tableId}</span>
               </>
             ) : undefined
           }
@@ -405,7 +406,6 @@ const TableSection = memo(function TableSection({
     entry.name,
     nameDisplay,
   );
-  const notes = table?.meta?.notes ?? "";
   const style = { "--doc-est": `${estimateHeight(view, entry.columns)}px` } as CSSProperties;
 
   return (
@@ -436,7 +436,7 @@ const TableSection = memo(function TableSection({
       </div>
       {view === "detail" ? (
         <>
-          <TableInfo tableId={entry.id} fullHeight />
+          <TableInfo tableId={entry.id} fullHeight onEditNotes={canEdit ? onEditNotes : undefined} />
           {/* 削除（J-02）は本文の下。誤って逆生成したテーブルを個別に消す唯一の導線 */}
           <TableDeleteSection tableId={entry.id} />
         </>
@@ -451,16 +451,11 @@ const TableSection = memo(function TableSection({
             showEmptyNotes
             notesAction={
               canEdit && (
-                <button
-                  type="button"
-                  className={styles.pen}
-                  data-testid={`doc-table-notes-edit-${entry.id}`}
-                  title={t("doc.editTableNotes")}
-                  aria-label={t("doc.editTableNotes")}
-                  onClick={() => onEditNotes({ tableId: entry.id, value: notes })}
-                >
-                  <PenIcon size={14} strokeWidth={2} />
-                </button>
+                <NotesPen
+                  label={t("doc.editTableNotes")}
+                  testId={`doc-table-notes-edit-${entry.id}`}
+                  onClick={() => onEditNotes({ kind: "table", tableId: entry.id })}
+                />
               )
             }
           />
@@ -560,16 +555,12 @@ function ColumnRow({
             {notes}
           </span>
           {canEdit && (
-            <button
-              type="button"
-              className={cx(styles.pen, styles.rowPen)}
-              data-testid={`doc-column-notes-edit-${c.name}`}
-              title={t("doc.editColumnNotes")}
-              aria-label={t("doc.editColumnNotes")}
-              onClick={() => onEditNotes({ tableId: table.id, column: c.name, value: notes })}
-            >
-              <PenIcon size={13} strokeWidth={2} />
-            </button>
+            <NotesPen
+              label={t("doc.editColumnNotes")}
+              testId={`doc-column-notes-edit-${c.name}`}
+              className={styles.rowPen}
+              onClick={() => onEditNotes({ kind: "column", tableId: table.id, column: c.name })}
+            />
           )}
         </div>
       </td>

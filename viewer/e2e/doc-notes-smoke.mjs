@@ -34,6 +34,14 @@ async function typeInto(locator, text) {
   else await locator.pressSequentially(text);
 }
 
+/** ファイルに文字列が書かれるまで待つ（保存は非同期。最大 15 秒） */
+async function waitForFile(file, text) {
+  for (let i = 0; i < 150; i++) {
+    if (readFileSync(file, "utf-8").includes(text)) return;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+}
+
 function javaBin() {
   if (process.env.JAVA_HOME) return join(process.env.JAVA_HOME, "bin", "java");
   return "java";
@@ -156,6 +164,52 @@ async function main() {
     await page.locator('[data-testid="session-toggle"][data-editing="true"]').click();
     await page.waitForFunction(() => location.hash === "#/w/default/tables/doc/public.users", null, { timeout: 15000 });
     check("ending the edit returns to the document (the last view mode)", true);
+
+    // ---- 詳細でも注記を編集できる（テーブル・カラム・物理FK の多重度の補足・論理外部制約） ----
+    const itemsFile = join(dir, "workspace-default", "data", "schema", "public", "order_items.js");
+    await page.goto(`${url}#/w/default/tables/public.order_items`);
+    await page.waitForSelector('[data-doc-table="public.order_items"] [data-testid="fk-list"]', { timeout: 15000 });
+    const items = page.locator('[data-doc-table="public.order_items"]');
+    const applyNotes = async (text) => {
+      await page.waitForSelector('[data-testid="notes-input"]', { timeout: 5000 });
+      await typeInto(page.locator('[data-testid="notes-input"]'), text);
+      await page.locator('[data-testid="notes-apply"]').click();
+      await page.waitForSelector('[data-testid="notes-input"]', { state: "detached", timeout: 15000 });
+    };
+    // カラム注記（詳細の注記セルのペン）
+    await items.locator('[data-testid="column-notes-edit-quantity"]').click();
+    await applyNotes("1 以上");
+    await items.locator('[data-testid="column-notes-quantity"]').waitFor({ timeout: 15000 });
+    check("detail: column notes can be edited and show up as the note icon", true);
+    // 物理FK の多重度の補足（meta.relations）
+    await items.locator('[data-testid="fk-notes-edit-order_items_order_id_fkey"]').click();
+    await page.waitForFunction(() => document.querySelector('[data-testid="notes-input"]')?.value === "注文には必ず1明細以上が存在する", null, { timeout: 5000 });
+    check("detail: the physical FK pen opens with the current cardinality note", true);
+    await applyNotes("注文には必ず1明細以上が存在する（変更）");
+    await waitForFile(itemsFile, "注文には必ず1明細以上が存在する（変更）");
+    // 論理外部制約の注記
+    await items.locator('[data-testid="lfk-notes-edit-0"]').click();
+    await page.waitForFunction(() => document.querySelector('[data-testid="notes-input"]')?.value?.startsWith("在庫への論理参照"), null, { timeout: 5000 });
+    await applyNotes("在庫への論理参照（変更）");
+    await waitForFile(itemsFile, "在庫への論理参照（変更）");
+    const itemsAfter = readFileSync(itemsFile, "utf-8");
+    check("detail: column notes are written under meta.columns", /quantity: \{[^}]*notes: "1 以上"/.test(itemsAfter));
+    check(
+      "detail: the physical FK note is written to meta.relations",
+      itemsAfter.includes('"fk:order_items_order_id_fkey": { child: "1..N", notes: "注文には必ず1明細以上が存在する（変更）" }'),
+    );
+    check("detail: the logical FK note is written", itemsAfter.includes('notes: "在庫への論理参照（変更）"'));
+    check("detail: the logical FK definition is otherwise unchanged", itemsAfter.includes('ref: { table: "public.inventories", columns: ["product_id"] }'));
+    // テーブル注記（詳細の注記行のペン）
+    await items.locator('[data-testid="table-notes-edit-public.order_items"]').click();
+    await applyNotes("詳細から書いたテーブル注記");
+    await page.waitForFunction(
+      () => document.querySelector('[data-doc-table="public.order_items"] [data-testid="table-notes-text"]')?.textContent?.includes("詳細から書いたテーブル注記"),
+      null,
+      { timeout: 15000 },
+    );
+    check("detail: table notes can be edited", readFileSync(itemsFile, "utf-8").includes('notes: "詳細から書いたテーブル注記"'));
+    check("detail: editing keeps the URL in detail mode", page.url().includes("#/w/default/tables/public.order_items"));
 
     check("no page errors", errors.length === 0);
     await page.close();

@@ -13,10 +13,12 @@ import {
   resolveColumnTags,
   resolveTableName,
 } from "../model/logicalName";
+import type { NotesTarget } from "../model/notesTarget";
 import { useAppStore, type ConstraintKind } from "../model/store";
 import { isTableKind, parseEdgeId, type Relation, type Table } from "../model/types";
 import { cx } from "../lib/cx";
 import { hrefs } from "./router";
+import { PenIcon } from "./icons";
 import { Link } from "./Link";
 import { NotePopover } from "./NotePopover";
 import { ScrollTable } from "./ScrollTable";
@@ -45,6 +47,37 @@ interface TableInfoProps {
    * 既定ではダイアログ・単体表示向けに表だけをスクロールさせる
    */
   fullHeight?: boolean;
+  /**
+   * 注記のペンを出し、押されたら対象を知らせる（R-05。テーブル画面の詳細で、サーバーモードのとき）。
+   * ダイアログと保存は呼び出し側（TablesDocument）が持つ。渡さなければ閲覧専用（ER図のダイアログ）
+   */
+  onEditNotes?: (target: NotesTarget) => void;
+}
+
+/** 注記のペン（詳細・ドキュメントで共通の見た目。虫眼鏡と同じ体裁） */
+export function NotesPen({
+  label,
+  testId,
+  className,
+  onClick,
+}: {
+  label: string;
+  testId?: string;
+  className?: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={cx(styles.detailButton, className)}
+      data-testid={testId}
+      title={label}
+      aria-label={label}
+      onClick={onClick}
+    >
+      <PenIcon size={14} strokeWidth={2} />
+    </button>
+  );
 }
 
 /**
@@ -102,7 +135,7 @@ export function TableMetaHeader({
   );
 }
 
-export function TableInfo({ tableId, onNavigate, fullHeight = false }: TableInfoProps) {
+export function TableInfo({ tableId, onNavigate, fullHeight = false, onEditNotes }: TableInfoProps) {
   const { t } = useI18n();
   const table = useAppStore((s) => s.tables[tableId]);
   const error = useAppStore((s) => s.tableErrors[tableId]);
@@ -135,9 +168,23 @@ export function TableInfo({ tableId, onNavigate, fullHeight = false }: TableInfo
   const pk = new Set(table.primaryKey ?? []);
   const fkCols = new Set((table.foreignKeys ?? []).flatMap((fk) => fk.columns));
 
+  const canEdit = onEditNotes !== undefined;
+
   return (
     <div className={styles.tableInfo}>
-      <TableMetaHeader table={table} />
+      <TableMetaHeader
+        table={table}
+        showEmptyNotes={canEdit}
+        notesAction={
+          canEdit && (
+            <NotesPen
+              label={t("doc.editTableNotes")}
+              testId={`table-notes-edit-${table.id}`}
+              onClick={() => onEditNotes({ kind: "table", tableId: table.id })}
+            />
+          )
+        }
+      />
 
       <h3>{t("table.columns")}</h3>
       {/* カラム数が多いテーブルでページが縦に伸びきらないよう、表だけを（ヘッダを固定して）
@@ -213,6 +260,13 @@ export function TableInfo({ tableId, onNavigate, fullHeight = false }: TableInfo
                     </>
                   }
                 />
+                {canEdit && (
+                  <NotesPen
+                    label={t("doc.editColumnNotes")}
+                    testId={`column-notes-edit-${c.name}`}
+                    onClick={() => onEditNotes({ kind: "column", tableId: table.id, column: c.name })}
+                  />
+                )}
               </td>
             </tr>
           );
@@ -272,6 +326,14 @@ export function TableInfo({ tableId, onNavigate, fullHeight = false }: TableInfo
                 <TableLink tableId={fk.ref.table} onNavigate={onNavigate} />
                 <span className="mono muted">({pairsText(fk.columns, fk.ref.columns)})</span>
                 <RelationDetailButton relationId={edgeIdOf(table.id, "fk", fk.name)} />
+                {/* 物理FK 自体は machine-owned。人が書けるのは多重度の補足（meta.relations）だけ */}
+                {canEdit && fk.name !== undefined && (
+                  <NotesPen
+                    label={t("doc.editRelationNotes")}
+                    testId={`fk-notes-edit-${fk.name}`}
+                    onClick={() => onEditNotes({ kind: "physicalFk", tableId: table.id, name: fk.name ?? "" })}
+                  />
+                )}
               </li>
             ))}
           </ul>
@@ -288,6 +350,13 @@ export function TableInfo({ tableId, onNavigate, fullHeight = false }: TableInfo
               <li key={u.name ?? i} className={cx(styles.item, styles.itemLogical)}>
                 <span className="mono">{u.columns.join(", ")}</span>
                 <ConstraintDetailButton tableId={table.id} kind="logicalUnique" at={i} />
+                {canEdit && (
+                  <NotesPen
+                    label={t("doc.editConstraintNotes")}
+                    testId={`lunique-notes-edit-${i}`}
+                    onClick={() => onEditNotes({ kind: "logicalUnique", tableId: table.id, at: i, name: u.name })}
+                  />
+                )}
               </li>
             ))}
           </ul>
@@ -305,6 +374,13 @@ export function TableInfo({ tableId, onNavigate, fullHeight = false }: TableInfo
                 <TableLink tableId={fk.ref.table} onNavigate={onNavigate} />
                 <span className="mono muted">({pairsText(fk.columns, fk.ref.columns)})</span>
                 <RelationDetailButton relationId={edgeIdOf(table.id, "lfk", fk.name)} />
+                {canEdit && (
+                  <NotesPen
+                    label={t("doc.editRelationNotes")}
+                    testId={`lfk-notes-edit-${i}`}
+                    onClick={() => onEditNotes({ kind: "logicalFk", tableId: table.id, at: i, name: fk.name })}
+                  />
+                )}
               </li>
             ))}
           </ul>

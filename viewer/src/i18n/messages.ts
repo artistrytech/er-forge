@@ -767,6 +767,8 @@ const ja = {
   "doc.info.none": "なし",
   "doc.editTableNotes": "テーブルの注記を編集",
   "doc.editColumnNotes": "カラムの注記を編集",
+  "doc.editRelationNotes": "リレーションの注記を編集",
+  "doc.editConstraintNotes": "制約の注記を編集",
   "doc.tableNotesTitle": "テーブル注記",
   "doc.notesSaved": "注記を保存しました",
 } as const;
@@ -1528,6 +1530,8 @@ const en: Record<MsgKey, string> = {
   "doc.info.none": "none",
   "doc.editTableNotes": "Edit table notes",
   "doc.editColumnNotes": "Edit column notes",
+  "doc.editRelationNotes": "Edit relation notes",
+  "doc.editConstraintNotes": "Edit constraint notes",
   "doc.tableNotesTitle": "Table notes",
   "doc.notesSaved": "Notes saved",
 };

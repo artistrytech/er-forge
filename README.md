@@ -51,7 +51,7 @@ This prevents inconsistencies such as "it looks this way in the ER diagram, but 
 
 - Open a dialog from the ER diagram to check detailed information
 - Jump quickly between ER diagrams and table details through cross-links
-- The table screen lays out the tables listed on the left as one continuous document. Switch between "Detail" (everything) and "Document" (physical names, logical names, tags, and notes only; types and keys are one icon away, and notes can be edited in place)
+- The table screen lays out the tables listed on the left as one continuous document. Switch between "Detail" (everything) and "Document" (physical names, logical names, tags, and notes only; types and keys are one icon away). In either view, notes can be edited in place from the pen icons
 
 ![Table detail screen](docs/images/table-catalog.png)
 

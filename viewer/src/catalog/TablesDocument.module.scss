@@ -79,31 +79,10 @@
   letter-spacing: 0.04em;
 }
 
-/* 注記のペン。行のものはホバー / フォーカスまで薄くする（DOM には残す = キーボードで届く） */
-.pen {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: none;
-  border-radius: 6px;
-  background: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.pen:hover,
-.pen:focus-visible {
-  background: var(--accent-soft);
-  color: var(--accent);
-}
-
+/* 行の注記のペン（見た目は TableInfo の NotesPen）。ホバー / フォーカスまで薄くする
+   （DOM には残す = キーボードで届く） */
 .row-pen {
-  width: 22px;
-  height: 22px;
+  flex-shrink: 0;
   opacity: 0;
 }
 
