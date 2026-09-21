@@ -64,6 +64,9 @@ export const hrefs = {
     tableId !== undefined
       ? `${base()}/tables/doc/${encodeURIComponent(tableId)}`
       : `${base()}/tables/doc`,
+  /** 表示モード（詳細 / ドキュメント。R-02）に応じたテーブル画面の URL */
+  tableIn: (view: "detail" | "doc", tableId: string): string =>
+    view === "doc" ? hrefs.tableDoc(tableId) : hrefs.table(tableId),
   columns: (focusColumn?: string, focusMatch: ColumnMatch = "exact"): string =>
     focusColumn !== undefined
       ? `${base()}/columns/focus/${encodeURIComponent(focusColumn)}/${focusMatch}`

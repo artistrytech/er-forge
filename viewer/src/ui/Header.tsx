@@ -743,16 +743,16 @@ function EditControls({ route }: { route: Route }) {
         );
       }
     }
-  } else if (route.kind === "table" || route.kind === "tableEdit") {
-    // 詳細は連続表示（R-01）なので、編集の対象は URL ではなく読んでいる位置のテーブル
-    const tableId = route.kind === "table" ? (docActiveTableId ?? route.tableId) : route.tableId;
+  } else if (route.kind === "table" || route.kind === "tableDoc" || route.kind === "tableEdit") {
+    // 詳細・ドキュメントは連続表示（R-01）なので、編集の対象は URL ではなく読んでいる位置のテーブル
+    const tableId = route.kind === "tableEdit" ? route.tableId : (docActiveTableId ?? route.tableId);
     if (route.kind === "tableEdit") {
       // 編集ルート。サーバーモードのみ（静的モードは App が詳細へリダイレクト）
       if (serverMode === true && controller) {
         endEdit = () => requestEnd(controller.dirty, controller.end);
         body = <PageEditButtons controller={controller} onEnd={requestEnd} />;
       }
-    } else if (serverMode === true) {
+    } else if (serverMode === true && tableId !== undefined) {
       // ビュー等も同じ導線で編集する。編集できるのは meta のみ（TableEdit）なので、
       // 種別で入口を分ける必要がない（K-16 詳細設計 §7）
       body = <StartEditButton href={hrefs.tableEdit(tableId)} locked={pageInfoEditing} />;

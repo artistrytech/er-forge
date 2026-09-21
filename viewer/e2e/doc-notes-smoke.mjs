@@ -140,6 +140,23 @@ async function main() {
     check("clearing the notes removes the key from the file", !afterClear.includes("ドキュメントから書いたテーブル注記"));
     check("clearing the table notes leaves the column notes alone", afterClear.includes('notes: "ログイン ID を兼ねる"'));
 
+    // ---- ヘッダの編集ペンはドキュメントでも出て、読んでいる位置のテーブルを編集する。終了後は最後のモードへ戻る ----
+    const startEdit = page.locator('[data-testid="session-toggle"][data-editing="false"]');
+    check("the header edit button is shown in doc mode", (await startEdit.count()) === 1);
+    // 保存直後の再描画が落ち着くのを待つ（読んでいる位置は users のまま）
+    await page.waitForFunction(
+      () => document.querySelector('[data-testid="session-toggle"][data-editing="false"]')?.getAttribute("href") === "#/w/default/tables/public.users/edit",
+      null,
+      { timeout: 15000 },
+    );
+    check("the header edit button targets the table being read", true);
+    await startEdit.click();
+    await page.waitForFunction(() => location.hash === "#/w/default/tables/public.users/edit", null, { timeout: 15000 });
+    await page.waitForSelector('[data-testid="session-toggle"][data-editing="true"]', { timeout: 15000 });
+    await page.locator('[data-testid="session-toggle"][data-editing="true"]').click();
+    await page.waitForFunction(() => location.hash === "#/w/default/tables/doc/public.users", null, { timeout: 15000 });
+    check("ending the edit returns to the document (the last view mode)", true);
+
     check("no page errors", errors.length === 0);
     await page.close();
   } catch (e) {

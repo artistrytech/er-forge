@@ -137,8 +137,9 @@ export function TableEdit({ tableId }: { tableId: string }) {
       saving,
       canSave: committed !== null,
       save: () => saveRef.current(false),
+      // 戻り先は最後に使っていた表示モード（詳細 / ドキュメント。R-02）
       end: () => {
-        location.hash = hrefs.table(tableId);
+        location.hash = hrefs.tableIn(useAppStore.getState().tablesView, tableId);
       },
     });
     return () => setController(null);
@@ -246,7 +247,7 @@ export function TableEdit({ tableId }: { tableId: string }) {
     return (
       <Forbidden
         scope="edit"
-        backHref={hrefs.table(tableId)}
+        backHref={hrefs.tableIn(useAppStore.getState().tablesView, tableId)}
         backLabel={t("forbidden.toDetail")}
       />
     );

@@ -216,8 +216,7 @@ export function App() {
         ? (docActiveTableId ?? route.tableId)
         : routeTableId;
   // #/tables（ID なし）の振り替え先。記憶した表示モードのルートで開く（R-02）
-  const tablesHref = (id: string): string =>
-    tablesView === "doc" ? hrefs.tableDoc(id) : hrefs.table(id);
+  const tablesHref = (id: string): string => hrefs.tableIn(tablesView, id);
 
   let content: React.ReactNode;
   switch (route.kind) {

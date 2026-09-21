@@ -64,6 +64,9 @@ const SPY_TOLERANCE = 16;
  */
 const LAZY_RENDER_FROM = 30;
 
+/** 見出しへの合わせ直しを、文書の大きさの変化が止まってから終えるまでの時間（ms） */
+const ALIGN_SETTLE_MS = 1500;
+
 export const TablesDocument = memo(function TablesDocument({
   view,
   tableId,
@@ -110,50 +113,62 @@ export const TablesDocument = memo(function TablesDocument({
    */
   const settling = useRef<string | null>(null);
 
-  /** 進行中の合わせ直し（rAF）。次の移動が始まったら止める */
-  const realignRaf = useRef(0);
+  /** 進行中の合わせ直しを止める関数。次の移動が始まったとき・離れるときに呼ぶ */
+  const stopAlign = useRef<() => void>(() => {});
 
   /**
    * 見出しを上端（バーの下端）へ合わせる。
    *
-   * 1回の scrollIntoView では決まらない: 画面外のセクションは `content-visibility: auto` で
-   * 推定高さのまま置かれており、スクロールで近づいて初めて実寸になる。その分だけ目的の見出しが
-   * ずれるので、描画が落ち着くまで数フレーム測り直して合わせ直す。
-   *
-   * 測るのは**文書内の位置**（スクロール量を足した座標）。上のセクションの実寸化で見出しが
-   * 動いたときだけ合わせ直し、人がその間にスクロールしただけ（文書内の位置は不変）なら手を出さない
+   * 1回の scrollIntoView では決まらない: 上のセクションは読み込み中の仮表示や
+   * `content-visibility: auto` の推定高さで置かれており、読み込み・描画が進むと実寸に変わって
+   * 目的の見出しがずれる（フォントの差し替えでも動く）。目的のセクション自身が最後で
+   * まだ小さいと、末尾で止まって届かないこともある。そこで、移動後しばらくは文書の大きさの変化
+   * （ResizeObserver）を見張り、**こちらが置いたスクロール位置のまま**で見出しが上端から外れて
+   * いれば合わせ直す。人がその間にスクロールしていれば（位置が変わっている）手を出さず、
+   * ホイール・タッチ・キーの入力があれば打ち切る。変化が止まって少し経ったら終える
    */
   const alignTo = useCallback((el: HTMLElement): void => {
-    cancelAnimationFrame(realignRaf.current);
+    stopAlign.current();
     const scroller = scrollerOf();
-    const docTop = (): number =>
-      el.getBoundingClientRect().top + (scroller?.scrollTop ?? 0) - (scroller?.getBoundingClientRect().top ?? 0);
+    const root = rootRef.current;
+    /** 見出しの上端と、そろえる先（バーの下端）とのずれ */
+    const offset = (): number =>
+      el.getBoundingClientRect().top - (barRef.current?.getBoundingClientRect().bottom ?? 0);
     el.scrollIntoView({ block: "start" });
-    let last = docTop();
-    let tries = 0;
-    const check = (): void => {
-      realignRaf.current = 0;
-      if (!el.isConnected) return;
-      const now = docTop();
-      if (Math.abs(now - last) > 1) {
-        last = now;
-        el.scrollIntoView({ block: "start" });
-      }
-      if (++tries < 10) realignRaf.current = requestAnimationFrame(check);
-    };
-    realignRaf.current = requestAnimationFrame(check);
-    // 人が動かし始めたら（ホイール・タッチ・キー）合わせ直しはやめる。読み始めた手を戻さない
+    let placed = scroller?.scrollTop ?? 0;
+    let timer = 0;
     const stop = (): void => {
-      cancelAnimationFrame(realignRaf.current);
-      realignRaf.current = 0;
+      window.clearTimeout(timer);
+      observer.disconnect();
       for (const ev of ["wheel", "touchstart", "keydown"]) scroller?.removeEventListener(ev, stop);
+      stopAlign.current = () => {};
     };
+    // 変化が止まってからこの時間だけ待って終える（読み込みの間隔より長め）
+    const armTimer = (): void => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(stop, ALIGN_SETTLE_MS);
+    };
+    const observer = new ResizeObserver(() => {
+      if (!el.isConnected) {
+        stop();
+        return;
+      }
+      const untouched = (scroller?.scrollTop ?? 0) === placed;
+      if (untouched && Math.abs(offset()) > 1) {
+        el.scrollIntoView({ block: "start" });
+        placed = scroller?.scrollTop ?? 0;
+      }
+      armTimer();
+    });
+    if (root !== null) observer.observe(root);
     for (const ev of ["wheel", "touchstart", "keydown"]) {
-      scroller?.addEventListener(ev, stop, { passive: true, once: true });
+      scroller?.addEventListener(ev, stop, { passive: true });
     }
+    armTimer();
+    stopAlign.current = stop;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  useEffect(() => () => cancelAnimationFrame(realignRaf.current), []);
+  useEffect(() => () => stopAlign.current(), []);
 
   /** 見出しへ移動し、読んでいる位置もそこに合わせる（スクロール追随を待たない） */
   const jump = useCallback(
