@@ -4,7 +4,7 @@
  */
 import { useEffect } from "react";
 import { ColumnsPage } from "./catalog/ColumnsPage";
-import { TableDetail } from "./catalog/TableDetail";
+import { TablesDocument } from "./catalog/TablesDocument";
 import { TableEdit } from "./catalog/TableEdit";
 import { ErdPage } from "./canvas/ErdPage";
 import { useI18n } from "./i18n/useI18n";
@@ -55,7 +55,9 @@ export function App() {
   const workspaceName = workspaces.find((w) => w.id === workspaceId)?.name;
   // URL が指しているテーブル（下の activeTableId と同じもの。フックへ渡すためここで先に作る）
   const routeTableId =
-    route.kind === "table" || route.kind === "tableEdit" ? route.tableId : undefined;
+    route.kind === "table" || route.kind === "tableEdit" || route.kind === "tableDoc"
+      ? route.tableId
+      : undefined;
   // #/tables の初期表示テーブルを左パネルの見た目と揃えるための材料（下の restoreTableId）。
   // フックなので早期 return より前に置く。パネルと同じ引数で呼び、選ぶページを一致させる
   const tablesPanelLane = useAppStore((s) => s.tablesPanelLane);
@@ -64,6 +66,11 @@ export function App() {
   const setPageInfoEditing = useAppStore((s) => s.setPageInfoEditing);
   const tablesPanelPage = useTablesPanelPage(routeTableId);
   const tablesPanelPageTables = usePageTables(tablesPanelPage);
+  // テーブル画面の表示モード（詳細 / ドキュメント。R-02）。着地したルートで最後に使った方を覚える
+  const tablesView = useAppStore((s) => s.tablesView);
+  const setTablesView = useAppStore((s) => s.setTablesView);
+  // テーブル画面で読んでいる位置（連続表示のスクロール追随。左パネルの選択に使う。R-03）
+  const docActiveTableId = useAppStore((s) => s.docActiveTableId);
   const exportDiagramId = useEditStore((s) => s.exportDiagramId);
   // 未保存: ER図編集（正味の変更 netDirty）またはテーブル/カラム編集（pageEditStore の dirty）
   const erdUnsaved = useEditStore((s) => s.session === "editing" && s.netDirty);
@@ -105,7 +112,8 @@ export function App() {
     route.kind !== "erdHome" &&
     route.kind !== "erdEdit" &&
     route.kind !== "tables" &&
-    route.kind !== "table";
+    route.kind !== "table" &&
+    route.kind !== "tableDoc";
   useEffect(() => {
     if (panelHidden || route.kind === "erdEdit") {
       useAppStore.getState().setPageInfoEditing(false);
@@ -117,6 +125,13 @@ export function App() {
   useEffect(() => {
     if (viewedTableId !== null) setLastTableId(viewedTableId);
   }, [viewedTableId, setLastTableId]);
+
+  // 表示モードは着地したルートで覚える（ブックマークからの着地も含めて、最後に使った方）
+  const landedView: "detail" | "doc" | null =
+    route.kind === "table" ? "detail" : route.kind === "tableDoc" ? "doc" : null;
+  useEffect(() => {
+    if (landedView !== null) setTablesView(landedView);
+  }, [landedView, setTablesView]);
 
   // 最後に閲覧した ER図ページを覚えておき、#/erd（ページ未指定）を開いたとき復元する
   const viewedDiagramId =
@@ -190,11 +205,19 @@ export function App() {
   // テーブル編集中は隠す（編集フォームに集中させ、そこから他テーブルへ飛ばせないようにする）
   const panelScope: "erd" | "tables" | null = onErdRoute
     ? "erd"
-    : route.kind === "tables" || route.kind === "table"
+    : route.kind === "tables" || route.kind === "table" || route.kind === "tableDoc"
       ? "tables"
       : null;
+  // テーブル画面（詳細 / ドキュメント）では URL の <id> ではなく、読んでいる位置を左パネルの選択にする（R-03）
   const activeTableId =
-    route.kind === "erd" || route.kind === "erdEdit" ? route.tableId : routeTableId;
+    route.kind === "erd" || route.kind === "erdEdit"
+      ? route.tableId
+      : route.kind === "table" || route.kind === "tableDoc"
+        ? (docActiveTableId ?? route.tableId)
+        : routeTableId;
+  // #/tables（ID なし）の振り替え先。記憶した表示モードのルートで開く（R-02）
+  const tablesHref = (id: string): string =>
+    tablesView === "doc" ? hrefs.tableDoc(id) : hrefs.table(id);
 
   let content: React.ReactNode;
   switch (route.kind) {
@@ -226,7 +249,7 @@ export function App() {
       // 一覧と詳細を統合（案B）。未選択状態は作らず、最後に閲覧したテーブル
       // （無ければ先頭）を開く（回答E）
       if (restoreTableId !== undefined) {
-        replaceRoute(hrefs.table(restoreTableId));
+        replaceRoute(tablesHref(restoreTableId));
         content = null;
       } else {
         content = (
@@ -238,7 +261,17 @@ export function App() {
       }
       break;
     case "table":
-      content = <TableDetail tableId={route.tableId} />;
+      // 詳細。左パネルの範囲を連続表示し、URL のテーブルへスクロールする（R-01）
+      content = <TablesDocument view="detail" tableId={route.tableId} />;
+      break;
+    case "tableDoc":
+      // ドキュメント（R-01）。ID なしは最後に見たテーブルの位置へ（無ければ先頭から）
+      if (route.tableId === undefined && restoreTableId !== undefined) {
+        replaceRoute(hrefs.tableDoc(restoreTableId));
+        content = null;
+      } else {
+        content = <TablesDocument view="doc" tableId={route.tableId} />;
+      }
       break;
     case "tableEdit":
       // 静的モードでは詳細画面にリダイレクトし、閲覧モードである旨を表示（§4.4）
@@ -247,7 +280,9 @@ export function App() {
       } else if (serverMode === null) {
         content = <div className={styles.bootLoading}>{t("canvas.loading")}</div>;
       } else {
-        content = <TableDetail tableId={route.tableId} notice={t("banner.editRedirect")} />;
+        content = (
+          <TablesDocument view="detail" tableId={route.tableId} notice={t("banner.editRedirect")} />
+        );
       }
       break;
     case "columns":
@@ -322,7 +357,10 @@ export function App() {
         >
           <LeftPanel scope="tables" activeTableId={activeTableId} />
         </div>
-        <div className={styles.appContent}>{content}</div>
+        {/* data-scroll-root: ドキュメントモードがスクロール位置の基準に使う（TablesDocument） */}
+        <div className={styles.appContent} data-scroll-root="">
+          {content}
+        </div>
       </main>
       {dialog?.type === "table" && <TableDetailDialog tableId={dialog.id} />}
       {dialog?.type === "relation" && <RelationDialog relationId={dialog.id} />}

@@ -29,6 +29,18 @@ export type ConstraintKind = "unique" | "index" | "logicalUnique";
 /** 左パネルのレーン（アイコンレール: ページ / 全て / 検索） */
 export type PanelLane = "pages" | "all" | "search";
 
+/** テーブル画面の右ペインの表示モード（詳細 / ドキュメント。R-02） */
+export type TablesView = "detail" | "doc";
+
+/**
+ * 左パネル（テーブル画面用）が今並べているテーブル（R-01 の範囲）。
+ * label は範囲の見出し（ページ名 / 絞り込み語 / 検索語）で、レーンが組み立てる。
+ */
+export interface PanelList {
+  ids: string[];
+  label: string;
+}
+
 /** ER図上の一時的なダイアログ（URL を持たない。設計書 §4.4） */
 export type DialogState =
   | { type: "table"; id: string }
@@ -117,6 +129,26 @@ export interface AppState {
    */
   tablesPanelLane: PanelLane;
   tablesPanelPage: string | null;
+  /**
+   * テーブル画面の表示モード（R-02）。最後に使った方を個人設定として localStorage に持つ。
+   * `#/tables`（ID なし）とヘッダの「テーブル」はこのモードのルートへ振り替える。
+   */
+  tablesView: TablesView;
+  /**
+   * テーブル画面用の左パネルが**今並べているテーブル**（R-01 の範囲）。各レーンが描画のたびに
+   * 書き、ドキュメントモードはこれを上から順に描く。右ペイン側で範囲を選び直さない（INV-1）
+   */
+  tablesPanelList: PanelList;
+  /**
+   * ドキュメントモードで読んでいる位置のテーブル（スクロール追随。R-03）。
+   * 左パネルの選択ハイライトと「詳細」への切替リンクに使う。URL は書き換えない
+   */
+  docActiveTableId: string | null;
+  /**
+   * ドキュメント内の見出しへのスクロール要求（左パネルのクリック）。同じテーブルを続けて
+   * 押しても効くよう、ID だけでなく連番を持つ（同じハッシュへの代入は hashchange を起こさない）
+   */
+  docScrollTo: { id: string; seq: number } | null;
 
   setLang(lang: Lang): void;
   setNameDisplay(mode: NameDisplay): void;
@@ -136,6 +168,10 @@ export interface AppState {
   setLastDiagramId(id: string | null): void;
   setTablesPanelLane(lane: PanelLane): void;
   setTablesPanelPage(id: string | null): void;
+  setTablesView(view: TablesView): void;
+  setTablesPanelList(list: PanelList): void;
+  setDocActiveTableId(id: string | null): void;
+  requestDocScroll(id: string): void;
 }
 
 /**
@@ -159,6 +195,8 @@ function scopedKey(key: string, workspaceId: string | null): string {
 /** ユーザ独自設定（言語・表示名）の永続化キー（設定メニューから変更・localStorage 保存） */
 const LANG_KEY = "erd-lang";
 const NAME_DISPLAY_KEY = "erd-name-display";
+/** テーブル画面の表示モード（詳細 / ドキュメント。R-02） */
+const TABLES_VIEW_KEY = "erd-tables-view";
 
 function readSession(key: string): string | null {
   try {
@@ -181,6 +219,15 @@ function readStoredNameDisplay(): NameDisplay | null {
   try {
     const v = localStorage.getItem(NAME_DISPLAY_KEY);
     return v === "both" || v === "logical" || v === "physical" ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+function readStoredTablesView(): TablesView | null {
+  try {
+    const v = localStorage.getItem(TABLES_VIEW_KEY);
+    return v === "detail" || v === "doc" ? v : null;
   } catch {
     return null;
   }
@@ -234,6 +281,10 @@ export const useAppStore = create<AppState>((set) => ({
   pageInfoEditing: false,
   tablesPanelLane: "pages",
   tablesPanelPage: null,
+  tablesView: readStoredTablesView() ?? "detail",
+  tablesPanelList: { ids: [], label: "" },
+  docActiveTableId: null,
+  docScrollTo: null,
   workspaces: [],
   workspaceId: null,
   lastWorkspaceId: readSession(LAST_WORKSPACE_KEY),
@@ -284,6 +335,27 @@ export const useAppStore = create<AppState>((set) => ({
   },
   setTablesPanelLane: (tablesPanelLane) => set({ tablesPanelLane }),
   setTablesPanelPage: (tablesPanelPage) => set({ tablesPanelPage }),
+  setTablesView: (tablesView) => {
+    set({ tablesView });
+    persist(TABLES_VIEW_KEY, tablesView);
+  },
+  setTablesPanelList: (list) => {
+    set((s) => {
+      // レーンは描画のたびに書く。中身が同じなら参照も据え置き、購読側を再描画させない
+      const prev = s.tablesPanelList;
+      if (
+        prev.label === list.label &&
+        prev.ids.length === list.ids.length &&
+        prev.ids.every((id, i) => id === list.ids[i])
+      ) {
+        return {};
+      }
+      return { tablesPanelList: list };
+    });
+  },
+  setDocActiveTableId: (docActiveTableId) =>
+    set((s) => (s.docActiveTableId === docActiveTableId ? {} : { docActiveTableId })),
+  requestDocScroll: (id) => set((s) => ({ docScrollTo: { id, seq: (s.docScrollTo?.seq ?? 0) + 1 } })),
   addToast: (text, variant = "info") => {
     const id = ++toastSeq;
     set((s) => ({ toasts: [...s.toasts, { id, text, variant }] }));

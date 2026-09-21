@@ -1,0 +1,197 @@
+/* テーブル画面の連続表示（詳細 / ドキュメント。R-01〜R-05）。
+   ページシェル（.catalog-page / .catalog-header）・.data-table・.badge* ・.mono / .muted は global の
+   共有プリミティブ、行の色・タグ・キー標識は TableInfo のモジュールをそのまま使い、
+   ここには文書としての並び（バー・セクション・(i) の中身）だけを置く。 */
+
+.doc {
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
+  /* 下に余白を残し、最後のテーブルでも見出しを上端にそろえられるようにする
+     （左パネルのクリック・選択の追随が末尾だけ効かない、を避ける） */
+  padding: 0 32px 60vh;
+}
+
+/* 切替と範囲の見出し。読みながら切り替えられるよう、スクロール要素の上端に貼り付く */
+.bar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 0 -8px;
+  padding: 16px 8px 12px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--divider);
+}
+
+.range {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-strong);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.count {
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+/* 1テーブル = 1セクション。上下の余白は単体表示だったときの .catalog-page と同じ。
+   DOM は全件持つので Ctrl+F・アンカーが効く */
+.section {
+  padding: 28px 0 32px;
+  border-bottom: 1px solid var(--border);
+  /* 見出しへスクロールしたとき、貼り付いたバーの下に見出しが潜らないようにする */
+  scroll-margin-top: 64px;
+}
+
+.section:last-child {
+  border-bottom: none;
+}
+
+/* 範囲が大きいときだけ、画面外のセクションの描画を省き、高さは推定値で仮置きする
+   （--doc-est は TablesDocument がカラム数から入れる）。境界で実寸に変わるときにかくつくので、
+   普段の範囲（1ページ分）では付けない */
+.section.lazy {
+  content-visibility: auto;
+  contain-intrinsic-size: auto var(--doc-est, 400px);
+}
+
+/* 見出し右端の操作（ドキュメントのみ: (i)） */
+.head-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+/* 詳細と同じ h3（TableInfo の見出し） */
+.columns-heading {
+  margin: 20px 0 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+
+/* 注記のペン。行のものはホバー / フォーカスまで薄くする（DOM には残す = キーボードで届く） */
+.pen {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.pen:hover,
+.pen:focus-visible {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.row-pen {
+  width: 22px;
+  height: 22px;
+  opacity: 0;
+}
+
+.row:hover .row-pen,
+.row-pen:focus-visible {
+  opacity: 1;
+}
+
+/* カラム表の器・ヘッダ・行は詳細と同じ ScrollTable / .data-table。ここでは注記の列に残り幅を渡すだけ */
+.notes-head {
+  width: 40%;
+}
+
+.phys-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  overflow-wrap: anywhere;
+}
+
+.notes-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.notes-text {
+  flex: 1;
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.7;
+}
+
+/* (i) の中身: 定義リスト */
+.facts {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fact {
+  display: grid;
+  grid-template-columns: 84px 1fr;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.fact dt {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.03em;
+}
+
+.fact dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.keys {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.key-ref {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.key-unique {
+  background: var(--divider);
+  color: var(--text-muted);
+}
+
+.pages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.dialog-logical {
+  margin-left: 10px;
+  font-weight: 400;
+  color: var(--text-muted);
+}

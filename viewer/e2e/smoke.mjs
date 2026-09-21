@@ -154,7 +154,7 @@ async function main() {
 
   // 4) ダイアログのリンク → テーブル詳細画面（B-10）
   await page.click(".dialog .button-link");
-  await page.waitForSelector(".catalog-page");
+  await page.waitForSelector('[data-testid="tables-document"]');
   check("navigates to table detail", page.url().includes("#/w/default/tables/public."));
   check("detail shows column table", (await page.locator(".data-table tbody tr").count()) > 0);
 
@@ -168,23 +168,25 @@ async function main() {
   // 5b) 制約は種類ごとの見出しで平坦に並び、1件 = 1枠。外部キーは被参照と同じ形
   //（相手テーブル + カラム対応）で見せ、制約名などは虫眼鏡のリレーション詳細に寄せる
   await page.goto("file:///" + DIST + "#/w/default/tables/public.users");
-  await page.waitForSelector('[data-testid="fk-list"]');
+  // 詳細は左パネルの範囲（コアドメインの3テーブル）を連続表示するので、users のセクションに絞って見る
+  const U = '[data-doc-table="public.users"] ';
+  await page.waitForSelector(U + '[data-testid="fk-list"]');
   check(
     "foreign keys show the referenced table with the column mapping",
-    (await page.locator('[data-testid="fk-list"] a[href="#/w/default/tables/public.organizations"]').count()) === 1 &&
-      (await page.locator('[data-testid="fk-list"]').textContent()).includes("org_id → id"),
+    (await page.locator(U + '[data-testid="fk-list"] a[href="#/w/default/tables/public.organizations"]').count()) === 1 &&
+      (await page.locator(U + '[data-testid="fk-list"]').textContent()).includes("org_id → id"),
   );
   check(
     "the physical constraint name is not shown in the list",
-    !(await page.locator('[data-testid="fk-list"]').textContent()).includes("users_org_id_fkey"),
+    !(await page.locator(U + '[data-testid="fk-list"]').textContent()).includes("users_org_id_fkey"),
   );
   // 一意制約・インデックスも同じ形（構成カラム + 虫眼鏡）。制約名は詳細ダイアログに寄せる
   check(
     "uniques and indexes show their columns without the constraint name",
-    (await page.locator('[data-testid="unique-list"]').textContent()).trim() === "email" &&
-      !(await page.locator('[data-testid="index-list"]').textContent()).includes("idx_users_created_at"),
+    (await page.locator(U + '[data-testid="unique-list"]').textContent()).trim() === "email" &&
+      !(await page.locator(U + '[data-testid="index-list"]').textContent()).includes("idx_users_created_at"),
   );
-  await page.locator('[data-testid="lunique-list"] [data-testid="constraint-detail"]').click();
+  await page.locator(U + '[data-testid="lunique-list"] [data-testid="constraint-detail"]').click();
   await page.waitForSelector(".dialog");
   const luniqueText = await page.locator(".dialog").textContent();
   check(
@@ -196,7 +198,7 @@ async function main() {
   );
   await page.keyboard.press("Escape");
 
-  const relDetail = page.locator('[data-testid="relation-detail"]');
+  const relDetail = page.locator(U + '[data-testid="relation-detail"]');
   // 参照（物理FK・論理外部制約）と被参照の3件すべてに詳細ボタンが出る
   check("relation detail is offered for references and back-references", (await relDetail.count()) === 3);
   await relDetail.first().click();
@@ -217,11 +219,11 @@ async function main() {
   // （注記の長さで1件の幅が変わると、並んだ制約同士を見比べられなくなる）
   check(
     "the constraint lists carry no notes",
-    !(await page.locator('[data-testid="lfk-list"]').innerText()).includes("性能上") &&
-      !(await page.locator('[data-testid="fk-list"]').innerText()).includes("組織には") &&
-      !(await page.locator('[data-testid="lunique-list"]').innerText()).includes("組織内で"),
+    !(await page.locator(U + '[data-testid="lfk-list"]').innerText()).includes("性能上") &&
+      !(await page.locator(U + '[data-testid="fk-list"]').innerText()).includes("組織には") &&
+      !(await page.locator(U + '[data-testid="lunique-list"]').innerText()).includes("組織内で"),
   );
-  await page.locator('[data-testid="lfk-list"] [data-testid="relation-detail"]').click();
+  await page.locator(U + '[data-testid="lfk-list"] [data-testid="relation-detail"]').click();
   await page.waitForSelector(".dialog");
   check(
     "a logical FK shows its own note in the detail dialog",
@@ -230,7 +232,7 @@ async function main() {
   await page.keyboard.press("Escape");
 
   // 5c) カラムの注記はホバーでポップアップ、クリックでダイアログ（長い注記を落ち着いて読む用）
-  const noteTrigger = page.locator('[data-testid="column-notes-org_id"]');
+  const noteTrigger = page.locator(U + '[data-testid="column-notes-org_id"]');
   await noteTrigger.hover();
   await page.waitForSelector('[data-testid="column-notes-org_id-popover"]');
   check(
@@ -416,7 +418,7 @@ async function main() {
       ?.zoom > 0,
   );
   await page.goto("file:///" + DIST + "#/w/default/tables/public.users");
-  await page.waitForSelector(".catalog-page");
+  await page.waitForSelector('[data-testid="tables-document"]');
   await page.goto("file:///" + DIST + "#/w/default/erd/core");
   await page.waitForSelector('[data-testid="erd-node"]');
   await page.waitForTimeout(500);
@@ -428,7 +430,7 @@ async function main() {
   // 覚えていないページは従来どおり全体表示から始める
   await page.evaluate(() => sessionStorage.removeItem("erd-viewport:default"));
   await page.goto("file:///" + DIST + "#/w/default/tables/public.users");
-  await page.waitForSelector(".catalog-page");
+  await page.waitForSelector('[data-testid="tables-document"]');
   await page.goto("file:///" + DIST + "#/w/default/erd/core");
   await page.waitForSelector('[data-testid="erd-node"]');
   await page.waitForTimeout(500);

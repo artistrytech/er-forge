@@ -27,6 +27,11 @@ export type Route =
   | { kind: "tables" }
   | { kind: "table"; tableId: string }
   | { kind: "tableEdit"; tableId: string }
+  /**
+   * ドキュメント（R-01。左パネルの一覧を1本の文書として読む）。tableId は見出しへの
+   * スクロール先で、無ければ最後に見たテーブルへ振り替える（App）。
+   */
+  | { kind: "tableDoc"; tableId?: string }
   /** 閲覧。検索モーダルからの遷移時は focusColumn（物理名）＋ focusMatch で絞り込む */
   | { kind: "columns"; focusColumn?: string; focusMatch?: ColumnMatch }
   /** カラム論理名の一括編集（閲覧ルートから [編集開始] で遷移。P-03） */
@@ -55,6 +60,10 @@ export const hrefs = {
   tables: (): string => `${base()}/tables`,
   table: (tableId: string): string => `${base()}/tables/${encodeURIComponent(tableId)}`,
   tableEdit: (tableId: string): string => `${base()}/tables/${encodeURIComponent(tableId)}/edit`,
+  tableDoc: (tableId?: string): string =>
+    tableId !== undefined
+      ? `${base()}/tables/doc/${encodeURIComponent(tableId)}`
+      : `${base()}/tables/doc`,
   columns: (focusColumn?: string, focusMatch: ColumnMatch = "exact"): string =>
     focusColumn !== undefined
       ? `${base()}/columns/focus/${encodeURIComponent(focusColumn)}/${focusMatch}`
@@ -109,6 +118,11 @@ export function parseHash(hash: string): Route {
   }
   if (head === "tables") {
     if (segments.length === 1) return { kind: "tables" };
+    // `doc` は予約語（`#/tables/new` と同じ）。テーブル ID は `schema.name` 形式なので衝突しない
+    if (a === "doc") {
+      if (segments.length === 2) return { kind: "tableDoc" };
+      if (segments.length === 3 && b !== undefined) return { kind: "tableDoc", tableId: b };
+    }
     if (segments.length === 2 && a !== undefined) return { kind: "table", tableId: a };
     if (segments.length === 3 && a !== undefined && b === "edit") {
       return { kind: "tableEdit", tableId: a };

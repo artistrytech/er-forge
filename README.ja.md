@@ -48,6 +48,7 @@ ER 図、テーブル一覧、カラム詳細はすべて同じデータを見�
 
 - ER 図上からダイアログで詳細情報を確認できる
 - ER 図とテーブル詳細との相互リンクにより、必要な情報をすぐ確認できる
+- テーブル画面は左の一覧にあるテーブル群を1本の文書として読み通せる。「詳細」（全情報）と「ドキュメント」（物理名・論理名・タグ・注記に絞る。型やキーはアイコンから確認、注記はその場で編集）を切り替えられる
 
 ![テーブル詳細の画面](docs/images/table-catalog.png)
 
@@ -205,6 +206,7 @@ cd viewer && npm run typecheck && npm test && npm run e2e   # e2e はビルド�
 cd server && ./gradlew test
 ```
 
+ドキュメントモードは `npm run e2e:doc`（静的）と `npm run e2e:doc:server`（注記の保存。サーバー）で確認できます。
 MCP 連携は `npm run e2e:mcp` でエンドツーエンドの確認ができます。事前に `gradlew shadowJar` と `npm run build` を実行してください。
 テストでは配布物と同じ構成で起動し、画面から有効化・トークン発行を行い、表示された設定で接続できることまで確認します。
 MCP クライアント側から手動で確認するには [MCP Inspector](https://github.com/modelcontextprotocol/inspector)

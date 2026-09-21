@@ -72,7 +72,8 @@ export function Header({ currentDiagramId }: { currentDiagramId?: string }) {
   const route = useRoute();
   const kind = route.kind;
   const onErd = kind === "erd" || kind === "erdHome" || kind === "erdEdit";
-  const onTables = kind === "tables" || kind === "table" || kind === "tableEdit";
+  const onTables =
+    kind === "tables" || kind === "table" || kind === "tableEdit" || kind === "tableDoc";
   const onColumns = kind === "columns" || kind === "columnsEdit";
 
   /*
@@ -685,6 +686,8 @@ function EditControls({ route }: { route: Route }) {
   // ページ管理ダイアログ（追加・改名・並び替え・削除）を開いている間は、ER図・テーブルの
   // 編集を始めさせない。何を編集しているのかが読めなくなるため（相互排他）
   const pageInfoEditing = useAppStore((s) => s.pageInfoEditing);
+  // テーブル画面で読んでいる位置（連続表示。R-03）
+  const docActiveTableId = useAppStore((s) => s.docActiveTableId);
   // 未保存があるまま終了を押したときに開く確認（保持している関数を実行すると終了する）
   const [pendingEnd, setPendingEnd] = useState<{ run: () => void } | null>(null);
 
@@ -741,7 +744,8 @@ function EditControls({ route }: { route: Route }) {
       }
     }
   } else if (route.kind === "table" || route.kind === "tableEdit") {
-    const tableId = route.tableId;
+    // 詳細は連続表示（R-01）なので、編集の対象は URL ではなく読んでいる位置のテーブル
+    const tableId = route.kind === "table" ? (docActiveTableId ?? route.tableId) : route.tableId;
     if (route.kind === "tableEdit") {
       // 編集ルート。サーバーモードのみ（静的モードは App が詳細へリダイレクト）
       if (serverMode === true && controller) {

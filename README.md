@@ -51,6 +51,7 @@ This prevents inconsistencies such as "it looks this way in the ER diagram, but 
 
 - Open a dialog from the ER diagram to check detailed information
 - Jump quickly between ER diagrams and table details through cross-links
+- The table screen lays out the tables listed on the left as one continuous document. Switch between "Detail" (everything) and "Document" (physical names, logical names, tags, and notes only; types and keys are one icon away, and notes can be edited in place)
 
 ![Table detail screen](docs/images/table-catalog.png)
 
@@ -209,6 +210,7 @@ cd viewer && npm run typecheck && npm test && npm run e2e   # e2e performs a fil
 cd server && ./gradlew test
 ```
 
+`npm run e2e:doc` (static) and `npm run e2e:doc:server` (saving notes; needs the server) check the document view.
 `npm run e2e:mcp` checks the MCP integration end to end. Run `gradlew shadowJar` and `npm run build` first.
 It starts the server using the same layout as the distribution, enables MCP and issues a token through the UI, and
 verifies that the displayed configuration connects without modification. To manually test the server from the client side,

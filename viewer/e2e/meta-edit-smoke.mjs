@@ -397,8 +397,10 @@ async function main() {
     })();
 
     await page.goto(`${url}#/w/default/tables/public.user_sessions`);
-    await page.waitForSelector('[data-testid="delete-table"]', { timeout: 15000 });
-    await page.getByTestId("delete-table").click();
+    // 詳細は左パネルの範囲を連続表示するので、削除はそのテーブルのセクションから
+    const delOf = (id) => page.locator(`[data-doc-table="${id}"] [data-testid="delete-table"]`);
+    await delOf("public.user_sessions").waitFor({ timeout: 15000 });
+    await delOf("public.user_sessions").click();
     // 削除の前に影響を提示する（§6.2）: 配置ページと、失われる meta
     await page.waitForSelector('[data-testid="delete-impact"]', { timeout: 5000 });
     // 配置ページ・失われる meta・消えるファイルの3行（文言は言語設定に依存するので件数で見る）
@@ -460,8 +462,8 @@ async function main() {
 
     // チェックを外せば従来どおりノードは孤児として残る（K-13 / §6.2）
     await page.goto(`${url}#/w/default/tables/public.user_addresses`);
-    await page.waitForSelector('[data-testid="delete-table"]', { timeout: 15000 });
-    await page.getByTestId("delete-table").click();
+    await delOf("public.user_addresses").waitFor({ timeout: 15000 });
+    await delOf("public.user_addresses").click();
     await page.waitForSelector('[data-testid="delete-impact"]', { timeout: 5000 });
     await page.getByTestId("delete-remove-nodes").uncheck();
     await page.waitForSelector('[data-testid="delete-table-confirm"]:not([disabled])', { timeout: 15000 });

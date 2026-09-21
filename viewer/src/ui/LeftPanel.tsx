@@ -20,14 +20,18 @@
  * テーブルを選択したときの遷移（回答3 / 6）:
  * - ER画面: 現在のページにあればフォーカス、別ページにあればそのページでフォーカス、
  *   未配置なら詳細ダイアログ（ダブルクリック相当）。**編集中は編集ルートのままフォーカスする**。
- * - テーブル画面: 右ペインに詳細（URL にテーブルを埋め込む）。
+ * - テーブル画面: 右ペインに詳細（URL にテーブルを埋め込む）。ドキュメントモード（R-01）中は
+ *   詳細へ飛ばず、文書内のその見出しへスクロールする（R-03）。
+ *
+ * テーブル用のインスタンスは、各レーンが**今並べているテーブル**を appStore.tablesPanelList に
+ * 書く。ドキュメントモードはそれを範囲として上から描く（範囲を選ぶ UI を右ペインに持たない）。
  *
  * 編集の導線は2つあり、どちらか一方しか有効にならない:
  * - ER図の配置編集（editStore のセッション。保存が要る）… 未配置トレイからの配置・ドラッグ
  * - ページの管理（「ページ」見出しのペンで開くダイアログ。**即時にファイルへ書かれる**）…
  *   追加・改名・並替・削除。**この一覧自体は編集用の見た目に変わらない**（PageManageDialog）
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../i18n/useI18n";
 import { useCanvasStore } from "../canvas/canvasStore";
 import { TABLE_DND_TYPE } from "../canvas/ErdPage";
@@ -41,7 +45,7 @@ import type { IndexTable } from "../model/types";
 import { Dialog } from "./Dialog";
 import { PenIcon } from "./icons";
 import { Link } from "./Link";
-import { hrefs } from "./router";
+import { hrefs, useRoute } from "./router";
 import { cx } from "../lib/cx";
 import { useSessionState } from "../lib/useSessionState";
 import styles from "./LeftPanel.module.scss";
@@ -182,6 +186,50 @@ export function usePageTables(selectedPage: string | undefined): IndexTable[] {
   }, [index, placement, selectedPage]);
 }
 
+/**
+ * レーンが並べているテーブルをドキュメントモードの範囲として公開する（R-01 / INV-1）。
+ * テーブル用のインスタンスだけが書く（ER用は別の絞り込みを持っており、混ぜると
+ * 見えていないパネルの言葉で右ペインの範囲が変わる）。
+ */
+function usePublishPanelList(enabled: boolean, ids: string[], label: string): void {
+  const setList = useAppStore((s) => s.setTablesPanelList);
+  const key = ids.join("\n");
+  useEffect(() => {
+    if (enabled) setList({ ids: key === "" ? [] : key.split("\n"), label });
+  }, [enabled, key, label, setList]);
+}
+
+/**
+ * テーブル画面での選択先。表示モード（詳細 / ドキュメント）を保ったまま URL をそのテーブルにし、
+ * 右ペインの連続表示にその見出しへスクロールさせる（R-03）
+ */
+function useTablesTarget(): (tableId: string) => void {
+  const docMode = useRoute().kind === "tableDoc";
+  return useCallback(
+    (tableId: string) => {
+      location.hash = docMode ? hrefs.tableDoc(tableId) : hrefs.table(tableId);
+      // 同じテーブルを続けて押しても効くように（同じハッシュへの代入は hashchange を起こさない）
+      useAppStore.getState().requestDocScroll(tableId);
+    },
+    [docMode],
+  );
+}
+
+/**
+ * 選択された行を一覧の見える位置へ出す（R-03。右ペインのスクロールに左の一覧も追随する）。
+ * nearest なので、すでに見えていれば一覧は動かない
+ */
+function RevealLi({
+  active,
+  ...rest
+}: React.LiHTMLAttributes<HTMLLIElement> & { active: boolean }) {
+  const ref = useRef<HTMLLIElement>(null);
+  useEffect(() => {
+    if (active) ref.current?.scrollIntoView({ block: "nearest" });
+  }, [active]);
+  return <li ref={ref} {...rest} />;
+}
+
 // ------------------------------------------------------------------ アイコンレール
 
 function IconRail({ lane, onChange }: { lane: Lane; onChange: (l: Lane) => void }) {
@@ -233,10 +281,11 @@ function useTableSelect(scope: PanelScope, currentDiagramId?: string): (tableId:
   const openDialog = useAppStore((s) => s.openDialog);
   const placement = usePlacement();
   const erdHref = useErdHref();
+  const tablesTarget = useTablesTarget();
   return useCallback(
     (tableId: string) => {
       if (scope === "tables") {
-        location.hash = hrefs.table(tableId);
+        tablesTarget(tableId);
         return;
       }
       const diagrams = placement.get(tableId) ?? [];
@@ -249,7 +298,7 @@ function useTableSelect(scope: PanelScope, currentDiagramId?: string): (tableId:
         openDialog({ type: "table", id: tableId }); // 未配置は詳細ダイアログ（回答3）
       }
     },
-    [scope, currentDiagramId, placement, erdHref, openDialog],
+    [scope, currentDiagramId, placement, erdHref, openDialog, tablesTarget],
   );
 }
 
@@ -267,12 +316,13 @@ function useListTableSelect(scope: PanelScope): {
   const openDialog = useAppStore((s) => s.openDialog);
   const placement = usePlacement();
   const erdHref = useErdHref();
+  const tablesTarget = useTablesTarget();
   const [picker, setPicker] = useState<{ tableId: string; pages: string[] } | null>(null);
 
   const select = useCallback(
     (tableId: string) => {
       if (scope === "tables") {
-        location.hash = hrefs.table(tableId);
+        tablesTarget(tableId);
         return;
       }
       const pages = placement.get(tableId) ?? [];
@@ -284,7 +334,7 @@ function useListTableSelect(scope: PanelScope): {
         setPicker({ tableId, pages }); // 複数ページはダイアログで選ばせる
       }
     },
-    [scope, placement, erdHref, openDialog],
+    [scope, placement, erdHref, openDialog, tablesTarget],
   );
 
   const pickerNode =
@@ -426,6 +476,15 @@ function PagesLane({
   // 未配置の疑似ページを選択中に未配置が尽きたら、実ページの表示へ戻す
   // （配置し終えたら未配置トレイは消える。K-12 §7.1）
   const showTray = selectedPage === UNPLACED && unplaced.length > 0;
+  // ドキュメントモードの範囲（R-01）。未配置トレイを見せている間はトレイ側が公開する
+  const pageIds = useMemo(() => pageTables.map((it) => it.id), [pageTables]);
+  const pageLabel =
+    selectedPage === UNPLACED
+      ? t("doc.range.unplaced")
+      : t("doc.range.page", {
+          name: diagrams.find((d) => d.id === selectedPage)?.title ?? selectedPage ?? "",
+        });
+  usePublishPanelList(scope === "tables" && !showTray, pageIds, pageLabel);
   useEffect(() => {
     if (selectedPage === UNPLACED && unplaced.length === 0) {
       setSelectedPage(scope === "erd" ? (currentDiagramId ?? diagrams[0]?.id) : diagrams[0]?.id);
@@ -491,6 +550,7 @@ function PagesLane({
       {showTray ? (
         <UnplacedTray
           tables={unplaced}
+          publish={scope === "tables"}
           editingLayout={canPlace}
           inErd={scope === "erd" && currentDiagramId !== undefined}
           nameDisplay={nameDisplay}
@@ -505,8 +565,9 @@ function PagesLane({
           </div>
           <ul className={styles.lpList}>
             {pageTables.map((it) => (
-              <li
+              <RevealLi
                 key={it.id}
+                active={it.id === activeTableId}
                 className={cx(styles.lpItem, it.id === activeTableId && styles.active)}
                 data-testid="lp-item"
                 data-active={it.id === activeTableId ? "true" : undefined}
@@ -518,7 +579,7 @@ function PagesLane({
                   </span>
                 </button>
                 <TableEditLink tableId={it.id} />
-              </li>
+              </RevealLi>
             ))}
           </ul>
         </div>
@@ -556,6 +617,7 @@ function PageManageButton({ open, lockedByErd }: { open: boolean; lockedByErd: b
 
 function UnplacedTray({
   tables,
+  publish,
   editingLayout,
   inErd,
   nameDisplay,
@@ -563,6 +625,8 @@ function UnplacedTray({
   onSelect,
 }: {
   tables: IndexTable[];
+  /** ドキュメントモードの範囲としてこの一覧を公開するか（テーブル画面用のインスタンス） */
+  publish: boolean;
   /** ER図の配置編集中か（トレイからの配置はこのセッションの操作。ページ情報編集とは別） */
   editingLayout: boolean;
   inErd: boolean;
@@ -580,6 +644,8 @@ function UnplacedTray({
     const isNew = (it: IndexTable): boolean => recent.includes(it.id);
     return [...tables].sort((a, b) => Number(isNew(b)) - Number(isNew(a)));
   }, [tables, recent]);
+  const orderedIds = useMemo(() => ordered.map((it) => it.id), [ordered]);
+  usePublishPanelList(publish, orderedIds, t("doc.range.unplaced"));
 
   const canPlace = editingLayout && inErd && placeTables !== null;
   const toggle = (id: string): void =>
@@ -619,8 +685,9 @@ function UnplacedTray({
       )}
       <ul className={styles.lpList}>
         {ordered.map((it) => (
-          <li
+          <RevealLi
             key={it.id}
+            active={it.id === activeTableId}
             className={cx(styles.trayRow, styles.lpItem, it.id === activeTableId && styles.active)}
             data-testid="lp-item"
             data-active={it.id === activeTableId ? "true" : undefined}
@@ -655,7 +722,7 @@ function UnplacedTray({
               {recent.includes(it.id) && <span className={styles.trayNew}>{t("tray.new")}</span>}
             </button>
             <TableEditLink tableId={it.id} />
-          </li>
+          </RevealLi>
         ))}
       </ul>
     </div>
@@ -701,6 +768,13 @@ function AllLane({
       );
     });
   }, [index, filter]);
+  const rowIds = useMemo(() => rows.map((it) => it.id), [rows]);
+  const trimmed = filter.trim();
+  usePublishPanelList(
+    scope === "tables",
+    rowIds,
+    trimmed === "" ? t("doc.range.all") : t("doc.range.allFiltered", { q: trimmed }),
+  );
 
   return (
     <div className={styles.lpLane}>
@@ -767,6 +841,8 @@ function SearchLane({
     () => (index ? searchAll(query, index, tables, dictionary, 100, mode) : []),
     [query, index, tables, dictionary, mode],
   );
+  const hitIds = useMemo(() => hits.map((h) => h.tableId), [hits]);
+  usePublishPanelList(scope === "tables", hitIds, t("doc.range.search", { q: query.trim() }));
 
   return (
     <div className={styles.lpLane}>
@@ -805,8 +881,9 @@ function SearchLane({
             if (!it) return null;
             const label = formatName(resolveIndexTableName(it), it.name, nameDisplay);
             return (
-              <li
+              <RevealLi
                 key={hit.tableId}
+                active={hit.tableId === activeTableId}
                 // カラム一致はテーブル名の**下**に積む（既定の .lp-item は横並びで、
                 // 一致一覧と左右に分け合うとテーブル名が1文字ずつに潰れてしまう）
                 className={cx(
@@ -839,7 +916,7 @@ function SearchLane({
                     ))}
                   </ul>
                 )}
-              </li>
+              </RevealLi>
             );
           })}
         </ul>
@@ -873,7 +950,8 @@ function TableRow({
   const draggable = canPlace && !onPage;
   const label = formatName(resolveIndexTableName(it), it.name, nameDisplay);
   return (
-    <li
+    <RevealLi
+      active={active}
       className={cx(styles.lpItem, styles.sidebarTableRow, active && styles.active)}
       data-testid="lp-item"
       data-active={active ? "true" : undefined}
@@ -916,7 +994,7 @@ function TableRow({
             ＋
           </button>
         ))}
-    </li>
+    </RevealLi>
   );
 }
 

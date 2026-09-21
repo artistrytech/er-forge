@@ -42,6 +42,27 @@
   margin: 0 0 8px;
 }
 
+/* 注記。人が改行を入れて書くので、改行をそのまま見せ、長い語は折り返す */
+.table-notes {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0 0 8px;
+  line-height: 1.7;
+}
+
+.table-notes-text {
+  flex: 1;
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.table-notes-empty {
+  flex: 1;
+  color: var(--text-faint);
+}
+
 .tag {
   display: inline-block;
   background: var(--accent-soft);

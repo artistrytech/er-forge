@@ -2,7 +2,7 @@
  * テーブル詳細の共通表示（G-01〜G-05 / O-02 で共用）。
  * カラム表・制約・論理制約・被参照一覧・meta・配置ページを表示する。閲覧専用。
  */
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, type ReactNode } from "react";
 import { useI18n } from "../i18n/useI18n";
 import { colorAttr } from "../model/colors";
 import { loadTable } from "../model/loader";
@@ -40,9 +40,69 @@ interface TableInfoProps {
   tableId: string;
   /** ダイアログから開いたとき、リンククリックでダイアログを閉じる */
   onNavigate?: () => void;
+  /**
+   * カラム表の高さを制限しない（テーブル画面の連続表示。R-01）。
+   * 既定ではダイアログ・単体表示向けに表だけをスクロールさせる
+   */
+  fullHeight?: boolean;
 }
 
-export function TableInfo({ tableId, onNavigate }: TableInfoProps) {
+/**
+ * テーブルの見出し直下に出す共通情報（種別バッジ・DB コメント・タグ・注記）。
+ * 詳細とドキュメント（R-01）で同じ見た目にするため切り出す。
+ *
+ * @param notesAction 注記の右に置く操作（ドキュメントの編集ペン）
+ * @param showEmptyNotes 注記が無いときも「注記なし」を出す（ドキュメント。ペンの居場所を作る）
+ */
+export function TableMetaHeader({
+  table,
+  notesAction,
+  showEmptyNotes = false,
+}: {
+  table: Table;
+  notesAction?: ReactNode;
+  showEmptyNotes?: boolean;
+}) {
+  const { t } = useI18n();
+  const notes = table.meta?.notes ?? "";
+  return (
+    <>
+      {/* ビュー等の種別バッジ（O-10）。DB が返した原文をそのまま出すため翻訳しない */}
+      {!isTableKind(table.kind) && (
+        <p className={styles.objectKind} data-testid="object-kind">
+          <span className={styles.objectKindBadge}>{table.kind}</span>
+        </p>
+      )}
+      {table.comment !== undefined && table.comment !== "" && (
+        <p className={styles.tableComment}>{table.comment}</p>
+      )}
+      {(table.meta?.tags?.length ?? 0) > 0 && (
+        <p className={styles.tableTags}>
+          {table.meta?.tags?.map((tag) => (
+            <span key={tag} className={styles.tag}>
+              {tag}
+            </span>
+          ))}
+        </p>
+      )}
+      {(notes !== "" || showEmptyNotes) && (
+        <p className={cx("table-notes", styles.tableNotes)}>
+          <span className="label">{t("table.notes")}: </span>
+          {notes !== "" ? (
+            <span className={styles.tableNotesText} data-testid="table-notes-text">
+              {notes}
+            </span>
+          ) : (
+            <span className={styles.tableNotesEmpty}>{t("doc.noNotes")}</span>
+          )}
+          {notesAction}
+        </p>
+      )}
+    </>
+  );
+}
+
+export function TableInfo({ tableId, onNavigate, fullHeight = false }: TableInfoProps) {
   const { t } = useI18n();
   const table = useAppStore((s) => s.tables[tableId]);
   const error = useAppStore((s) => s.tableErrors[tableId]);
@@ -77,36 +137,13 @@ export function TableInfo({ tableId, onNavigate }: TableInfoProps) {
 
   return (
     <div className={styles.tableInfo}>
-      {/* ビュー等の種別バッジ（O-10）。DB が返した原文をそのまま出すため翻訳しない */}
-      {!isTableKind(table.kind) && (
-        <p className={styles.objectKind} data-testid="object-kind">
-          <span className={styles.objectKindBadge}>{table.kind}</span>
-        </p>
-      )}
-      {table.comment !== undefined && table.comment !== "" && (
-        <p className={styles.tableComment}>{table.comment}</p>
-      )}
-      {(table.meta?.tags?.length ?? 0) > 0 && (
-        <p className={styles.tableTags}>
-          {table.meta?.tags?.map((tag) => (
-            <span key={tag} className={styles.tag}>
-              {tag}
-            </span>
-          ))}
-        </p>
-      )}
-      {table.meta?.notes !== undefined && table.meta.notes !== "" && (
-        <p className="table-notes">
-          <span className="label">{t("table.notes")}: </span>
-          {table.meta.notes}
-        </p>
-      )}
+      <TableMetaHeader table={table} />
 
       <h3>{t("table.columns")}</h3>
       {/* カラム数が多いテーブルでページが縦に伸びきらないよう、表だけを（ヘッダを固定して）
           スクロールさせる。仮想化はしない（カラム辞書と違って行の高さが揃わないため） */}
       <ScrollTable
-        className={styles.columnsScroll}
+        className={fullHeight ? undefined : styles.columnsScroll}
         testId="table-columns"
         head={
           <tr>
