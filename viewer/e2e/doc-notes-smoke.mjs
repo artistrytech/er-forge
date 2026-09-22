@@ -9,6 +9,7 @@
  * - 同じダイアログで論理名・タグ・色も書ける（テーブル / カラム）
  * - ER図のテーブル詳細ダイアログでも同じペンが出る。制約の詳細・論理情報のダイアログは
  *   その上に重なり、閉じるとテーブル詳細へ戻る
+ * - 論理制約（論理外部制約・論理一意制約）は詳細ダイアログから削除でき、ファイルからも消える
  *
  * 前提: `npm run build` と `gradlew shadowJar` 済み。実行: `node e2e/doc-notes-smoke.mjs`
  */
@@ -244,6 +245,23 @@ async function main() {
     check("detail: table notes can be edited", readFileSync(itemsFile, "utf-8").includes('notes: "詳細から書いたテーブル注記"'));
     check("detail: editing keeps the URL in detail mode", page.url().includes("#/w/default/tables/public.order_items"));
 
+    // ---- 詳細: 論理外部制約をリレーション詳細から削除する（確認をはさんで即時保存） ----
+    await items.locator('[data-testid="lfk-list"] [data-testid="relation-detail"]').first().click();
+    await page.waitForSelector('[data-testid="relation-delete"]', { timeout: 5000 });
+    await page.locator('[data-testid="relation-delete"]').click();
+    await page.waitForSelector('[data-testid="constraint-delete-confirm"]', { timeout: 5000 });
+    await page.locator('[data-testid="constraint-delete-confirm"]').click();
+    await page.waitForSelector(".dialog", { state: "detached", timeout: 15000 });
+    await page.waitForFunction(
+      () => document.querySelector('[data-doc-table="public.order_items"] [data-testid="lfk-list"]') === null,
+      null,
+      { timeout: 15000 },
+    );
+    const itemsDeleted = readFileSync(itemsFile, "utf-8");
+    check("detail: a logical FK can be deleted from the relation dialog", !itemsDeleted.includes("lfk_order_items_inventories"));
+    check("detail: deleting the logical FK drops its cardinality entry too", !itemsDeleted.includes("在庫は後追いで作られる"));
+    check("detail: the physical FK settings survive the deletion", itemsDeleted.includes('"fk:order_items_order_id_fkey"'));
+
     // ---- 論理名・タグ・色も同じダイアログで（ドキュメント。テーブル） ----
     await page.goto(`${url}#/w/default/tables/doc/public.users`);
     await page.waitForSelector('[data-doc-table="public.users"] [data-testid="doc-column-row"]', { timeout: 15000 });
@@ -327,6 +345,18 @@ async function main() {
       { timeout: 15000 },
     );
     check("ER: the table dialog stays open and reflects the change", (await page.locator('[role="dialog"]').count()) === 1);
+
+    // ---- ER図: 論理一意制約を制約詳細から削除する（テーブル詳細は開いたまま） ----
+    await page.locator('[data-testid="lunique-list"] [data-testid="constraint-detail"]').click();
+    await page.waitForSelector('[data-testid="constraint-delete"]', { timeout: 5000 });
+    await page.locator('[data-testid="constraint-delete"]').click();
+    await page.waitForSelector('[data-testid="constraint-delete-confirm"]', { timeout: 5000 });
+    await page.locator('[data-testid="constraint-delete-confirm"]').click();
+    await page.waitForFunction(() => document.querySelectorAll('[role="dialog"]').length === 1, null, { timeout: 15000 });
+    await page.waitForFunction(() => document.querySelector('[data-testid="lunique-list"]') === null, null, { timeout: 15000 });
+    check("ER: a logical unique can be deleted from the constraint dialog", !readFileSync(profilesFile, "utf-8").includes("luk_user_profiles_user"));
+    check("ER: the table dialog stays open after the deletion", (await page.locator('[data-testid="table-columns"]').count()) === 1);
+
     await page.keyboard.press("Escape");
     await page.waitForSelector('[role="dialog"]', { state: "detached", timeout: 5000 });
 

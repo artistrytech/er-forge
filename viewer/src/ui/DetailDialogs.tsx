@@ -9,15 +9,19 @@
  *
  * 注記（多重度の補足・論理外部制約・論理一意制約）はサーバーモードならどこから開いても
  * その場で編集できる（R-05。テーブル画面・ER図のテーブル詳細ダイアログ・ER図のエッジ）。
+ * **論理制約（論理外部制約・論理一意制約）はここから削除もできる**（確認をはさんで即時保存）。
+ * 物理の制約は machine-owned なので消せない。
  * ダイアログは重ねて開く（テーブル詳細 → 制約の詳細）ので、閉じると元のダイアログへ戻る。
  * 別の画面へ移るリンクだけは、重なっているものを全部閉じる。
  */
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useI18n } from "../i18n/useI18n";
 import { loadTable } from "../model/loader";
 import { useAppStore, type ConstraintKind } from "../model/store";
 import { parseEdgeId, type Table } from "../model/types";
 import { cx } from "../lib/cx";
+import { Button } from "./Button";
+import { ConstraintDeleteDialog } from "./ConstraintDeleteDialog";
 import { Dialog } from "./Dialog";
 import { InlineNotes } from "./InlineNotes";
 import { RelationKindBadge, TableLink } from "./TableInfo";
@@ -50,6 +54,7 @@ export function RelationDialog({ relationId }: { relationId: string }) {
   const index = useAppStore((s) => s.index);
   const relation = index?.relations?.find((r) => r.id === relationId);
   const parts = parseEdgeId(relationId);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   // FK 定義（ON DELETE / UPDATE）と meta.relations（注記）は参照元テーブルのスキーマにある
   const fromTable = useHeldTable(relation?.from);
@@ -89,6 +94,20 @@ export function RelationDialog({ relationId }: { relationId: string }) {
         ? ({ kind: "physicalFk", tableId: relation.from, name: parts.constraintName } as const)
         : ({ kind: "logicalFkCardinality", tableId: relation.from, name: parts.constraintName } as const);
   const editable = canEdit && cardinalityTarget !== null;
+  // 論理外部制約だけ消せる（物理FK の定義は machine-owned）
+  const deletable = canEdit && lfk !== undefined && parts !== null;
+
+  // 削除の確認は詳細を置き換えて出す（取消でここへ戻る）
+  if (deletable && confirmDelete) {
+    return (
+      <ConstraintDeleteDialog
+        target={{ kind: "logicalFk", tableId: relation.from, name: parts.constraintName }}
+        name={parts.constraintName}
+        onCancel={() => setConfirmDelete(false)}
+        onDeleted={closeDialog}
+      />
+    );
+  }
 
   return (
     <Dialog title={t("relation.title")} onClose={closeDialog}>
@@ -171,6 +190,17 @@ export function RelationDialog({ relationId }: { relationId: string }) {
           </>
         )}
       </dl>
+      {deletable && (
+        <div className="dialog-actions">
+          <Button
+            variant="danger"
+            data-testid="relation-delete"
+            onClick={() => setConfirmDelete(true)}
+          >
+            {t("tableEdit.remove")}
+          </Button>
+        </div>
+      )}
     </Dialog>
   );
 }
@@ -193,6 +223,7 @@ export function ConstraintInfoDialog({
   const closeAllDialogs = useAppStore((s) => s.closeAllDialogs);
   const table = useHeldTable(tableId);
   const canEdit = useCanEditNotes();
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
     void loadTable(tableId);
@@ -223,6 +254,20 @@ export function ConstraintInfoDialog({
   // インデックスのユニーク指定と、論理一意制約の注記はそれぞれの種別にしかない
   const unique = kind === "index" ? (entry as { unique?: boolean }).unique === true : undefined;
   const notes = logical ? (entry as { notes?: string }).notes : undefined;
+  // 論理一意制約だけ消せる（DB のユニーク制約・インデックスは machine-owned）
+  const deletable = canEdit && logical;
+
+  // 削除の確認は詳細を置き換えて出す（取消でここへ戻る）
+  if (deletable && confirmDelete) {
+    return (
+      <ConstraintDeleteDialog
+        target={{ kind: "logicalUnique", tableId, at, name: entry.name }}
+        name={entry.name}
+        onCancel={() => setConfirmDelete(false)}
+        onDeleted={closeDialog}
+      />
+    );
+  }
 
   return (
     <Dialog title={t("constraint.title")} onClose={closeDialog}>
@@ -273,6 +318,17 @@ export function ConstraintInfoDialog({
           </>
         )}
       </dl>
+      {deletable && (
+        <div className="dialog-actions">
+          <Button
+            variant="danger"
+            data-testid="constraint-delete"
+            onClick={() => setConfirmDelete(true)}
+          >
+            {t("tableEdit.remove")}
+          </Button>
+        </div>
+      )}
     </Dialog>
   );
 }

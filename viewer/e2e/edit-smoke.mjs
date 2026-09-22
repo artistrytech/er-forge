@@ -271,7 +271,7 @@ async function main() {
     await page.locator(`${lfkEdge} .react-flow__edge-interaction`).dblclick({ force: true });
     await page.waitForSelector('[data-testid="relation-delete"]', { timeout: 10000 });
     await page.getByTestId("relation-delete").click();
-    await page.getByTestId("relation-delete-confirm").click();
+    await page.getByTestId("constraint-delete-confirm").click();
     check("deleting a logical FK from the canvas removes the constraint",
         await waitForFile(sessionsFile, (t) => !t.includes("lfk_user_sessions_user_id")));
     await page.waitForFunction(

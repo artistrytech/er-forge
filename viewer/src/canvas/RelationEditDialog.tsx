@@ -28,6 +28,7 @@ import {
 import { useAppStore } from "../model/store";
 import { parseEdgeId, type Table } from "../model/types";
 import { Button } from "../ui/Button";
+import { ConstraintDeleteDialog } from "../ui/ConstraintDeleteDialog";
 import { Dialog } from "../ui/Dialog";
 
 /** 保存の進行状態（ダイアログは失敗しても閉じない。入力を失わせないため） */
@@ -146,35 +147,15 @@ export function RelationEditDialog({ relationId }: { relationId: string }) {
     );
   }
 
+  // 削除の確認と実行は詳細ダイアログと共通（確定＝即時保存。Undo では戻らない）
   if (confirmDelete) {
     return (
-      <Dialog title={t("relationEdit.deleteTitle")} onClose={() => setConfirmDelete(false)}>
-        <p>{t("relationEdit.deleteBody", { name: constraintName })}</p>
-        <p className="muted form-hint">{t("relationEdit.deleteHint")}</p>
-        {save.error !== null && <p className="error-text">{save.error}</p>}
-        <div className="dialog-actions">
-          <Button
-            variant="danger"
-            data-testid="relation-delete-confirm"
-            disabled={save.busy}
-            onClick={() => {
-              void run(
-                tableId,
-                (d) => {
-                  const rest = d.logicalForeignKeys.filter((x) => x.name.trim() !== constraintName);
-                  return rest.length === d.logicalForeignKeys.length
-                    ? null
-                    : { ...d, logicalForeignKeys: rest };
-                },
-                t("relationEdit.deleted"),
-              );
-            }}
-          >
-            {save.busy ? t("tableEdit.saving") : t("tableEdit.remove")}
-          </Button>
-          <Button onClick={() => setConfirmDelete(false)}>{t("layout.cancel")}</Button>
-        </div>
-      </Dialog>
+      <ConstraintDeleteDialog
+        target={{ kind: "logicalFk", tableId, name: constraintName }}
+        name={constraintName}
+        onCancel={() => setConfirmDelete(false)}
+        onDeleted={closeDialog}
+      />
     );
   }
 
