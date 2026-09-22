@@ -5,11 +5,9 @@
  * 一覧には「注記があること」だけを残し（NotesCell）、本文の読み書きはここで行う。
  *
  * 確定するまで親の draft は触らない（キャンセルで元に戻せるように）。
- *
- * ドキュメントモード（R-05）からはテーブル注記・カラム注記の**即時保存**にも使う。
- * そちらは onSubmit が非同期で、保存中は busy で確定ボタンを止め、失敗時は開いたままにする。
+ * （閲覧ルートからの即時保存は論理情報ダイアログ MetaEditDialog が担う。R-05）
  */
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useI18n } from "../i18n/useI18n";
 import { cx } from "../lib/cx";
 import { Dialog } from "../ui/Dialog";
@@ -20,17 +18,11 @@ export function NotesDialog({
   value,
   onSubmit,
   onClose,
-  title,
-  busy = false,
 }: {
   columnName: string;
   value: string;
   onSubmit: (next: string) => void;
   onClose: () => void;
-  /** 見出し（既定は「注記: <カラム名>」） */
-  title?: ReactNode;
-  /** 保存中（確定ボタンを止める） */
-  busy?: boolean;
 }) {
   const { t } = useI18n();
   const [text, setText] = useState(value);
@@ -48,11 +40,9 @@ export function NotesDialog({
   return (
     <Dialog
       title={
-        title ?? (
-          <>
-            {t("table.colNotes")}: <span className="mono">{columnName}</span>
-          </>
-        )
+        <>
+          {t("table.colNotes")}: <span className="mono">{columnName}</span>
+        </>
       }
       onClose={onClose}
     >
@@ -73,7 +63,6 @@ export function NotesDialog({
           type="button"
           className="primary"
           data-testid="notes-apply"
-          disabled={busy}
           onClick={() => onSubmit(text)}
         >
           {t("tableEdit.applyEdit")}

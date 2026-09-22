@@ -1,8 +1,10 @@
 /**
  * テーブル詳細の共通表示（G-01〜G-05 / O-02 で共用）。
- * カラム表・制約・論理制約・被参照一覧・meta・配置ページを表示する。閲覧専用。
+ * カラム表・制約・論理制約・被参照一覧・meta・配置ページを表示する。
+ * サーバーモード（canEdit）では、テーブル・カラムの論理情報（論理名・タグ・色・注記）を
+ * ペンから開くダイアログでその場編集できる（R-05）。物理情報は常に閲覧専用。
  */
-import { useEffect, useMemo, type ReactNode } from "react";
+import { useEffect, useMemo } from "react";
 import { useI18n } from "../i18n/useI18n";
 import { colorAttr } from "../model/colors";
 import { loadTable } from "../model/loader";
@@ -13,7 +15,7 @@ import {
   resolveColumnTags,
   resolveTableName,
 } from "../model/logicalName";
-import type { NotesTarget } from "../model/notesTarget";
+import type { MetaTarget } from "../model/metaTarget";
 import { useAppStore, type ConstraintKind } from "../model/store";
 import { isTableKind, parseEdgeId, type Relation, type Table } from "../model/types";
 import { cx } from "../lib/cx";
@@ -48,28 +50,35 @@ interface TableInfoProps {
    */
   fullHeight?: boolean;
   /**
-   * 注記のペンを出し、押されたら対象を知らせる（R-05。テーブル画面の詳細で、サーバーモードのとき）。
-   * ダイアログと保存は呼び出し側（TablesDocument）が持つ。渡さなければ閲覧専用（ER図のダイアログ）
+   * 論理情報（論理名・タグ・色・注記）のペンを出す（R-05。サーバーモードのとき）。
+   * 押されたら論理情報ダイアログ（MetaEditDialog）をダイアログの積み重ねに載せる。
+   * 省略時は閲覧専用（静的モード）
    */
-  onEditNotes?: (target: NotesTarget) => void;
+  canEdit?: boolean;
 }
 
-/** 注記のペン（詳細・ドキュメントで共通の見た目。虫眼鏡と同じ体裁） */
+/**
+ * 編集のペン（詳細・ドキュメントで共通の見た目。虫眼鏡と同じ体裁）。
+ * hover=true なら、置かれた行（.column-row / .table-notes）にホバーしたときだけ見せる
+ * （DOM には残す = キーボードで届く）。毎行に並ぶと表が騒がしくなるため
+ */
 export function NotesPen({
   label,
   testId,
   className,
+  hover = false,
   onClick,
 }: {
   label: string;
   testId?: string;
   className?: string;
+  hover?: boolean;
   onClick: () => void;
 }) {
   return (
     <button
       type="button"
-      className={cx(styles.detailButton, className)}
+      className={cx(styles.detailButton, hover && styles.hoverPen, className)}
       data-testid={testId}
       title={label}
       aria-label={label}
@@ -84,16 +93,19 @@ export function NotesPen({
  * テーブルの見出し直下に出す共通情報（種別バッジ・DB コメント・タグ・注記）。
  * 詳細とドキュメント（R-01）で同じ見た目にするため切り出す。
  *
- * @param notesAction 注記の右に置く操作（ドキュメントの編集ペン）
+ * @param onEdit 渡すと注記の本文の末尾に論理情報のペンを出す（行にホバーしたときだけ見える）
+ * @param editTestId ペンの data-testid
  * @param showEmptyNotes 注記が無いときも「注記なし」を出す（ドキュメント。ペンの居場所を作る）
  */
 export function TableMetaHeader({
   table,
-  notesAction,
+  onEdit,
+  editTestId,
   showEmptyNotes = false,
 }: {
   table: Table;
-  notesAction?: ReactNode;
+  onEdit?: () => void;
+  editTestId?: string;
   showEmptyNotes?: boolean;
 }) {
   const { t } = useI18n();
@@ -128,15 +140,18 @@ export function TableMetaHeader({
           ) : (
             <span className={styles.tableNotesEmpty}>{t("doc.noNotes")}</span>
           )}
-          {notesAction}
+          {onEdit !== undefined && (
+            <NotesPen label={t("doc.editTableMeta")} testId={editTestId} hover onClick={onEdit} />
+          )}
         </p>
       )}
     </>
   );
 }
 
-export function TableInfo({ tableId, onNavigate, fullHeight = false, onEditNotes }: TableInfoProps) {
+export function TableInfo({ tableId, onNavigate, fullHeight = false, canEdit = false }: TableInfoProps) {
   const { t } = useI18n();
+  const openDialog = useAppStore((s) => s.openDialog);
   const table = useAppStore((s) => s.tables[tableId]);
   const error = useAppStore((s) => s.tableErrors[tableId]);
   const dictionary = useAppStore((s) => s.dictionary);
@@ -168,22 +183,16 @@ export function TableInfo({ tableId, onNavigate, fullHeight = false, onEditNotes
   const pk = new Set(table.primaryKey ?? []);
   const fkCols = new Set((table.foreignKeys ?? []).flatMap((fk) => fk.columns));
 
-  const canEdit = onEditNotes !== undefined;
+  // 論理情報の編集はダイアログの積み重ねに載せる（ER図のテーブル詳細ダイアログの上にも重なる）
+  const editMeta = (target: MetaTarget): void => openDialog({ type: "meta", target });
 
   return (
     <div className={styles.tableInfo}>
       <TableMetaHeader
         table={table}
         showEmptyNotes={canEdit}
-        notesAction={
-          canEdit && (
-            <NotesPen
-              label={t("doc.editTableNotes")}
-              testId={`table-notes-edit-${table.id}`}
-              onClick={() => onEditNotes({ kind: "table", tableId: table.id })}
-            />
-          )
-        }
+        onEdit={canEdit ? () => editMeta({ kind: "table", tableId: table.id }) : undefined}
+        editTestId={`table-meta-edit-${table.id}`}
       />
 
       <h3>{t("table.columns")}</h3>
@@ -203,6 +212,8 @@ export function TableInfo({ tableId, onNavigate, fullHeight = false, onEditNotes
             <th>{t("table.colComment")}</th>
             <th>{t("table.tags")}</th>
             <th className={styles.notesCell}>{t("table.colNotes")}</th>
+            {/* 末尾は行の編集ペンの専用列（サーバーモードのみ。行にホバーしたときだけ見える） */}
+            {canEdit && <th className={styles.editCell} aria-label={t("doc.editColumnMeta")} />}
           </tr>
         }
       >
@@ -260,14 +271,17 @@ export function TableInfo({ tableId, onNavigate, fullHeight = false, onEditNotes
                     </>
                   }
                 />
-                {canEdit && (
-                  <NotesPen
-                    label={t("doc.editColumnNotes")}
-                    testId={`column-notes-edit-${c.name}`}
-                    onClick={() => onEditNotes({ kind: "column", tableId: table.id, column: c.name })}
-                  />
-                )}
               </td>
+              {canEdit && (
+                <td className={cx("center", styles.editCell)}>
+                  <NotesPen
+                    label={t("doc.editColumnMeta")}
+                    testId={`column-meta-edit-${c.name}`}
+                    hover
+                    onClick={() => editMeta({ kind: "column", tableId: table.id, column: c.name })}
+                  />
+                </td>
+              )}
             </tr>
           );
         })}

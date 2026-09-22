@@ -269,8 +269,8 @@ async function main() {
   await page.locator(V + '[data-testid="lane-pages"]').click();
   await page.waitForFunction(() => document.querySelectorAll('[data-testid="doc-section"]').length > 0);
   check(
-    "static mode shows no notes pen",
-    (await page.locator('[data-testid^="doc-table-notes-edit-"], [data-testid^="doc-column-notes-edit-"]').count()) === 0,
+    "static mode shows no edit pen",
+    (await page.locator('[data-testid^="doc-table-meta-edit-"], [data-testid^="doc-column-meta-edit-"]').count()) === 0,
   );
 
   await browser.close();

@@ -2,6 +2,11 @@
  * ダイアログの共通枠（G-07 / N-08）。
  * Esc / 背景クリック / × ボタンで閉じる。開いたら内部にフォーカスし、閉じたら元へ戻す。
  *
+ * ダイアログは重ねて開ける（テーブル詳細 → 制約の詳細 → 論理情報の編集 …）。Esc は
+ * **最前面のダイアログだけ**が受ける — 全部が受けると1回の Esc で一気に閉じてしまう。
+ * 背景クリックは自分の背景（最前面のものしか押せない）、フォーカスの戻し先は
+ * 開いた側（下のダイアログの中のボタン）なので、そのままで重ね掛けに耐える。
+ *
  * 開いた直後に入力欄へフォーカスしたいときは、その要素に `data-autofocus` を付ける。
  * **React の `autoFocus` は使わない** — あれは DOM 挿入時の1回きりで、開発ビルド
  * （StrictMode）では effect が2度走る間に後始末でフォーカスが外へ戻り、二度と当たらない。
@@ -46,10 +51,12 @@ export function Dialog({ title, onClose, children, size }: DialogProps) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        onClose();
-      }
+      if (e.key !== "Escape") return;
+      // 自分が最前面（DOM 上で最後のダイアログ）のときだけ閉じる
+      const all = document.querySelectorAll('[role="dialog"]');
+      if (all[all.length - 1] !== ref.current) return;
+      e.stopPropagation();
+      onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);

@@ -149,6 +149,8 @@ export function TagInput({
       return;
     }
     if (e.key === "Escape") {
+      // 候補が開いているときの Esc は候補を閉じるだけ。外側のダイアログまで閉じさせない
+      if (showSuggestions) e.stopPropagation();
       setActive(-1);
       setFocused(false);
       return;

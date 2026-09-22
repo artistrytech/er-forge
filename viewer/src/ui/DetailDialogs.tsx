@@ -7,9 +7,10 @@
  * 一覧側は「読むための最小限」だけを出し、制約名などの細部はここに寄せる（一覧が横に
  * 伸びると、並んだ制約同士を見比べられなくなるため）。
  *
- * 注記（多重度の補足・論理外部制約・論理一意制約）は**テーブル画面から開いたとき**だけ、
- * その場で編集できる（R-05。サーバーモード）。ER図の閲覧ルートから開いたダイアログは
- * 読むだけ（P-11。ER図側の編集は編集ルートの RelationEditDialog）。
+ * 注記（多重度の補足・論理外部制約・論理一意制約）はサーバーモードならどこから開いても
+ * その場で編集できる（R-05。テーブル画面・ER図のテーブル詳細ダイアログ・ER図のエッジ）。
+ * ダイアログは重ねて開く（テーブル詳細 → 制約の詳細）ので、閉じると元のダイアログへ戻る。
+ * 別の画面へ移るリンクだけは、重なっているものを全部閉じる。
  */
 import { useEffect, useRef } from "react";
 import { useI18n } from "../i18n/useI18n";
@@ -19,7 +20,6 @@ import { parseEdgeId, type Table } from "../model/types";
 import { cx } from "../lib/cx";
 import { Dialog } from "./Dialog";
 import { InlineNotes } from "./InlineNotes";
-import { useRoute } from "./router";
 import { RelationKindBadge, TableLink } from "./TableInfo";
 import styles from "./DetailDialogs.module.scss";
 
@@ -37,16 +37,15 @@ function useHeldTable(tableId: string | undefined): Table | undefined {
   return kept !== null && kept.id === tableId ? kept.table : undefined;
 }
 
-/** 注記をその場で編集できるか（テーブル画面から開いた・サーバーモード） */
+/** 注記をその場で編集できるか（サーバーモード。静的モードには保存の手段がない） */
 function useCanEditNotes(): boolean {
-  const serverMode = useAppStore((s) => s.serverMode === true);
-  const kind = useRoute().kind;
-  return serverMode && (kind === "table" || kind === "tableDoc");
+  return useAppStore((s) => s.serverMode === true);
 }
 
 export function RelationDialog({ relationId }: { relationId: string }) {
   const { t } = useI18n();
   const closeDialog = useAppStore((s) => s.closeDialog);
+  const closeAllDialogs = useAppStore((s) => s.closeAllDialogs);
   const canEdit = useCanEditNotes();
   const index = useAppStore((s) => s.index);
   const relation = index?.relations?.find((r) => r.id === relationId);
@@ -102,11 +101,11 @@ export function RelationDialog({ relationId }: { relationId: string }) {
         <dd className="mono">{parts?.constraintName ?? relationId}</dd>
         <dt>{t("relation.from")}</dt>
         <dd>
-          <TableLink tableId={relation.from} onNavigate={closeDialog} />
+          <TableLink tableId={relation.from} onNavigate={closeAllDialogs} />
         </dd>
         <dt>{t("relation.to")}</dt>
         <dd>
-          <TableLink tableId={relation.to} onNavigate={closeDialog} />
+          <TableLink tableId={relation.to} onNavigate={closeAllDialogs} />
           {relation.dangling === true && <span className="error-text"> {t("relation.dangling")}</span>}
         </dd>
         <dt>{t("relation.columns")}</dt>
@@ -191,6 +190,7 @@ export function ConstraintInfoDialog({
 }) {
   const { t } = useI18n();
   const closeDialog = useAppStore((s) => s.closeDialog);
+  const closeAllDialogs = useAppStore((s) => s.closeAllDialogs);
   const table = useHeldTable(tableId);
   const canEdit = useCanEditNotes();
 
@@ -235,7 +235,7 @@ export function ConstraintInfoDialog({
         </dd>
         <dt>{t("constraint.table")}</dt>
         <dd>
-          <TableLink tableId={tableId} onNavigate={closeDialog} />
+          <TableLink tableId={tableId} onNavigate={closeAllDialogs} />
         </dd>
         <dt>{t("constraint.name")}</dt>
         <dd className="mono">

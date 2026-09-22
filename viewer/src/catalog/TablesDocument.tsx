@@ -13,15 +13,15 @@
  *   （境界で実寸化する分のかくつきがあるため、普段の範囲では全部描く）。
  * - スクロール追随で「読んでいる位置」が変わるたびに App・ヘッダ・左パネルが再描画されるので、
  *   ここと各セクションは memo にして、テーブル本体の再描画を巻き込まない。
- * - 注記の編集は**確定＝即時保存**（saveTableMeta。E-11 と同じ経路。INV-3 / INV-4）。
+ * - 論理情報（論理名・タグ・色・注記）の編集はペンから開くダイアログ（MetaEditDialog。
+ *   ダイアログの積み重ねに載せ、App が描く）で、**確定＝即時保存**（saveTableMeta。E-11 と同じ経路。INV-3 / INV-4）。
  *
  * 左パネルとの連動（R-03）: URL の `<id>` と左パネルからのスクロール要求で見出しへ移動し、
  * 逆にスクロール位置の見出しを docActiveTableId に書いて左パネルの選択を追随させる。
  */
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, type CSSProperties, type ReactNode } from "react";
 import { useI18n } from "../i18n/useI18n";
 import { colorAttr } from "../model/colors";
-import { saveTableMeta } from "../model/editStore";
 import { loadTable } from "../model/loader";
 import {
   formatName,
@@ -30,8 +30,7 @@ import {
   resolveColumnTags,
   resolveTableName,
 } from "../model/logicalName";
-import type { MetaDraft } from "../model/metaDraft";
-import { notesLabel, readNotes, writeNotes, type NotesTarget } from "../model/notesTarget";
+import type { MetaTarget } from "../model/metaTarget";
 import { useAppStore, type TablesView } from "../model/store";
 import type { Column, Dictionary, IndexTable, Table } from "../model/types";
 import { cx } from "../lib/cx";
@@ -41,18 +40,11 @@ import { NotFound } from "../ui/NotFound";
 import { hrefs } from "../ui/router";
 import { ScrollTable } from "../ui/ScrollTable";
 import { NotesPen, TableInfo, TableLink, TableMetaHeader } from "../ui/TableInfo";
-import { NotesDialog } from "./NotesDialog";
 import { TableDeleteSection } from "./TableDelete";
 import { ViewSwitch } from "./ViewSwitch";
 import styles from "./TablesDocument.module.scss";
 // カラム表の行の色・タグ・キー標識は詳細（TableInfo）と同じ見た目にする。専用の複製は持たない
 import infoStyles from "../ui/TableInfo.module.scss";
-
-/** 編集中の注記（対象と、開いたときの本文） */
-interface NotesEditing {
-  target: NotesTarget;
-  value: string;
-}
 
 /** 見出しを上端にそろえるときの許容（px）。この範囲内なら「読んでいる位置」とみなす */
 const SPY_TOLERANCE = 16;
@@ -87,12 +79,10 @@ export const TablesDocument = memo(function TablesDocument({
   const setDocActiveTableId = useAppStore((s) => s.setDocActiveTableId);
   const setLastTableId = useAppStore((s) => s.setLastTableId);
   const scrollRequest = useAppStore((s) => s.docScrollTo);
-  const addToast = useAppStore((s) => s.addToast);
+  const openDialog = useAppStore((s) => s.openDialog);
   const rootRef = useRef<HTMLDivElement>(null);
   /** 貼り付いたバー。見出しはこの下端にそろう（CSS の scroll-margin-top と対応） */
   const barRef = useRef<HTMLDivElement>(null);
-  const [editing, setEditing] = useState<NotesEditing | null>(null);
-  const [busy, setBusy] = useState(false);
 
   // 範囲（index に無い ID は落とす。削除直後の一瞬など）
   const entries = useMemo(() => {
@@ -278,30 +268,11 @@ export const TablesDocument = memo(function TablesDocument({
     };
   }, [setDocActiveTableId]);
 
-  // ペンが押されたら、今の本文を読んでダイアログを開く（読めていないテーブルのペンは出ない）
-  const openNotes = useCallback((target: NotesTarget): void => {
-    const table = useAppStore.getState().tables[target.tableId];
-    if (table === undefined) return;
-    setEditing({ target, value: readNotes(table, target) });
-  }, []);
-
-  // 注記の保存（R-05）。読み直し → baseHash → PUT の1本道（saveTableMeta）に載せる。
-  // 対象が見当たらなければ（他で消された）null で中止 = stale 扱い
-  const submitNotes = async (text: string): Promise<void> => {
-    if (editing === null || busy) return;
-    const target = editing.target;
-    setBusy(true);
-    const result = await saveTableMeta(target.tableId, (draft: MetaDraft) => writeNotes(draft, target, text));
-    setBusy(false);
-    if (result.ok) {
-      addToast(t("doc.notesSaved"));
-      setEditing(null);
-      return;
-    }
-    addToast(result.message, "error");
-    // 他で書き換えられていた: 読み直した内容が正なので、入力は破棄して閉じる
-    if (result.stale === true) setEditing(null);
-  };
+  // ペンが押されたら論理情報ダイアログを開く（R-05。ダイアログと保存は MetaEditDialog が持つ）
+  const openMeta = useCallback(
+    (target: MetaTarget): void => openDialog({ type: "meta", target }),
+    [openDialog],
+  );
 
   // URL が存在しないテーブルを指している（B-11）
   if (index !== null && tableId !== undefined && !index.tables?.some((it) => it.id === tableId)) {
@@ -334,27 +305,9 @@ export const TablesDocument = memo(function TablesDocument({
             view={view}
             canEdit={serverMode}
             lazy={entries.length >= LAZY_RENDER_FROM}
-            onEditNotes={openNotes}
+            onEditMeta={openMeta}
           />
         ))
-      )}
-      {editing !== null && (
-        <NotesDialog
-          columnName={notesLabel(editing.target)}
-          value={editing.value}
-          busy={busy}
-          title={
-            editing.target.kind === "table" ? (
-              <>
-                {t("doc.tableNotesTitle")}: <span className="mono">{editing.target.tableId}</span>
-              </>
-            ) : undefined
-          }
-          onSubmit={(text) => void submitNotes(text)}
-          onClose={() => {
-            if (!busy) setEditing(null);
-          }}
-        />
       )}
     </div>
   );
@@ -373,14 +326,14 @@ const TableSection = memo(function TableSection({
   view,
   canEdit,
   lazy,
-  onEditNotes,
+  onEditMeta,
 }: {
   entry: IndexTable;
   view: TablesView;
   canEdit: boolean;
   /** 画面外の描画を省くか（範囲が大きいときだけ） */
   lazy: boolean;
-  onEditNotes: (target: NotesTarget) => void;
+  onEditMeta: (target: MetaTarget) => void;
 }) {
   const { t } = useI18n();
   const stored = useAppStore((s) => s.tables[entry.id]);
@@ -436,7 +389,7 @@ const TableSection = memo(function TableSection({
       </div>
       {view === "detail" ? (
         <>
-          <TableInfo tableId={entry.id} fullHeight onEditNotes={canEdit ? onEditNotes : undefined} />
+          <TableInfo tableId={entry.id} fullHeight canEdit={canEdit} />
           {/* 削除（J-02）は本文の下。誤って逆生成したテーブルを個別に消す唯一の導線 */}
           <TableDeleteSection tableId={entry.id} />
         </>
@@ -449,15 +402,8 @@ const TableSection = memo(function TableSection({
           <TableMetaHeader
             table={table}
             showEmptyNotes
-            notesAction={
-              canEdit && (
-                <NotesPen
-                  label={t("doc.editTableNotes")}
-                  testId={`doc-table-notes-edit-${entry.id}`}
-                  onClick={() => onEditNotes({ kind: "table", tableId: entry.id })}
-                />
-              )
-            }
+            onEdit={canEdit ? () => onEditMeta({ kind: "table", tableId: entry.id }) : undefined}
+            editTestId={`doc-table-meta-edit-${entry.id}`}
           />
           <h3 className={styles.columnsHeading}>{t("table.columns")}</h3>
           {/* 表の器・濃色ヘッダ・行の体裁は詳細（TableInfo）と同じ ScrollTable。高さ制限は付けない */}
@@ -469,6 +415,8 @@ const TableSection = memo(function TableSection({
                 <th>{t("table.colLogicalName")}</th>
                 <th>{t("table.tags")}</th>
                 <th className={styles.notesHead}>{t("table.colNotes")}</th>
+                {/* 末尾は行の編集ペンの専用列（サーバーモードのみ。行にホバーしたときだけ見える） */}
+                {canEdit && <th className={infoStyles.editCell} aria-label={t("doc.editColumnMeta")} />}
               </tr>
             }
           >
@@ -479,7 +427,7 @@ const TableSection = memo(function TableSection({
                 column={c}
                 dictionary={dictionary}
                 canEdit={canEdit}
-                onEditNotes={onEditNotes}
+                onEditMeta={onEditMeta}
               />
             ))}
           </ScrollTable>
@@ -494,13 +442,13 @@ function ColumnRow({
   column: c,
   dictionary,
   canEdit,
-  onEditNotes,
+  onEditMeta,
 }: {
   table: Table;
   column: Column;
   dictionary: Dictionary | null;
   canEdit: boolean;
-  onEditNotes: (target: NotesTarget) => void;
+  onEditMeta: (target: MetaTarget) => void;
 }) {
   const { t } = useI18n();
   const logical = resolveColumnName(table, c.name, dictionary);
@@ -509,7 +457,7 @@ function ColumnRow({
   const tags = resolveColumnTags(table, c.name, dictionary).tags;
   const notes = table.meta?.columns?.[c.name]?.notes ?? "";
   return (
-    <tr className={cx(infoStyles.columnRow, styles.row)} data-color={colorAttr(color)} data-testid="doc-column-row">
+    <tr className={infoStyles.columnRow} data-color={colorAttr(color)} data-testid="doc-column-row">
       <td>
         <span className={styles.physCell}>
           <span className="mono">{c.name}</span>
@@ -549,21 +497,21 @@ function ColumnRow({
         )}
       </td>
       <td>
-        <div className={styles.notesLine}>
-          {/* 行では空を「注記なし」と書かない（毎行に並ぶと読みの邪魔になる）。ペンだけ残す */}
-          <span className={styles.notesText} data-testid={notes !== "" ? "doc-column-notes" : undefined}>
-            {notes}
-          </span>
-          {canEdit && (
-            <NotesPen
-              label={t("doc.editColumnNotes")}
-              testId={`doc-column-notes-edit-${c.name}`}
-              className={styles.rowPen}
-              onClick={() => onEditNotes({ kind: "column", tableId: table.id, column: c.name })}
-            />
-          )}
-        </div>
+        {/* 行では空を「注記なし」と書かない（毎行に並ぶと読みの邪魔になる） */}
+        <span className={styles.notesText} data-testid={notes !== "" ? "doc-column-notes" : undefined}>
+          {notes}
+        </span>
       </td>
+      {canEdit && (
+        <td className={cx("center", infoStyles.editCell)}>
+          <NotesPen
+            label={t("doc.editColumnMeta")}
+            testId={`doc-column-meta-edit-${c.name}`}
+            hover
+            onClick={() => onEditMeta({ kind: "column", tableId: table.id, column: c.name })}
+          />
+        </td>
+      )}
     </tr>
   );
 }

@@ -1,0 +1,49 @@
+/* テーブル / カラムの論理情報ダイアログ。項目の並び（.form-grid）と入力欄の体裁は
+   global の共有プリミティブに任せ、ここには行内の添え物の並びだけを置く。 */
+
+.form {
+  margin: 0;
+  padding: 0;
+  border: none;
+  min-width: 0;
+}
+
+/* 入力欄の右に辞書由来のバッジを添える（テーブル編集画面のカラム行と同じ） */
+.with-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.with-badge input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 共通タグ（readonly バッジ）と個別タグの入力欄 */
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.tags > :last-child {
+  flex: 1;
+  min-width: 200px;
+}
+
+/* 注記。人が改行を入れて書くので、行の間を少し空ける */
+.notes {
+  font-family: inherit;
+  line-height: 1.7;
+  resize: vertical;
+}
+
+/* 複数行の注記の見出しは上端にそろえる（中央だと入力欄から浮いて見える） */
+.notes-label {
+  align-self: flex-start;
+  padding-top: 8px;
+}

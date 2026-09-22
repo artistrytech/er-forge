@@ -6,6 +6,7 @@
 import { create } from "zustand";
 import { detectLang, type Lang } from "../i18n/messages";
 import type { NameDisplay } from "./logicalName";
+import type { MetaTarget } from "./metaTarget";
 import type { Config, Diagram, Dictionary, IndexData, Manifest, Table } from "./types";
 import type { WorkspaceRef } from "./workspace";
 
@@ -41,7 +42,11 @@ export interface PanelList {
   label: string;
 }
 
-/** ER図上の一時的なダイアログ（URL を持たない。設計書 §4.4） */
+/**
+ * 一時的なダイアログ（URL を持たない。設計書 §4.4）。
+ * **重ね掛けできる**: テーブル詳細から制約の詳細を開いても元のテーブル詳細は残り、
+ * 閉じると戻る（`dialogs` はその積み重ね。末尾が最前面）
+ */
 export type DialogState =
   | { type: "table"; id: string }
   | { type: "relation"; id: string }
@@ -51,7 +56,9 @@ export type DialogState =
    */
   | { type: "relationEdit"; id: string }
   /** 名前を持たない制約もあるため、テーブル内の位置（at）で指す */
-  | { type: "constraint"; tableId: string; kind: ConstraintKind; at: number };
+  | { type: "constraint"; tableId: string; kind: ConstraintKind; at: number }
+  /** テーブル / カラムの論理情報（論理名・タグ・色・注記）の編集（R-05。確定＝即時保存） */
+  | { type: "meta"; target: MetaTarget };
 
 export interface AppState {
   lang: Lang;
@@ -88,7 +95,8 @@ export interface AppState {
   loadedTableCount: number;
   failedTableCount: number;
 
-  dialog: DialogState | null;
+  /** 開いているダイアログの積み重ね（末尾が最前面。空 = 何も開いていない） */
+  dialogs: DialogState[];
   searchOpen: boolean;
   /** 編集画面へのアクセス等で表示する一時通知（リロードで消えてよい） */
   notice: string | null;
@@ -155,8 +163,12 @@ export interface AppState {
   /** 表示するワークスペースの確定（ローダーの段階0）。復元値もここで読み直す */
   setWorkspace(workspaceId: string): void;
   setWorkspaces(workspaces: WorkspaceRef[]): void;
+  /** ダイアログを最前面に重ねる */
   openDialog(dialog: DialogState): void;
+  /** 最前面のダイアログだけを閉じる（下にあるものへ戻る） */
   closeDialog(): void;
+  /** 全部閉じる（ダイアログの中のリンクで別の画面へ移るとき） */
+  closeAllDialogs(): void;
   setSearchOpen(open: boolean): void;
   setNotice(notice: string | null): void;
   setCurrentDiagramId(id: string | null): void;
@@ -272,7 +284,7 @@ export const useAppStore = create<AppState>((set) => ({
   loadedTableCount: 0,
   failedTableCount: 0,
 
-  dialog: null,
+  dialogs: [],
   searchOpen: false,
   notice: null,
   currentDiagramId: null,
@@ -314,8 +326,9 @@ export const useAppStore = create<AppState>((set) => ({
     set({ nameDisplay });
     persist(NAME_DISPLAY_KEY, nameDisplay);
   },
-  openDialog: (dialog) => set({ dialog }),
-  closeDialog: () => set({ dialog: null }),
+  openDialog: (dialog) => set((s) => ({ dialogs: [...s.dialogs, dialog] })),
+  closeDialog: () => set((s) => ({ dialogs: s.dialogs.slice(0, -1) })),
+  closeAllDialogs: () => set({ dialogs: [] }),
   setSearchOpen: (searchOpen) => set({ searchOpen }),
   setNotice: (notice) => set({ notice }),
   setCurrentDiagramId: (currentDiagramId) => set({ currentDiagramId }),

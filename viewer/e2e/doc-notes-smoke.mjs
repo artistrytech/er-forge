@@ -1,11 +1,14 @@
 /**
- * ドキュメントモードからの注記編集（R-05）のスモークテスト（サーバーモード）。
+ * テーブル画面・ER図からの論理情報の直接編集（R-05）のスモークテスト（サーバーモード）。
  *
  * - サンプルデータを取り込み、ドキュメント（`#/tables/doc/<id>`）を開く
- * - 見出しのペンからテーブル注記を書く → 確定で即時保存され、schema/**.js に `notes` が書かれる
- * - 行のペンからカラム注記を書く → `meta.columns[].notes` が書かれ、画面にも反映される
+ * - 注記の行のペンからテーブル注記を書く → 確定で即時保存され、schema/**.js に `notes` が書かれる
+ * - 行末のペンからカラム注記を書く → `meta.columns[].notes` が書かれ、画面にも反映される
  * - 外部でファイルを書き換えた後に保存しても、その変更を踏み潰さない（読み直してから書く）
  * - 注記を空にして確定すると `notes` キーが消える
+ * - 同じダイアログで論理名・タグ・色も書ける（テーブル / カラム）
+ * - ER図のテーブル詳細ダイアログでも同じペンが出る。制約の詳細・論理情報のダイアログは
+ *   その上に重なり、閉じるとテーブル詳細へ戻る
  *
  * 前提: `npm run build` と `gradlew shadowJar` 済み。実行: `node e2e/doc-notes-smoke.mjs`
  */
@@ -92,10 +95,10 @@ async function main() {
     await page.goto(`${url}#/w/default/tables/doc/public.users`);
     await page.waitForSelector('[data-doc-table="public.users"] [data-testid="doc-column-row"]', { timeout: 15000 });
     const users = page.locator('[data-doc-table="public.users"]');
-    check("server mode shows the notes pens", (await users.locator('[data-testid="doc-table-notes-edit-public.users"]').count()) === 1);
+    check("server mode shows the notes pens", (await users.locator('[data-testid="doc-table-meta-edit-public.users"]').count()) === 1);
 
     // ---- テーブル注記 ----
-    await users.locator('[data-testid="doc-table-notes-edit-public.users"]').click();
+    await users.locator('[data-testid="doc-table-meta-edit-public.users"]').click();
     await page.waitForSelector('[data-testid="notes-input"]', { timeout: 5000 });
     await typeInto(page.locator('[data-testid="notes-input"]'), "ドキュメントから書いたテーブル注記");
     await page.locator('[data-testid="notes-apply"]').click();
@@ -117,7 +120,7 @@ async function main() {
 
     // ---- カラム注記 ----
     const emailRow = users.locator('[data-testid="doc-column-row"]', { hasText: "email" }).first();
-    await emailRow.locator('[data-testid="doc-column-notes-edit-email"]').click();
+    await emailRow.locator('[data-testid="doc-column-meta-edit-email"]').click();
     await page.waitForSelector('[data-testid="notes-input"]', { timeout: 5000 });
     await typeInto(page.locator('[data-testid="notes-input"]'), "ログイン ID を兼ねる");
     await page.locator('[data-testid="notes-apply"]').click();
@@ -134,7 +137,7 @@ async function main() {
     check("the table notes written earlier survive too", afterColumn.includes('notes: "ドキュメントから書いたテーブル注記"'));
 
     // ---- 空にして確定 → notes キーが消える ----
-    await users.locator('[data-testid="doc-table-notes-edit-public.users"]').click();
+    await users.locator('[data-testid="doc-table-meta-edit-public.users"]').click();
     await page.waitForSelector('[data-testid="notes-input"]', { timeout: 5000 });
     await typeInto(page.locator('[data-testid="notes-input"]'), "");
     await page.locator('[data-testid="notes-apply"]').click();
@@ -177,7 +180,7 @@ async function main() {
       await page.waitForSelector('[data-testid="notes-input"]', { state: "detached", timeout: 15000 });
     };
     // カラム注記（詳細の注記セルのペン）
-    await items.locator('[data-testid="column-notes-edit-quantity"]').click();
+    await items.locator('[data-testid="column-meta-edit-quantity"]').click();
     await applyNotes("1 以上");
     await items.locator('[data-testid="column-notes-quantity"]').waitFor({ timeout: 15000 });
     check("detail: column notes can be edited and show up as the note icon", true);
@@ -231,7 +234,7 @@ async function main() {
     check("detail: the logical FK note is written", itemsAfter.includes('notes: "在庫への論理参照（変更）"'));
     check("detail: the logical FK definition is otherwise unchanged", itemsAfter.includes('ref: { table: "public.inventories", columns: ["product_id"] }'));
     // テーブル注記（詳細の注記行のペン）
-    await items.locator('[data-testid="table-notes-edit-public.order_items"]').click();
+    await items.locator('[data-testid="table-meta-edit-public.order_items"]').click();
     await applyNotes("詳細から書いたテーブル注記");
     await page.waitForFunction(
       () => document.querySelector('[data-doc-table="public.order_items"] [data-testid="table-notes-text"]')?.textContent?.includes("詳細から書いたテーブル注記"),
@@ -240,6 +243,92 @@ async function main() {
     );
     check("detail: table notes can be edited", readFileSync(itemsFile, "utf-8").includes('notes: "詳細から書いたテーブル注記"'));
     check("detail: editing keeps the URL in detail mode", page.url().includes("#/w/default/tables/public.order_items"));
+
+    // ---- 論理名・タグ・色も同じダイアログで（ドキュメント。テーブル） ----
+    await page.goto(`${url}#/w/default/tables/doc/public.users`);
+    await page.waitForSelector('[data-doc-table="public.users"] [data-testid="doc-column-row"]', { timeout: 15000 });
+    await users.locator('[data-testid="doc-table-meta-edit-public.users"]').click();
+    await page.waitForSelector('[data-testid="meta-display-name"]', { timeout: 5000 });
+    check(
+      "the table dialog opens with the current logical name",
+      (await page.locator('[data-testid="meta-display-name"]').inputValue()) === "外部で変えた論理名",
+    );
+    await typeInto(page.locator('[data-testid="meta-display-name"]'), "ユーザー");
+    await page.locator('[data-testid="meta-tags"]').click();
+    await page.locator('[data-testid="meta-tags"]').pressSequentially("core");
+    await page.locator('[data-testid="meta-tags"]').press("Enter");
+    // 候補が開いたままだと下の欄に重なる。Esc は候補を閉じるだけでダイアログは閉じない
+    await page.locator('[data-testid="meta-tags"]').press("Escape");
+    await page.waitForSelector('[data-testid="tag-suggestion"]', { state: "detached", timeout: 5000 });
+    check("Esc in the tag input keeps the dialog open", (await page.locator('[data-testid="meta-display-name"]').count()) === 1);
+    await page.locator('[data-testid="meta-color-trigger"]').click();
+    await page.locator('[data-testid="color-green"]').click();
+    await page.locator('[data-testid="notes-apply"]').click();
+    await page.waitForSelector('[data-testid="meta-display-name"]', { state: "detached", timeout: 15000 });
+    await waitForFile(usersFile, 'color: "green"');
+    const usersMeta = readFileSync(usersFile, "utf-8");
+    check("table logical name is written", usersMeta.includes('displayName: "ユーザー"'));
+    check("table tags are written (existing + added)", usersMeta.includes('tags: ["auth", "core"]'));
+    check("table color is written", usersMeta.includes('color: "green"'));
+    await page.waitForFunction(
+      () => document.querySelector('[data-doc-table="public.users"] h2')?.textContent?.includes("ユーザー (users)"),
+      null,
+      { timeout: 15000 },
+    );
+    check("the heading follows the new logical name", true);
+
+    // ---- カラムの論理名（辞書の値を上書き） ----
+    await users.locator('[data-testid="doc-column-row"]', { hasText: "email" }).first()
+      .locator('[data-testid="doc-column-meta-edit-email"]').click();
+    await page.waitForSelector('[data-testid="meta-display-name"]', { timeout: 5000 });
+    check(
+      "the column dialog shows the dictionary value as a placeholder",
+      ((await page.locator('[data-testid="meta-display-name"]').getAttribute("placeholder")) ?? "").includes("メールアドレス"),
+    );
+    await typeInto(page.locator('[data-testid="meta-display-name"]'), "ログイン用メール");
+    await page.locator('[data-testid="notes-apply"]').click();
+    await page.waitForSelector('[data-testid="meta-display-name"]', { state: "detached", timeout: 15000 });
+    await waitForFile(usersFile, "ログイン用メール");
+    check("column logical name is written under meta.columns", /email: \{[^}]*displayName: "ログイン用メール"/.test(readFileSync(usersFile, "utf-8")));
+    check("the column notes written earlier survive", readFileSync(usersFile, "utf-8").includes('notes: "ログイン ID を兼ねる"'));
+
+    // ---- ER図: テーブル詳細ダイアログの上に制約の詳細・論理情報のダイアログが重なる ----
+    const profilesFile = join(dir, "workspace-default", "data", "schema", "public", "user_profiles.js");
+    await page.goto(`${url}#/w/default/erd/users`);
+    await page.waitForSelector('.react-flow__node[data-id="public.user_profiles"]', { timeout: 15000 });
+    await page.dblclick('.react-flow__node[data-id="public.user_profiles"]');
+    await page.waitForSelector('[data-testid="lunique-list"]', { timeout: 15000 });
+    check(
+      "ER: the table dialog shows the edit pens in server mode",
+      (await page.locator('[data-testid="table-meta-edit-public.user_profiles"]').count()) === 1 &&
+        (await page.locator('[data-testid="column-meta-edit-full_name"]').count()) === 1,
+    );
+    await page.locator('[data-testid="lunique-list"] [data-testid="constraint-detail"]').click();
+    await page.waitForSelector('[data-testid="constraint-notes-value"]', { timeout: 5000 });
+    check("ER: the constraint dialog stacks on the table dialog", (await page.locator('[role="dialog"]').count()) === 2);
+    await inlineEdit("constraint-notes-value", "1ユーザーにつきプロファイルは1件（ER図から）");
+    await waitForFile(profilesFile, "（ER図から）");
+    check("ER: the logical unique note is written from the ER dialog", readFileSync(profilesFile, "utf-8").includes('notes: "1ユーザーにつきプロファイルは1件（ER図から）"'));
+    await page.keyboard.press("Escape");
+    await page.waitForFunction(() => document.querySelectorAll('[role="dialog"]').length === 1, null, { timeout: 5000 });
+    check("ER: Esc closes only the top dialog; the table dialog remains", (await page.locator('[data-testid="lunique-list"]').count()) === 1);
+    // テーブル詳細ダイアログの行末のペン → 論理情報のダイアログが重なる
+    await page.locator('[data-testid="column-meta-edit-full_name"]').click();
+    await page.waitForSelector('[data-testid="meta-display-name"]', { timeout: 5000 });
+    check("ER: the logical info dialog stacks on the table dialog", (await page.locator('[role="dialog"]').count()) === 2);
+    await typeInto(page.locator('[data-testid="meta-display-name"]'), "氏名");
+    await page.locator('[data-testid="notes-apply"]').click();
+    await page.waitForSelector('[data-testid="meta-display-name"]', { state: "detached", timeout: 15000 });
+    await waitForFile(profilesFile, "氏名");
+    check("ER: the column logical name is written from the table dialog", /full_name: \{[^}]*displayName: "氏名"/.test(readFileSync(profilesFile, "utf-8")));
+    await page.waitForFunction(
+      () => document.querySelector('[data-testid="table-columns"]')?.textContent?.includes("氏名"),
+      null,
+      { timeout: 15000 },
+    );
+    check("ER: the table dialog stays open and reflects the change", (await page.locator('[role="dialog"]').count()) === 1);
+    await page.keyboard.press("Escape");
+    await page.waitForSelector('[role="dialog"]', { state: "detached", timeout: 5000 });
 
     check("no page errors", errors.length === 0);
     await page.close();

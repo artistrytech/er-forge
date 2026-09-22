@@ -24,6 +24,7 @@ import { LeftPanel, usePageTables, useTablesPanelPage } from "./ui/LeftPanel";
 import { ConstraintInfoDialog, RelationDialog } from "./ui/DetailDialogs";
 import { RelationEditDialog } from "./canvas/RelationEditDialog";
 import { PageManageDialog } from "./ui/PageManageDialog";
+import { MetaEditDialog } from "./ui/MetaEditDialog";
 import { SearchDialog } from "./ui/SearchDialog";
 import { TableDetailDialog } from "./ui/TableDetailDialog";
 import { WelcomeScreen, WorkspaceNotFound } from "./ui/Workspace";
@@ -39,7 +40,7 @@ export function App() {
   const ready = useAppStore((s) => s.ready);
   const manifest = useAppStore((s) => s.manifest);
   const index = useAppStore((s) => s.index);
-  const dialog = useAppStore((s) => s.dialog);
+  const dialogs = useAppStore((s) => s.dialogs);
   const searchOpen = useAppStore((s) => s.searchOpen);
   const setSearchOpen = useAppStore((s) => s.setSearchOpen);
   const tableErrors = useAppStore((s) => s.tableErrors);
@@ -361,12 +362,24 @@ export function App() {
           {content}
         </div>
       </main>
-      {dialog?.type === "table" && <TableDetailDialog tableId={dialog.id} />}
-      {dialog?.type === "relation" && <RelationDialog relationId={dialog.id} />}
-      {dialog?.type === "relationEdit" && <RelationEditDialog relationId={dialog.id} />}
-      {dialog?.type === "constraint" && (
-        <ConstraintInfoDialog tableId={dialog.tableId} kind={dialog.kind} at={dialog.at} />
-      )}
+      {/* ダイアログは積み重ねの順に描く（後のものが前に重なる。テーブル詳細 → 制約の詳細 → 論理情報の編集） */}
+      {dialogs.map((dialog, i) => {
+        const key = `${i}:${dialog.type}`;
+        switch (dialog.type) {
+          case "table":
+            return <TableDetailDialog key={key} tableId={dialog.id} />;
+          case "relation":
+            return <RelationDialog key={key} relationId={dialog.id} />;
+          case "relationEdit":
+            return <RelationEditDialog key={key} relationId={dialog.id} />;
+          case "constraint":
+            return (
+              <ConstraintInfoDialog key={key} tableId={dialog.tableId} kind={dialog.kind} at={dialog.at} />
+            );
+          case "meta":
+            return <MetaEditDialog key={key} target={dialog.target} />;
+        }
+      })}
       {searchOpen && <SearchDialog />}
       {/* ページ管理（I-01〜I-03）。左パネルのペンから開く。パネルは ER用・テーブル用の2つが
           同時にマウントされているため、ダイアログはパネルの中ではなくここから1つだけ出す */}

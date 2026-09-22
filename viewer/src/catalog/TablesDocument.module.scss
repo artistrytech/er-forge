@@ -79,18 +79,6 @@
   letter-spacing: 0.04em;
 }
 
-/* 行の注記のペン（見た目は TableInfo の NotesPen）。ホバー / フォーカスまで薄くする
-   （DOM には残す = キーボードで届く） */
-.row-pen {
-  flex-shrink: 0;
-  opacity: 0;
-}
-
-.row:hover .row-pen,
-.row-pen:focus-visible {
-  opacity: 1;
-}
-
 /* カラム表の器・ヘッダ・行は詳細と同じ ScrollTable / .data-table。ここでは注記の列に残り幅を渡すだけ */
 .notes-head {
   width: 40%;
@@ -103,14 +91,8 @@
   overflow-wrap: anywhere;
 }
 
-.notes-line {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-}
-
 .notes-text {
-  flex: 1;
+  display: block;
   min-width: 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;

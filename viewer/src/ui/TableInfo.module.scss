@@ -42,25 +42,26 @@
   margin: 0 0 8px;
 }
 
-/* 注記。人が改行を入れて書くので、改行をそのまま見せ、長い語は折り返す */
+/* 注記。人が改行を入れて書くので、改行をそのまま見せ、長い語は折り返す。
+   本文はインラインのまま流し、編集のペンはその末尾（最後の行の直後）に続ける
+   （右端に寄せると、短い注記ではペンが本文から離れてどこの操作か分からない） */
 .table-notes {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
   margin: 0 0 8px;
   line-height: 1.7;
 }
 
 .table-notes-text {
-  flex: 1;
-  min-width: 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
 .table-notes-empty {
-  flex: 1;
   color: var(--text-faint);
+}
+
+.table-notes .hover-pen {
+  vertical-align: middle;
+  margin-left: 4px;
 }
 
 .tag {
@@ -91,9 +92,9 @@
   max-height: min(58vh, 560px);
 }
 
-/* 注記はノートアイコン（+ 編集のペン）の分だけ。列幅を食わせない */
+/* 注記はノートアイコンの分だけ。列幅を食わせない */
 .notes-cell {
-  width: 80px;
+  width: 56px;
   white-space: nowrap;
 }
 
@@ -204,4 +205,22 @@
 .table-link-missing {
   color: var(--warn);
   font-family: var(--mono);
+}
+
+/* 行末の編集ペンの専用列。アイコン1つ分だけ（列幅を食わせない） */
+.edit-cell {
+  width: 36px;
+  white-space: nowrap;
+}
+
+/* 論理情報のペン。置かれた行（カラム行 / テーブル注記の行）にホバー、または
+   キーボードでフォーカスしたときだけ見せる（DOM には残す = Tab で届く） */
+.hover-pen {
+  opacity: 0;
+}
+
+.column-row:hover .hover-pen,
+.table-notes:hover .hover-pen,
+.hover-pen:focus-visible {
+  opacity: 1;
 }
