@@ -118,7 +118,8 @@ async function main() {
   await page.keyboard.press("Escape");
   // 閲覧中は「編集開始」（ペン）が出る。バッジ表示は廃止
   check("start-edit shown when viewing", await page.locator('[data-testid="session-toggle"][data-editing="false"]').isVisible());
-  check("minimap renders nodes", (await page.locator(".react-flow__minimap-node").count()) === 3);
+  // 俯瞰マップ（MiniMap）は廃止した（使われていなかったうえ、右下の編集操作と場所を取り合う）
+  check("the minimap is gone", (await page.locator(".react-flow__minimap").count()) === 0);
   // ER図上でノードを選ぶと、左パネルの一覧の選択も追随する（一覧 → キャンバスの逆方向）
   await page.click('[data-testid="erd-node"] >> nth=0');
   check(

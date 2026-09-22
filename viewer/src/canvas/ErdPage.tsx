@@ -11,7 +11,6 @@ import {
   Background,
   BackgroundVariant,
   Controls,
-  MiniMap,
   Panel,
   ReactFlow,
   ReactFlowProvider,
@@ -28,7 +27,6 @@ import { makeAdd, makeMove, makeRemove, snap, type Pos } from "../model/commands
 import { requestAutoLayout, useEditStore } from "../model/editStore";
 import { loadDiagram } from "../model/loader";
 import { formatName, resolveTableName } from "../model/logicalName";
-import { tokenColor } from "../model/colors";
 import { useAppStore } from "../model/store";
 import type { IndexTable, Relation } from "../model/types";
 import { isRedoKey, isUndoKey, redoHint, undoHint } from "../lib/shortcut";
@@ -51,12 +49,6 @@ const PLACE_GAP = 120;
 export const TABLE_DND_TYPE = "application/x-erd-table";
 
 const isGhost = (id: string): boolean => id.startsWith(GHOST);
-
-/** MiniMap のノード色（D-03）。指定色が無いテーブルは MiniMap の既定色に任せる */
-function miniMapNodeColor(node: { data?: { color?: unknown } }): string {
-  const color = typeof node.data?.color === "string" ? node.data.color : undefined;
-  return tokenColor(color, "border") ?? "#e2e4e8";
-}
 
 /** 未配置テーブルはまだ描画されておらず実測サイズが無い。ラベル長から見積もる */
 function estimateSize(label: string): { w: number; h: number } {
@@ -144,7 +136,7 @@ function ErdCanvas({ diagramId, focusTableId }: ErdPageProps) {
     if (saved !== null) void rf.setViewport(saved);
   }, [diagramId, rf]);
 
-  // ドラッグ・ホイール・MiniMap・ズームボタン・fitView のいずれもここを通る
+  // ドラッグ・ホイール・ズームボタン・fitView のいずれもここを通る
   const onMoveEnd = useCallback(
     (_e: MouseEvent | TouchEvent | null, viewport: Viewport) => saveViewport(diagramId, viewport),
     [diagramId],
@@ -202,7 +194,7 @@ function ErdCanvas({ diagramId, focusTableId }: ErdPageProps) {
   }, [diagram, indexTables, tableErrors, nameDisplay]);
 
   // 計測結果（measured）を onNodesChange 経由でノードへ書き戻す。
-  // これがないと MiniMap がノードを描けず、再レンダー時に再計測が走る
+  // これがないと再レンダーのたびに再計測が走り、ダブルクリックや寄せ（FocusOnTable）が不安定になる
   const [nodes, setNodes, onNodesChange] = useNodesState<TableNodeType>([]);
   useEffect(() => {
     setNodes(builtNodes);
@@ -585,8 +577,6 @@ function ErdCanvas({ diagramId, focusTableId }: ErdPageProps) {
       >
         <Background variant={BackgroundVariant.Dots} gap={16} />
         <Controls showInteractive={false} />
-        {/* MiniMap も同じ指定色で塗る（全体像と本体で色が食い違わないように。D-03） */}
-        <MiniMap pannable zoomable nodeColor={miniMapNodeColor} />
         <Panel position="top-left" className={styles.erdLegend} data-testid="erd-legend">
           <span className={styles.erdLegendItem}>
             <svg width="34" height="10" aria-hidden="true">

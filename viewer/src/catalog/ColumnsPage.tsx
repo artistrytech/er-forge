@@ -166,7 +166,7 @@ export function ColumnsPage({
   // 保存・編集終了はヘッダ（EditControls）から行う。編集ルート滞在中だけコントローラを登録する。
   // 未保存があってもリロード・他ページ遷移は妨げない（確認は終了操作に限定）。
   const setController = usePageEditStore((s) => s.setController);
-  const saveRef = useRef<(force: boolean) => void>(() => {});
+  const saveRef = useRef<(force: boolean) => Promise<boolean>>(async () => false);
   useEffect(() => {
     if (!canEdit) {
       setController(null);
@@ -210,8 +210,10 @@ export function ColumnsPage({
     addToast(t("columnsPage.pasteApplied", { n: applied }));
   };
 
-  const save = async (force: boolean) => {
-    if (saving || baseHash === null) return;
+  /** 保存する。保存**できたか**を返す（[保存して終了] がそのまま終了してよいかの判定に使う） */
+  const save = async (force: boolean): Promise<boolean> => {
+    if (saving || baseHash === null) return false;
+    let ok = false;
     const columns: Record<string, DictionaryDraft> = {};
     for (const [name, value] of Object.entries(draft)) {
       // 全フィールドが空のエントリは送らない（= 辞書から削除する。P §1.1）
@@ -229,6 +231,7 @@ export function ColumnsPage({
         await reloadDictionary(body.revision);
         addToast(t("tableEdit.saved"));
         // 保存後も編集は継続する（ER図・テーブル編集と同じ）
+        ok = true;
       } else if (res.status === 409) {
         setConflict(true);
       } else if (res.status === 422) {
@@ -251,6 +254,7 @@ export function ColumnsPage({
     } finally {
       setSaving(false);
     }
+    return ok;
   };
 
   saveRef.current = save;

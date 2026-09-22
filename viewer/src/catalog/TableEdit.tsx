@@ -130,7 +130,7 @@ export function TableEdit({ tableId }: { tableId: string }) {
   // ヘッダが操作できるようコントローラを登録する（pageEditStore）。
   // 未保存があってもリロード・他ページ遷移は妨げない（確認は終了操作に限定）。
   const setController = usePageEditStore((s) => s.setController);
-  const saveRef = useRef<(force: boolean) => void>(() => {});
+  const saveRef = useRef<(force: boolean) => Promise<boolean>>(async () => false);
   useEffect(() => {
     setController({
       dirty,
@@ -165,16 +165,18 @@ export function TableEdit({ tableId }: { tableId: string }) {
     return [...all].sort((a, b) => a.localeCompare(b, "ja"));
   }, [index, dictionary, draft]);
 
+  /** 保存する。保存**できたか**を返す（[保存して終了] がそのまま終了してよいかの判定に使う） */
   const save = useCallback(
-    async (force: boolean) => {
-      if (!committed || !draft || saving) return;
+    async (force: boolean): Promise<boolean> => {
+      if (!committed || !draft || saving) return false;
       const errors = validateDraft(draft, committed.table, existingTableIds, tables);
       setClientErrors(errors);
       setServerIssues([]);
       if (errors.length > 0) {
         addToast(t("tableEdit.validationFailed"));
-        return;
+        return false;
       }
+      let ok = false;
       const meta = draftToMeta(draft, committed.table);
       const tableBody: Record<string, unknown> = { ...committed.table };
       if (Object.keys(meta).length > 0) {
@@ -209,6 +211,7 @@ export function TableEdit({ tableId }: { tableId: string }) {
               ? t("tableEdit.savedWarnings", { n: body.warnings.length })
               : t("tableEdit.saved"),
           );
+          ok = true;
         } else if (res.status === 409) {
           setConflict(true);
         } else if (res.status === 422) {
@@ -226,6 +229,7 @@ export function TableEdit({ tableId }: { tableId: string }) {
       } finally {
         setSaving(false);
       }
+      return ok;
     },
     [committed, draft, saving, existingTableIds, tables, tableId, addToast, t],
   );

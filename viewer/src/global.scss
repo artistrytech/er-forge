@@ -414,7 +414,9 @@ body {
 /* ---- カタログ ---- */
 
 .catalog-page {
-  padding: 28px 32px;
+  /* 下だけ広いのは、右下のフローティング編集操作（ui/EditControls）に
+     内容の末尾が潜らないようにするため */
+  padding: 28px 32px 88px;
   max-width: 1100px;
   width: 100%;
   margin: 0 auto;

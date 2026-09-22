@@ -1,0 +1,105 @@
+/* 編集操作（EditControls）のスタイル。画面の右下に浮かせて、内容の上に重ねる。
+   トースト（EditDialogs の .toast-area）はこの帯の上に積むため、位置を合わせてあること。 */
+
+.dock {
+  position: fixed;
+  right: 24px;
+  bottom: 20px;
+  /* ダイアログ（50）より下、キャンバスの各パネルより上。ダイアログを開いたら隠れてよい */
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* ---- 閲覧中の [編集]（丸ボタン） ---- */
+
+.fab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border: 1px solid var(--accent);
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--ink-text, #fff);
+  cursor: pointer;
+  text-decoration: none;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 22%);
+}
+
+.fab:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.fab:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* ---- 編集中の [保存] / [保存して終了] / [編集終了] / [エクスポート] ---- */
+
+.action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  padding: 0 16px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--panel);
+  color: var(--text-strong);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  box-shadow: 0 3px 12px rgb(0 0 0 / 16%);
+}
+
+.action:hover:not(:disabled) {
+  background: var(--accent-soft);
+}
+
+.action:disabled {
+  opacity: 0.45;
+  cursor: default;
+  box-shadow: none;
+}
+
+/* 変更あり = 目立たせる（保存を促す）。危険 = 保存失敗 */
+.action.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--ink-text, #fff);
+}
+
+.action.primary:hover:not(:disabled) {
+  background: var(--accent);
+  filter: brightness(1.08);
+}
+
+.action.danger {
+  background: var(--error);
+  border-color: var(--error);
+  color: #fff;
+}
+
+.action.danger:hover:not(:disabled) {
+  background: var(--error);
+  filter: brightness(1.08);
+}
+
+/* ---- 静的モードで編集中の警告（A-02。保存先が無いことを編集中は出し続ける） ---- */
+
+.static-warning {
+  padding: 6px 12px;
+  border-radius: 20px;
+  border: 1px solid var(--warn);
+  background: var(--warn-bg);
+  color: var(--warn);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 3px 12px rgb(0 0 0 / 16%);
+}

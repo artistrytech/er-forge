@@ -79,6 +79,11 @@ interface EditState {
   redo(diagramId: string): void;
 
   save(): void;
+  /**
+   * 保存し、**保存し切れたか**（＝そのまま編集を終了してよいか）を返す（[保存して終了]）。
+   * 失敗・衝突のときは false で返し、終了させない（未保存はメモリに残る。M-02）。
+   */
+  saveAndWait(): Promise<boolean>;
   retry(): void;
   resolveConflict(action: "overwrite" | "reload"): void;
   /** 外部変更バナー: reload=破棄して再読込 / ignore=無視して編集継続（§6.2） */
@@ -297,6 +302,12 @@ export const useEditStore = create<EditState>((set, get) => ({
 
   save: () => {
     void flush();
+  },
+
+  saveAndWait: async () => {
+    await flush();
+    const st = get();
+    return st.status === "saved" && !st.netDirty;
   },
 
   retry: () => {
@@ -565,7 +576,7 @@ async function flush(forceFor?: string): Promise<void> {
     committed.set(diagramId, applyCommands(base, sent));
     inflight = false;
     finishIfIdle();
-    void continueFlush();
+    await continueFlush();
     return;
   }
 
@@ -594,7 +605,8 @@ async function flush(forceFor?: string): Promise<void> {
       if (body.files?.includes("index.js")) void reloadIndex(body.revision);
       if (body.files?.includes("manifest.js")) void reloadManifest(body.revision);
       finishIfIdle();
-      void continueFlush();
+      // 残りのページも送り終えるまで待つ（[保存して終了] が「保存し切ったか」を判定できるように）
+      await continueFlush();
     } else if (res.status === 409) {
       restorePending(diagramId, sent);
       useEditStore.setState({ status: "failed", failMessage: null, dialog: { type: "conflict", diagramId } });

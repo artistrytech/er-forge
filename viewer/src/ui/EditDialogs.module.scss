@@ -21,9 +21,10 @@
   cursor: pointer;
 }
 
+/* 右下は編集操作（EditControls の .dock）が使うので、その上に積む */
 .toast-area {
   position: fixed;
-  bottom: 16px;
+  bottom: 88px;
   right: 16px;
   display: flex;
   flex-direction: column;

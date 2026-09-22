@@ -13,6 +13,7 @@ import { flushPendingToast, totalTableCount, useAppStore, type Fatal } from "./m
 import { useEditStore } from "./model/editStore";
 import { usePageEditStore } from "./model/pageEditStore";
 import { BootstrapScreen } from "./ui/BootstrapScreen";
+import { EditControls } from "./ui/EditControls";
 import { EditDialogs, ExternalUpdateBanner, Toasts } from "./ui/EditDialogs";
 import { ErdEmpty } from "./ui/ErdEmpty";
 import { ExportDialog } from "./ui/ExportDialog";
@@ -362,6 +363,9 @@ export function App() {
           {content}
         </div>
       </main>
+      {/* 編集操作（編集開始・保存・保存して終了・編集終了）は画面の右下に浮かせる。
+          内容の上に重ねるので <main> の外に置く（スクロール・パネルの影響を受けない） */}
+      <EditControls route={route} />
       {/* ダイアログは積み重ねの順に描く（後のものが前に重なる。テーブル詳細 → 制約の詳細 → 論理情報の編集） */}
       {dialogs.map((dialog, i) => {
         const key = `${i}:${dialog.type}`;
