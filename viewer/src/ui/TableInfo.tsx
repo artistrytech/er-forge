@@ -325,15 +325,8 @@ export function TableInfo({ tableId, onNavigate, fullHeight = false, onEditNotes
               <li key={fk.name ?? i} className={styles.item}>
                 <TableLink tableId={fk.ref.table} onNavigate={onNavigate} />
                 <span className="mono muted">({pairsText(fk.columns, fk.ref.columns)})</span>
+                {/* 注記（多重度の補足）はリレーション詳細の中で読み書きする */}
                 <RelationDetailButton relationId={edgeIdOf(table.id, "fk", fk.name)} />
-                {/* 物理FK 自体は machine-owned。人が書けるのは多重度の補足（meta.relations）だけ */}
-                {canEdit && fk.name !== undefined && (
-                  <NotesPen
-                    label={t("doc.editRelationNotes")}
-                    testId={`fk-notes-edit-${fk.name}`}
-                    onClick={() => onEditNotes({ kind: "physicalFk", tableId: table.id, name: fk.name ?? "" })}
-                  />
-                )}
               </li>
             ))}
           </ul>
@@ -350,13 +343,6 @@ export function TableInfo({ tableId, onNavigate, fullHeight = false, onEditNotes
               <li key={u.name ?? i} className={cx(styles.item, styles.itemLogical)}>
                 <span className="mono">{u.columns.join(", ")}</span>
                 <ConstraintDetailButton tableId={table.id} kind="logicalUnique" at={i} />
-                {canEdit && (
-                  <NotesPen
-                    label={t("doc.editConstraintNotes")}
-                    testId={`lunique-notes-edit-${i}`}
-                    onClick={() => onEditNotes({ kind: "logicalUnique", tableId: table.id, at: i, name: u.name })}
-                  />
-                )}
               </li>
             ))}
           </ul>
@@ -374,13 +360,6 @@ export function TableInfo({ tableId, onNavigate, fullHeight = false, onEditNotes
                 <TableLink tableId={fk.ref.table} onNavigate={onNavigate} />
                 <span className="mono muted">({pairsText(fk.columns, fk.ref.columns)})</span>
                 <RelationDetailButton relationId={edgeIdOf(table.id, "lfk", fk.name)} />
-                {canEdit && (
-                  <NotesPen
-                    label={t("doc.editRelationNotes")}
-                    testId={`lfk-notes-edit-${i}`}
-                    onClick={() => onEditNotes({ kind: "logicalFk", tableId: table.id, at: i, name: fk.name })}
-                  />
-                )}
               </li>
             ))}
           </ul>

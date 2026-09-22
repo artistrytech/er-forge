@@ -17,6 +17,8 @@ export type NotesTarget =
   | { kind: "physicalFk"; tableId: string; name: string }
   /** 論理外部制約の注記（meta.logicalForeignKeys[at].notes）。名前は保存時の食い違い検出に使う */
   | { kind: "logicalFk"; tableId: string; at: number; name?: string }
+  /** 論理外部制約の多重度の補足（meta.relations["lfk:<name>"].notes。ドラフトでは制約の行が持つ） */
+  | { kind: "logicalFkCardinality"; tableId: string; name: string }
   /** 論理一意制約の注記（meta.logicalUniques[at].notes） */
   | { kind: "logicalUnique"; tableId: string; at: number; name?: string };
 
@@ -31,6 +33,8 @@ export function readNotes(table: Table, target: NotesTarget): string {
       return table.meta?.relations?.[`fk:${target.name}`]?.notes ?? "";
     case "logicalFk":
       return table.meta?.logicalForeignKeys?.[target.at]?.notes ?? "";
+    case "logicalFkCardinality":
+      return table.meta?.relations?.[`lfk:${target.name}`]?.notes ?? "";
     case "logicalUnique":
       return table.meta?.logicalUniques?.[target.at]?.notes ?? "";
   }
@@ -44,6 +48,7 @@ export function notesLabel(target: NotesTarget): string {
     case "column":
       return target.column;
     case "physicalFk":
+    case "logicalFkCardinality":
       return target.name;
     case "logicalFk":
     case "logicalUnique":
@@ -77,6 +82,14 @@ export function writeNotes(draft: MetaDraft, target: NotesTarget, text: string):
       if (fk === undefined || (target.name !== undefined && fk.name !== target.name)) return null;
       const next = [...draft.logicalForeignKeys];
       next[target.at] = { ...fk, notes: text };
+      return { ...draft, logicalForeignKeys: next };
+    }
+    case "logicalFkCardinality": {
+      const at = draft.logicalForeignKeys.findIndex((fk) => fk.name === target.name);
+      const fk = draft.logicalForeignKeys[at];
+      if (fk === undefined) return null;
+      const next = [...draft.logicalForeignKeys];
+      next[at] = { ...fk, cardinality: { ...fk.cardinality, notes: text } };
       return { ...draft, logicalForeignKeys: next };
     }
     case "logicalUnique": {

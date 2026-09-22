@@ -181,16 +181,46 @@ async function main() {
     await applyNotes("1 以上");
     await items.locator('[data-testid="column-notes-quantity"]').waitFor({ timeout: 15000 });
     check("detail: column notes can be edited and show up as the note icon", true);
-    // 物理FK の多重度の補足（meta.relations）
-    await items.locator('[data-testid="fk-notes-edit-order_items_order_id_fkey"]').click();
-    await page.waitForFunction(() => document.querySelector('[data-testid="notes-input"]')?.value === "注文には必ず1明細以上が存在する", null, { timeout: 5000 });
-    check("detail: the physical FK pen opens with the current cardinality note", true);
-    await applyNotes("注文には必ず1明細以上が存在する（変更）");
+    // 物理FK の多重度の補足（meta.relations）: リレーション詳細の中でその場編集
+    const inlineEdit = async (testId, text) => {
+      await page.locator(`[data-testid="${testId}-edit"]`).click();
+      await page.waitForSelector(`[data-testid="${testId}-input"]`, { timeout: 5000 });
+      await typeInto(page.locator(`[data-testid="${testId}-input"]`), text);
+      await page.locator(`[data-testid="${testId}-apply"]`).click();
+      await page.waitForSelector(`[data-testid="${testId}-editor"]`, { state: "detached", timeout: 15000 });
+    };
+    await items.locator('[data-testid="fk-list"] [data-testid="relation-detail"]').first().click();
+    await page.waitForSelector('[data-testid="relation-cardinality-notes"]', { timeout: 5000 });
+    check(
+      "detail: the relation dialog shows the cardinality note with a pen",
+      (await page.locator('[data-testid="relation-cardinality-notes"]').textContent()) === "注文には必ず1明細以上が存在する" &&
+        (await page.locator('[data-testid="relation-cardinality-notes-edit"]').count()) === 1,
+    );
+    await inlineEdit("relation-cardinality-notes", "注文には必ず1明細以上が存在する（変更）");
+    await page.waitForFunction(
+      () => document.querySelector('[data-testid="relation-cardinality-notes"]')?.textContent === "注文には必ず1明細以上が存在する（変更）",
+      null,
+      { timeout: 15000 },
+    );
+    check("detail: the cardinality note is updated in the open dialog", true);
     await waitForFile(itemsFile, "注文には必ず1明細以上が存在する（変更）");
-    // 論理外部制約の注記
-    await items.locator('[data-testid="lfk-notes-edit-0"]').click();
-    await page.waitForFunction(() => document.querySelector('[data-testid="notes-input"]')?.value?.startsWith("在庫への論理参照"), null, { timeout: 5000 });
-    await applyNotes("在庫への論理参照（変更）");
+    await page.keyboard.press("Escape");
+    await page.waitForSelector(".dialog", { state: "detached", timeout: 5000 });
+    // 論理外部制約の注記: 同じくリレーション詳細の中で
+    await items.locator('[data-testid="lfk-list"] [data-testid="relation-detail"]').first().click();
+    await page.waitForSelector('[data-testid="relation-notes"]', { timeout: 5000 });
+    await inlineEdit("relation-notes", "在庫への論理参照（変更）");
+    await page.waitForFunction(
+      () => document.querySelector('[data-testid="relation-notes"]')?.textContent === "在庫への論理参照（変更）",
+      null,
+      { timeout: 15000 },
+    );
+    // 論理外部制約の多重度の補足（空 → 書く）
+    await inlineEdit("relation-cardinality-notes", "在庫は後追いで作られる");
+    await waitForFile(itemsFile, "在庫は後追いで作られる");
+    check("detail: a logical FK gets its cardinality note from the dialog", readFileSync(itemsFile, "utf-8").includes('"lfk:lfk_order_items_inventories": { notes: "在庫は後追いで作られる" }'));
+    await page.keyboard.press("Escape");
+    await page.waitForSelector(".dialog", { state: "detached", timeout: 5000 });
     await waitForFile(itemsFile, "在庫への論理参照（変更）");
     const itemsAfter = readFileSync(itemsFile, "utf-8");
     check("detail: column notes are written under meta.columns", /quantity: \{[^}]*notes: "1 以上"/.test(itemsAfter));

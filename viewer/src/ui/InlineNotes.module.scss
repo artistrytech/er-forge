@@ -1,0 +1,45 @@
+/* 詳細ダイアログ内の注記のその場編集。閲覧時は本文 + ペン、編集時は入力欄 + 確定 / 取消。 */
+
+.view {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.text {
+  flex: 1;
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.empty {
+  flex: 1;
+  color: var(--text-faint);
+}
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.area {
+  width: 100%;
+  min-height: 72px;
+  padding: 7px 10px;
+  border: 1px solid var(--input-border);
+  border-radius: 7px;
+  background: var(--input-bg);
+  color: inherit;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}

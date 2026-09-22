@@ -6,26 +6,54 @@
  *
  * 一覧側は「読むための最小限」だけを出し、制約名などの細部はここに寄せる（一覧が横に
  * 伸びると、並んだ制約同士を見比べられなくなるため）。
+ *
+ * 注記（多重度の補足・論理外部制約・論理一意制約）は**テーブル画面から開いたとき**だけ、
+ * その場で編集できる（R-05。サーバーモード）。ER図の閲覧ルートから開いたダイアログは
+ * 読むだけ（P-11。ER図側の編集は編集ルートの RelationEditDialog）。
  */
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useI18n } from "../i18n/useI18n";
 import { loadTable } from "../model/loader";
 import { useAppStore, type ConstraintKind } from "../model/store";
-import { parseEdgeId } from "../model/types";
+import { parseEdgeId, type Table } from "../model/types";
 import { cx } from "../lib/cx";
 import { Dialog } from "./Dialog";
+import { InlineNotes } from "./InlineNotes";
+import { useRoute } from "./router";
 import { RelationKindBadge, TableLink } from "./TableInfo";
 import styles from "./DetailDialogs.module.scss";
+
+/**
+ * テーブルを読み、一度読めたら手元に残す。注記の保存（saveTableMeta）は読み直しのため
+ * 一瞬ストアから消すので、素直に追随すると保存中に本文が「読み込み中」へ戻り、
+ * その場の入力欄ごと消えてしまう
+ */
+function useHeldTable(tableId: string | undefined): Table | undefined {
+  const stored = useAppStore((s) => (tableId === undefined ? undefined : s.tables[tableId]));
+  const held = useRef<{ id: string; table: Table } | null>(null);
+  if (stored !== undefined && tableId !== undefined) held.current = { id: tableId, table: stored };
+  if (stored !== undefined) return stored;
+  const kept = held.current;
+  return kept !== null && kept.id === tableId ? kept.table : undefined;
+}
+
+/** 注記をその場で編集できるか（テーブル画面から開いた・サーバーモード） */
+function useCanEditNotes(): boolean {
+  const serverMode = useAppStore((s) => s.serverMode === true);
+  const kind = useRoute().kind;
+  return serverMode && (kind === "table" || kind === "tableDoc");
+}
 
 export function RelationDialog({ relationId }: { relationId: string }) {
   const { t } = useI18n();
   const closeDialog = useAppStore((s) => s.closeDialog);
+  const canEdit = useCanEditNotes();
   const index = useAppStore((s) => s.index);
   const relation = index?.relations?.find((r) => r.id === relationId);
   const parts = parseEdgeId(relationId);
 
   // FK 定義（ON DELETE / UPDATE）と meta.relations（注記）は参照元テーブルのスキーマにある
-  const fromTable = useAppStore((s) => (relation ? s.tables[relation.from] : undefined));
+  const fromTable = useHeldTable(relation?.from);
   useEffect(() => {
     if (relation) void loadTable(relation.from);
   }, [relation]);
@@ -44,15 +72,24 @@ export function RelationDialog({ relationId }: { relationId: string }) {
       : undefined;
   // 論理外部制約は制約そのものにも注記を持つ（物理FK は定義が machine-owned なので持たない）。
   // 一覧には出さず、ここで読ませる
-  const lfk =
+  const lfkAt =
     parts?.kind === "lfk"
-      ? fromTable?.meta?.logicalForeignKeys?.find((f) => f.name === parts.constraintName)
-      : undefined;
+      ? (fromTable?.meta?.logicalForeignKeys?.findIndex((f) => f.name === parts.constraintName) ?? -1)
+      : -1;
+  const lfk = lfkAt >= 0 ? fromTable?.meta?.logicalForeignKeys?.[lfkAt] : undefined;
   const relationMeta =
     parts !== null
       ? fromTable?.meta?.relations?.[`${parts.kind}:${parts.constraintName}`]
       : undefined;
   const explicit = relation.explicit ?? [];
+  // 多重度の補足の書く先（物理FK は meta.relations、論理外部制約はドラフトの制約の行）
+  const cardinalityTarget =
+    parts === null || fromTable === undefined
+      ? null
+      : parts.kind === "fk"
+        ? ({ kind: "physicalFk", tableId: relation.from, name: parts.constraintName } as const)
+        : ({ kind: "logicalFkCardinality", tableId: relation.from, name: parts.constraintName } as const);
+  const editable = canEdit && cardinalityTarget !== null;
 
   return (
     <Dialog title={t("relation.title")} onClose={closeDialog}>
@@ -107,16 +144,31 @@ export function RelationDialog({ relationId }: { relationId: string }) {
             </span>
           </div>
           {/* 多重度の補足。編集ダイアログでもカーディナリティ欄の一部なので、同じ場所に置く */}
-          {relationMeta?.notes !== undefined && relationMeta.notes !== "" && (
-            <div className={styles.cardinalityNote} data-testid="relation-cardinality-notes">
-              {relationMeta.notes}
+          {cardinalityTarget !== null && (editable || (relationMeta?.notes ?? "") !== "") && (
+            <div className={styles.cardinalityNote}>
+              <InlineNotes
+                value={relationMeta?.notes ?? ""}
+                target={cardinalityTarget}
+                canEdit={editable}
+                label={t("doc.editRelationNotes")}
+                testId="relation-cardinality-notes"
+              />
             </div>
           )}
         </dd>
-        {lfk?.notes !== undefined && lfk.notes !== "" && (
+        {lfk !== undefined && (editable || (lfk.notes ?? "") !== "") && (
           <>
             <dt>{t("relation.notes")}</dt>
-            <dd className={styles.notes} data-testid="relation-notes">{lfk.notes}</dd>
+            <dd>
+              <InlineNotes
+                value={lfk.notes ?? ""}
+                target={{ kind: "logicalFk", tableId: relation.from, at: lfkAt, name: lfk.name }}
+                canEdit={editable}
+                label={t("doc.editRelationNotes")}
+                testId="relation-notes"
+                className={styles.notes}
+              />
+            </dd>
           </>
         )}
       </dl>
@@ -139,7 +191,8 @@ export function ConstraintInfoDialog({
 }) {
   const { t } = useI18n();
   const closeDialog = useAppStore((s) => s.closeDialog);
-  const table = useAppStore((s) => s.tables[tableId]);
+  const table = useHeldTable(tableId);
+  const canEdit = useCanEditNotes();
 
   useEffect(() => {
     void loadTable(tableId);
@@ -204,10 +257,19 @@ export function ConstraintInfoDialog({
             <dd>{unique ? t("common.yes") : t("common.no")}</dd>
           </>
         )}
-        {notes !== undefined && notes !== "" && (
+        {logical && (canEdit || (notes ?? "") !== "") && (
           <>
             <dt>{t("constraint.notes")}</dt>
-            <dd className={styles.notes} data-testid="constraint-notes-value">{notes}</dd>
+            <dd>
+              <InlineNotes
+                value={notes ?? ""}
+                target={{ kind: "logicalUnique", tableId, at, name: entry.name }}
+                canEdit={canEdit}
+                label={t("doc.editConstraintNotes")}
+                testId="constraint-notes-value"
+                className={styles.notes}
+              />
+            </dd>
           </>
         )}
       </dl>
