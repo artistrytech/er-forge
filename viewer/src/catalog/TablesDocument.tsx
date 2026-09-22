@@ -3,8 +3,12 @@
  *
  * どちらも、左パネルに並んでいるテーブル群（appStore.tablesPanelList）をその順序のまま
  * **1本のスクロール文書**として描く。違いは1テーブルの中身だけ:
- * - 詳細: TableInfo（カラム表・制約・被参照・配置ページ …）＋削除の導線
+ * - 詳細: TableInfo（カラム表・制約・被参照・配置ページ …）
  * - ドキュメント: 見出し＋注記＋カラム表（物理名・論理名・タグ・注記）。型・キー・NULL は (i) に退避
+ *
+ * 見出しの横には、どちらでも同じ導線（サーバーモードのみ）を置く: テーブル編集画面へのペンと、
+ * 削除のごみ箱（TableDeleteButton）。誤って逆生成したテーブルを個別に消す唯一の導線なので、
+ * ドキュメントに切り替えていても隠さない。
  *
  * - 範囲は左パネルが決める（INV-1）。ここでは絞り込みを持たない。
  * - 論理名・色・タグの解決は TableInfo と同じ関数（logicalName.ts）を使う（INV-2）。
@@ -37,10 +41,11 @@ import { cx } from "../lib/cx";
 import { InfoPopover } from "../ui/InfoPopover";
 import { Link } from "../ui/Link";
 import { NotFound } from "../ui/NotFound";
+import { PenIcon } from "../ui/icons";
 import { hrefs } from "../ui/router";
 import { ScrollTable } from "../ui/ScrollTable";
 import { NotesPen, TableInfo, TableLink, TableMetaHeader } from "../ui/TableInfo";
-import { TableDeleteSection } from "./TableDelete";
+import { TableDeleteButton } from "./TableDelete";
 import { ViewSwitch } from "./ViewSwitch";
 import styles from "./TablesDocument.module.scss";
 // カラム表の行の色・タグ・キー標識は詳細（TableInfo）と同じ見た目にする。専用の複製は持たない
@@ -371,6 +376,12 @@ const TableSection = memo(function TableSection({
       <div className="catalog-header">
         <h2>{title}</h2>
         <span className="mono muted">{entry.id}</span>
+        {canEdit && (
+          <span className={styles.headTools}>
+            <TableEditButton tableId={entry.id} />
+            <TableDeleteButton tableId={entry.id} />
+          </span>
+        )}
         {view === "doc" && table !== null && (
           <span className={styles.headActions}>
             <InfoPopover
@@ -388,11 +399,7 @@ const TableSection = memo(function TableSection({
         )}
       </div>
       {view === "detail" ? (
-        <>
-          <TableInfo tableId={entry.id} fullHeight canEdit={canEdit} />
-          {/* 削除（J-02）は本文の下。誤って逆生成したテーブルを個別に消す唯一の導線 */}
-          <TableDeleteSection tableId={entry.id} />
-        </>
+        <TableInfo tableId={entry.id} fullHeight canEdit={canEdit} />
       ) : error !== undefined ? (
         <p className="error-text">{t("table.loadError", { error })}</p>
       ) : table === null ? (
@@ -436,6 +443,40 @@ const TableSection = memo(function TableSection({
     </section>
   );
 });
+
+/**
+ * 見出し横のペン。テーブル編集画面（O-03。ヘッダの [編集を開始] と同じ行き先）への近道。
+ * ページ情報の編集中は、ヘッダと同じ理由で押せない（編集セッションは相互排他）。
+ */
+function TableEditButton({ tableId }: { tableId: string }) {
+  const { t } = useI18n();
+  const pageInfoEditing = useAppStore((s) => s.pageInfoEditing);
+  if (pageInfoEditing) {
+    return (
+      <button
+        type="button"
+        className={styles.editButton}
+        data-testid={`doc-table-edit-${tableId}`}
+        disabled
+        title={t("session.lockedByPageEdit")}
+        aria-label={t("panel.editTable")}
+      >
+        <PenIcon size={16} strokeWidth={2} />
+      </button>
+    );
+  }
+  return (
+    <Link
+      className={styles.editButton}
+      href={hrefs.tableEdit(tableId)}
+      data-testid={`doc-table-edit-${tableId}`}
+      title={t("panel.editTable")}
+      aria-label={t("panel.editTable")}
+    >
+      <PenIcon size={16} strokeWidth={2} />
+    </Link>
+  );
+}
 
 function ColumnRow({
   table,

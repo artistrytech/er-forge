@@ -192,7 +192,7 @@
 /* ビュー等の定義 SQL（O-11）。長い行は折り返さず横スクロールさせる
    （SQL は行の対応が読めることが重要で、折り返すと行番号の感覚が壊れる） */
 .definition-pre {
-  background: var(--bg);
+  background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 8px 12px;

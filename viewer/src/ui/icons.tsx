@@ -27,3 +27,29 @@ export function PenIcon({ size = 18, strokeWidth = 1.8 }: { size?: number; strok
     </svg>
   );
 }
+
+/**
+ * 削除（ごみ箱）。テーブル詳細の見出し横など、対象を消す操作に使う。
+ * ペンと同じ線の太さ・視覚的な重さにそろえる（並べたときに片方だけ目立たないように）。
+ */
+export function TrashIcon({ size = 18, strokeWidth = 1.8 }: { size?: number; strokeWidth?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={strokeWidth}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3 6h18" />
+      <path d="M8 6V4h8v2" />
+      <path d="M19 6l-1 14H6L5 6" />
+      <path d="M10 11v6" />
+      <path d="M14 11v6" />
+    </svg>
+  );
+}

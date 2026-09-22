@@ -1,5 +1,6 @@
 /**
- * テーブルの削除（J-02 / O-03 詳細設計 §6.2）。テーブル詳細画面の最下部から開く。
+ * テーブルの削除（J-02 / O-03 詳細設計 §6.2）。テーブル画面の見出し横のごみ箱から開く
+ * （詳細・ドキュメントのどちらでも）。
  *
  * 削除するのは基本的に**スキーマファイルだけ**である。
  * - ER図のノードを一緒に消すかは選べる（既定は消す。外すと孤児ノードとして残る。K-13）
@@ -15,31 +16,33 @@ import { apiGet, wpath } from "../model/api";
 import { useEditStore } from "../model/editStore";
 import { useAppStore } from "../model/store";
 import { Dialog } from "../ui/Dialog";
+import { TrashIcon } from "../ui/icons";
 import { hrefs } from "../ui/router";
 import styles from "./TableDelete.module.scss";
 
-/** 詳細画面の最下部に置く削除の導線。サーバーモードでのみ現れる（静的モードは閲覧専用） */
-export function TableDeleteSection({ tableId }: { tableId: string }) {
+/** 見出し横に置く削除の導線（ごみ箱）。サーバーモードでのみ現れる（静的モードは閲覧専用） */
+export function TableDeleteButton({ tableId }: { tableId: string }) {
   const { t } = useI18n();
   const serverMode = useAppStore((s) => s.serverMode);
   const [confirming, setConfirming] = useState(false);
 
   if (serverMode !== true) return null;
   return (
-    <div className={styles.deleteSection}>
+    <>
       <button
         type="button"
         className={styles.deleteButton}
         data-testid="delete-table"
+        title={t("tableDelete.button")}
+        aria-label={t("tableDelete.button")}
         onClick={() => setConfirming(true)}
       >
-        {t("tableDelete.button")}
+        <TrashIcon size={16} strokeWidth={2} />
       </button>
-      <p className={styles.deleteHint}>{t("tableDelete.hint")}</p>
       {confirming && (
         <TableDeleteDialog tableId={tableId} onClose={() => setConfirming(false)} />
       )}
-    </div>
+    </>
   );
 }
 

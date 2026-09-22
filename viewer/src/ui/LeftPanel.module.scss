@@ -199,6 +199,8 @@
 .lp-body {
   width: 252px;
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
   overflow-y: auto;
   background: var(--panel);
   border-right: 1px solid var(--border);
@@ -222,8 +224,51 @@
   padding: 4px 0;
 }
 
+/* 「ページ」「テーブル」「未配置」の見出しは黒地に白の帯にして、区画の境目を一目で分かるようにする */
 .lp-lane .sidebar-heading {
-  padding: 0 8px 6px;
+  flex: none;
+  margin-bottom: 4px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: var(--ink);
+  color: var(--ink-text);
+}
+
+.lp-lane .sidebar-heading .sidebar-count {
+  color: var(--ink-muted);
+}
+
+.lp-lane .sidebar-heading :global(.sidebar-icon-button) {
+  color: var(--ink-muted);
+}
+
+/* ---- 「ページ」レーン: ページ一覧とテーブル一覧を独立にスクロールさせる ----
+   レーン全体をパネルの高さに収め（パネル側はスクロールしない）、各区画の一覧だけが自前で
+   スクロールする。ページ一覧は上限 40% までで、残りはテーブル（または未配置トレイ）が使う */
+.lp-lane-split {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.lp-lane-split > .sidebar-section {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.lp-lane-split > .sidebar-section:first-child {
+  max-height: 40%;
+}
+
+.lp-lane-split .page-list,
+.lp-lane-split .lp-list {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.lp-lane-split .tray-actions {
+  flex: none;
 }
 
 /* 「全て」「検索」の入力欄はスクロールしても常に見えるよう上端に固定する */

@@ -70,6 +70,14 @@ const TEMPLATES: { label: string; url: string }[] = [
 
 type Step = "connect" | "preview";
 
+/**
+ * 接続テスト後に最初に選ぶスキーマ。`public` があればそれ（PostgreSQL の既定スキーマで、
+ * 業務テーブルはほぼここにある）、無ければサーバーが返した先頭。
+ */
+function defaultNamespace(namespaces: string[]): string {
+  return namespaces.find((ns) => ns.toLowerCase() === "public") ?? namespaces[0] ?? "";
+}
+
 export function IntrospectPage() {
   const { t } = useI18n();
   const addToast = useAppStore((s) => s.addToast);
@@ -103,6 +111,8 @@ export function IntrospectPage() {
   const [include, setInclude] = useState("");
   const [exclude, setExclude] = useState("");
   const [test, setTest] = useState<ConnectionTest | null>(null);
+  /** 接続テストの実行中。busy（逆生成・適用）とは別に持ち、ボタンの表示を「接続中…」に変える */
+  const [testing, setTesting] = useState(false);
   const [ignoreText, setIgnoreText] = useState("");
   const [ignoreHash, setIgnoreHash] = useState<string | null>(null);
   /** 共通のドライバ設定（erd/config.js）の baseHash。無視リストとは別ファイル */
@@ -311,7 +321,7 @@ export function IntrospectPage() {
 
   // ---- K-04: 接続テスト ----
   const runTest = async () => {
-    setBusy(true);
+    setTesting(true);
     setError(null);
     try {
       const res = await apiPost(wpath("/connection/test"), { connection });
@@ -319,14 +329,14 @@ export function IntrospectPage() {
         const body = JSON.parse(res.body) as ConnectionTest;
         setTest(body);
         setNeededDriver(null);
-        if (namespace === "" && body.namespaces.length > 0) setNamespace(body.namespaces[0]!);
+        if (namespace === "" && body.namespaces.length > 0) setNamespace(defaultNamespace(body.namespaces));
       } else {
         handleConnectError(JSON.parse(res.body) as { code?: string; message?: string });
       }
     } catch {
       fail(t("introspect.networkError"));
     } finally {
-      setBusy(false);
+      setTesting(false);
     }
   };
 
@@ -573,11 +583,12 @@ export function IntrospectPage() {
               <button
                 type="button"
                 className="header-button"
-                disabled={busy || url === ""}
+                disabled={busy || testing || url === ""}
                 data-testid="test-connection"
+                data-testing={testing ? "true" : undefined}
                 onClick={() => void runTest()}
               >
-                {t("introspect.test")}
+                {testing ? t("introspect.testing") : t("introspect.test")}
               </button>
             </div>
             {test !== null && (

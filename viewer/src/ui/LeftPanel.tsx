@@ -500,7 +500,7 @@ function PagesLane({
   };
 
   return (
-    <div className={styles.lpLane}>
+    <div className={cx(styles.lpLane, styles.lpLaneSplit)}>
       <div className={styles.sidebarSection}>
         <div className={styles.sidebarHeading}>
           {t("sidebar.pages")}
@@ -510,7 +510,8 @@ function PagesLane({
             </span>
           )}
         </div>
-        <ul>
+        {/* ページが増えても下の「テーブル」が押し出されないよう、一覧の側だけをスクロールさせる（.lp-lane-split） */}
+        <ul className={styles.pageList} data-testid="page-list">
           {diagrams.map((d) => (
             <li
               key={d.id}

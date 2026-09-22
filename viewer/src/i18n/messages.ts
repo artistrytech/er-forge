@@ -520,7 +520,6 @@ const ja = {
     "このテーブルのファイルが外部で変更されています（git pull、逆生成の適用、またはエディタでの編集）。どちらを残すか選んでください。",
   // ---- テーブルの削除（J-02）。消えるのはスキーマファイルだけ、を明示する ----
   "tableDelete.button": "このテーブルを削除",
-  "tableDelete.hint": "スキーマファイルを削除します。他テーブルの参照は自動では消えません。",
   "tableDelete.title": "テーブルを削除しますか？",
   "tableDelete.body": "次のテーブルを削除します:",
   "tableDelete.warnPages":
@@ -588,6 +587,7 @@ const ja = {
   "introspect.saveConnection": "接続情報を保存",
   "introspect.connectionSaved": "接続情報を保存しました",
   "introspect.test": "接続テスト",
+  "introspect.testing": "接続中…",
   "introspect.drivers": "JDBC ドライバ",
   "introspect.noDrivers":
     "ドライバがありません。JDBC ドライバの jar を erd/drivers/ に置いて再起動してください。",
@@ -1215,8 +1215,6 @@ const en: Record<MsgKey, string> = {
     "This table's file was modified externally (git pull, introspection apply, or an editor). Choose which version to keep.",
   // ---- テーブルの削除（J-02）。消えるのはスキーマファイルだけ、を明示する ----
   "tableDelete.button": "Delete this table",
-  "tableDelete.hint":
-    "Deletes the schema file. References from other tables are not removed automatically.",
   "tableDelete.title": "Delete this table?",
   "tableDelete.body": "The following table will be deleted:",
   "tableDelete.warnPages":
@@ -1287,6 +1285,7 @@ const en: Record<MsgKey, string> = {
   "introspect.saveConnection": "Save connection",
   "introspect.connectionSaved": "Connection saved",
   "introspect.test": "Test connection",
+  "introspect.testing": "Connecting…",
   "introspect.drivers": "JDBC drivers",
   "introspect.noDrivers":
     "No drivers found. Put the JDBC driver jar in erd/drivers/ and restart the server.",

@@ -1,29 +1,22 @@
-/* テーブル削除（J-02）の導線。詳細の本文とは区切って最下部に置く */
+/* テーブル削除（J-02）の導線。見出し横のごみ箱（TablesDocument の .head-tools に並ぶ） */
 
-.delete-section {
-  margin-top: 32px;
-  padding-top: 16px;
-  border-top: 1px solid var(--border);
-}
-
+/* 編集のペン（TablesDocument の .edit-button）と同寸。危険な操作なので赤地・白のアイコン */
 .delete-button {
-  padding: 6px 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
   border: 1px solid var(--error);
-  border-radius: 6px;
-  background: var(--panel);
-  color: var(--error);
-  font-size: 13px;
+  border-radius: 8px;
+  background: var(--error);
+  color: #fff;
   cursor: pointer;
 }
 
 .delete-button:hover {
-  background: var(--error-bg);
-}
-
-.delete-hint {
-  margin: 6px 0 0;
-  color: var(--text-muted);
-  font-size: 12px;
+  filter: brightness(1.08);
 }
 
 /* ノードも消すかの選択。影響一覧のすぐ下（その1行目と連動して文言が変わる） */
