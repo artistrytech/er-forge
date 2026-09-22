@@ -13,6 +13,7 @@ import { saveTableMeta } from "../model/editStore";
 import { writeNotes, type NotesTarget } from "../model/notesTarget";
 import { useAppStore } from "../model/store";
 import { cx } from "../lib/cx";
+import { Button } from "./Button";
 import { NotesPen } from "./TableInfo";
 import styles from "./InlineNotes.module.scss";
 
@@ -87,19 +88,19 @@ export function InlineNotes({
             }
           }}
         />
+        {/* 確定 / 取消はダイアログの操作と同じ部品（Button）で、見た目をそろえる */}
         <div className={styles.actions}>
-          <button type="button" onClick={() => setEditing(false)} disabled={busy}>
+          <Button onClick={() => setEditing(false)} disabled={busy}>
             {t("dialog.cancel")}
-          </button>
-          <button
-            type="button"
-            className="primary"
+          </Button>
+          <Button
+            variant="primary"
             data-testid={`${testId}-apply`}
             disabled={busy}
             onClick={() => void submit()}
           >
             {t("tableEdit.applyEdit")}
-          </button>
+          </Button>
         </div>
       </div>
     );
