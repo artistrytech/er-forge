@@ -23,6 +23,11 @@ import { Link } from "./ui/Link";
 import { NotFound } from "./ui/NotFound";
 import { LeftPanel, usePageTables, useTablesPanelPage } from "./ui/LeftPanel";
 import { ConstraintInfoDialog, RelationDialog } from "./ui/DetailDialogs";
+import {
+  CardinalityEditDialog,
+  FkColumnsDialog,
+  UniqueColumnsDialog,
+} from "./ui/ConstraintEditDialogs";
 import { RelationEditDialog } from "./canvas/RelationEditDialog";
 import { PageManageDialog } from "./ui/PageManageDialog";
 import { MetaEditDialog } from "./ui/MetaEditDialog";
@@ -381,7 +386,27 @@ export function App() {
               <ConstraintInfoDialog key={key} tableId={dialog.tableId} kind={dialog.kind} at={dialog.at} />
             );
           case "meta":
-            return <MetaEditDialog key={key} target={dialog.target} />;
+            return <MetaEditDialog key={key} target={dialog.target} field={dialog.field} />;
+          case "cardinality":
+            return (
+              <CardinalityEditDialog
+                key={key}
+                tableId={dialog.tableId}
+                kind={dialog.kind}
+                name={dialog.name}
+              />
+            );
+          case "fkColumns":
+            return <FkColumnsDialog key={key} tableId={dialog.tableId} name={dialog.name} />;
+          case "uniqueColumns":
+            return (
+              <UniqueColumnsDialog
+                key={key}
+                tableId={dialog.tableId}
+                at={dialog.at}
+                name={dialog.name}
+              />
+            );
         }
       })}
       {searchOpen && <SearchDialog />}

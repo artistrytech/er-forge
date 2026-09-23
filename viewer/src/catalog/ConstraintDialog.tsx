@@ -212,11 +212,17 @@ function NotesField({ value, onChange }: { value: string; onChange: (v: string) 
 export function CardinalityFields({
   value,
   relationId,
+  showNotes = true,
   onChange,
 }: {
   value: DraftCardinality;
   /** 解決値を引くためのリレーションID（`<テーブルID>#<種別>:<制約名>`）。未保存なら null */
   relationId: string | null;
+  /**
+   * 多重度の根拠（補足）も出すか。詳細ダイアログから開くときは false —
+   * 補足はそちらで本文のままインライン編集でき、同じ項目の入力欄を2か所に置かない（R-05）
+   */
+  showNotes?: boolean;
   onChange: (next: DraftCardinality) => void;
 }) {
   const { t } = useI18n();
@@ -263,14 +269,16 @@ export function CardinalityFields({
             })}
       </span>
       {/* 多重度の根拠（P-11）。業務ルールの説明になりがちなので複数行で書ける */}
-      <textarea
-        rows={2}
-        className={cx(styles.input, styles.textarea)}
-        data-testid="cardinality-notes"
-        placeholder={t("tableEdit.cardinalityNotes")}
-        value={value.notes}
-        onChange={(e) => onChange({ ...value, notes: e.target.value })}
-      />
+      {showNotes && (
+        <textarea
+          rows={2}
+          className={cx(styles.input, styles.textarea)}
+          data-testid="cardinality-notes"
+          placeholder={t("tableEdit.cardinalityNotes")}
+          value={value.notes}
+          onChange={(e) => onChange({ ...value, notes: e.target.value })}
+        />
+      )}
     </div>
   );
 }
@@ -343,10 +351,213 @@ function RowList({
   );
 }
 
-interface PairRow {
+/** 対象カラムの1行（論理一意制約）。空の行も持てるよう uid で同一性を取る */
+export interface ColumnRow {
+  uid: number;
+  column: string;
+}
+
+/** カラム対応の1行（論理外部制約。自カラム → 参照先カラム） */
+export interface PairRow {
   uid: number;
   column: string;
   refColumn: string;
+}
+
+/** 保存済みの構成から行を起こす。1件も無ければ空の行を1つ置く（いきなり [＋] を押させない） */
+export function toColumnRows(columns: readonly string[] | undefined): ColumnRow[] {
+  const cols = columns ?? [];
+  if (cols.length === 0) return [{ uid: newUid(), column: "" }];
+  return cols.map((column) => ({ uid: newUid(), column }));
+}
+
+/**
+ * 保存済みのカラム対応から行を起こす。既存データは両側の本数がずれている可能性がある
+ * （手書きのファイル）。長い方に合わせて組にし、欠けた側は未選択として見せる
+ */
+export function toPairRows(
+  columns: readonly string[] | undefined,
+  refColumns: readonly string[] | undefined,
+): PairRow[] {
+  const cols = columns ?? [];
+  const refs = refColumns ?? [];
+  const n = Math.max(cols.length, refs.length);
+  if (n === 0) return [{ uid: newUid(), column: "", refColumn: "" }];
+  return Array.from({ length: n }, (_, i) => ({
+    uid: newUid(),
+    column: cols[i] ?? "",
+    refColumn: refs[i] ?? "",
+  }));
+}
+
+/**
+ * 論理一意制約の対象カラム（1行 = 1カラム）。順序に意味があるので番号を振る。
+ * 制約のダイアログと、詳細ダイアログからの対象カラムの編集（R-05）で共用する。
+ */
+export function UniqueColumnsField({
+  table,
+  rows,
+  onChange,
+}: {
+  table: Table;
+  rows: ColumnRow[];
+  onChange: (next: ColumnRow[]) => void;
+}) {
+  const { t } = useI18n();
+  const columnNames = table.columns.map((c) => c.name);
+  const columns = rows.map((r) => r.column);
+  return (
+    <div className={styles.field}>
+      <span className={styles.fieldLabel}>{t("tableEdit.uniqueColumns")}</span>
+      <span className={styles.fieldHint}>{t("tableEdit.orderHint")}</span>
+      <RowList
+        addLabel={t("tableEdit.addColumnRow")}
+        addTestId="add-column-row"
+        onAdd={() => onChange([...rows, { uid: newUid(), column: "" }])}
+      >
+        {rows.map((r, i) => (
+          <div key={r.uid} className={styles.pairRow}>
+            <span className={styles.pairIndex}>{i + 1}</span>
+            <select
+              className={cx("mono", styles.select)}
+              data-testid={`unique-column-${i}`}
+              value={r.column}
+              onChange={(e) =>
+                onChange(rows.map((x) => (x.uid === r.uid ? { ...x, column: e.target.value } : x)))
+              }
+            >
+              <option value="">{t("tableEdit.selectColumn")}</option>
+              {columnNames
+                // 他の行で選ばれているカラムは出さない（同じカラムを2回は使えない）
+                .filter((c) => c === r.column || !columns.includes(c))
+                .map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+            </select>
+            <button
+              type="button"
+              className={styles.removeRow}
+              aria-label={t("tableEdit.remove")}
+              title={t("tableEdit.remove")}
+              onClick={() => onChange(rows.filter((x) => x.uid !== r.uid))}
+            >
+              ×
+            </button>
+          </div>
+        ))}
+      </RowList>
+    </div>
+  );
+}
+
+/**
+ * 論理外部制約のカラム対応（1行 = 1組）。複合キーでも縦に伸びるだけで、対応が読み取れる。
+ * 制約のダイアログと、詳細ダイアログからのカラム対応の編集（R-05）で共用する。
+ *
+ * 参照先テーブルのスキーマは選択肢のためにオンデマンドで読む（自己参照なら自分のカラム）。
+ */
+export function ColumnPairsField({
+  table,
+  refTable,
+  pairs,
+  onChange,
+}: {
+  table: Table;
+  /** 参照先テーブル ID（"" = 未確定。選択肢は出せない） */
+  refTable: string;
+  pairs: PairRow[];
+  onChange: (next: PairRow[]) => void;
+}) {
+  const { t } = useI18n();
+  const columnNames = table.columns.map((c) => c.name);
+  const target = useAppStore((s) => (refTable !== "" ? s.tables[refTable] : undefined));
+  useEffect(() => {
+    if (refTable !== "" && refTable !== table.id) void loadTable(refTable);
+  }, [refTable, table.id]);
+  const refColumnNames =
+    refTable === table.id ? columnNames : (target?.columns ?? []).map((c) => c.name);
+  const refLoading = refTable !== "" && refTable !== table.id && target === undefined;
+
+  const columns = pairs.map((p) => p.column);
+  const refColumns = pairs.map((p) => p.refColumn);
+  const setPair = (uid: number, patch: Partial<PairRow>): void =>
+    onChange(pairs.map((p) => (p.uid === uid ? { ...p, ...patch } : p)));
+
+  return (
+    <div className={styles.field}>
+      <span className={styles.fieldLabel}>{t("tableEdit.columnMapping")}</span>
+      <span className={styles.fieldHint}>{t("tableEdit.mappingHint")}</span>
+      <div className={styles.pairHead}>
+        <span className={styles.pairIndex} />
+        <span className={styles.pairHeadCell}>{table.id}</span>
+        <span className={styles.pairArrow} aria-hidden="true">
+          →
+        </span>
+        <span className={styles.pairHeadCell}>
+          {refTable === "" ? t("tableEdit.refTable") : refTable}
+        </span>
+        <span className={styles.removeRowSpacer} />
+      </div>
+      <RowList
+        addLabel={t("tableEdit.addPair")}
+        addTestId="add-pair-row"
+        onAdd={() => onChange([...pairs, { uid: newUid(), column: "", refColumn: "" }])}
+      >
+        {pairs.map((p, i) => (
+          <div key={p.uid} className={styles.pairRow}>
+            <span className={styles.pairIndex}>{i + 1}</span>
+            <select
+              className={cx("mono", styles.select)}
+              data-testid={`fk-column-${i}`}
+              value={p.column}
+              onChange={(e) => setPair(p.uid, { column: e.target.value })}
+            >
+              <option value="">{t("tableEdit.selectColumn")}</option>
+              {columnNames
+                .filter((c) => c === p.column || !columns.includes(c))
+                .map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+            </select>
+            <span className={styles.pairArrow} aria-hidden="true">
+              →
+            </span>
+            <select
+              className={cx("mono", styles.select)}
+              data-testid={`fk-ref-column-${i}`}
+              value={p.refColumn}
+              disabled={refTable === "" || refLoading}
+              onChange={(e) => setPair(p.uid, { refColumn: e.target.value })}
+            >
+              <option value="">
+                {refLoading ? t("tableEdit.refLoading") : t("tableEdit.selectColumn")}
+              </option>
+              {refColumnNames
+                .filter((c) => c === p.refColumn || !refColumns.includes(c))
+                .map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+            </select>
+            <button
+              type="button"
+              className={styles.removeRow}
+              aria-label={t("tableEdit.remove")}
+              title={t("tableEdit.remove")}
+              onClick={() => onChange(pairs.filter((x) => x.uid !== p.uid))}
+            >
+              ×
+            </button>
+          </div>
+        ))}
+      </RowList>
+    </div>
+  );
 }
 
 /**
@@ -570,15 +781,9 @@ export function LogicalUniqueDialog({
   const { t } = useI18n();
   const [name, setName] = useState(initial?.name ?? "");
   const [notes, setNotes] = useState(initial?.notes ?? "");
-  // 空の行（カラム未選択）も持てるようにするため、uid つきの行として扱う。
-  // 新規追加は空の行を1つ置いて始める（いきなり [＋] を押させない）
-  const [rows, setRows] = useState<{ uid: number; column: string }[]>(() => {
-    const cols = initial?.columns ?? [];
-    if (cols.length === 0) return [{ uid: newUid(), column: "" }];
-    return cols.map((column) => ({ uid: newUid(), column }));
-  });
+  // 空の行（カラム未選択）も持てるようにするため、uid つきの行として扱う
+  const [rows, setRows] = useState<ColumnRow[]>(() => toColumnRows(initial?.columns));
 
-  const columnNames = table.columns.map((c) => c.name);
   const columns = rows.map((r) => r.column);
   const autoName = generateConstraintName("luk", table.name, columns.filter((c) => c !== ""), taken);
   const duplicate = name.trim() !== "" && taken.has(name.trim());
@@ -604,46 +809,7 @@ export function LogicalUniqueDialog({
         testId="constraint-name"
       />
 
-      <div className={styles.field}>
-        <span className={styles.fieldLabel}>{t("tableEdit.uniqueColumns")}</span>
-        <span className={styles.fieldHint}>{t("tableEdit.orderHint")}</span>
-        <RowList addLabel={t("tableEdit.addColumnRow")} addTestId="add-column-row"
-          onAdd={() => setRows((rs) => [...rs, { uid: newUid(), column: "" }])}
-        >
-          {rows.map((r, i) => (
-            <div key={r.uid} className={styles.pairRow}>
-              <span className={styles.pairIndex}>{i + 1}</span>
-              <select
-                className={cx("mono", styles.select)}
-                data-testid={`unique-column-${i}`}
-                value={r.column}
-                onChange={(e) =>
-                  setRows((rs) => rs.map((x) => (x.uid === r.uid ? { ...x, column: e.target.value } : x)))
-                }
-              >
-                <option value="">{t("tableEdit.selectColumn")}</option>
-                {columnNames
-                  // 他の行で選ばれているカラムは出さない（同じカラムを2回は使えない）
-                  .filter((c) => c === r.column || !columns.includes(c))
-                  .map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-              </select>
-              <button
-                type="button"
-                className={styles.removeRow}
-                aria-label={t("tableEdit.remove")}
-                title={t("tableEdit.remove")}
-                onClick={() => setRows((rs) => rs.filter((x) => x.uid !== r.uid))}
-              >
-                ×
-              </button>
-            </div>
-          ))}
-        </RowList>
-      </div>
+      <UniqueColumnsField table={table} rows={rows} onChange={setRows} />
 
       <NotesField value={notes} onChange={setNotes} />
       <DialogActions
@@ -702,29 +868,9 @@ export function LogicalFkDialog({
     initial?.cardinality ?? { ...EMPTY_CARDINALITY },
   );
   const [refTable, setRefTable] = useState(initial?.refTable ?? "");
-  // 既存データは両側の本数がずれている可能性がある（手書きのファイル）。長い方に合わせて
-  // 組にし、欠けた側は未選択として見せる（ダイアログ上で必ず埋めさせる）
-  const [pairs, setPairs] = useState<PairRow[]>(() => {
-    const cols = initial?.columns ?? [];
-    const refs = initial?.refColumns ?? [];
-    const n = Math.max(cols.length, refs.length);
-    if (n === 0) return [{ uid: newUid(), column: "", refColumn: "" }];
-    return Array.from({ length: n }, (_, i) => ({
-      uid: newUid(),
-      column: cols[i] ?? "",
-      refColumn: refs[i] ?? "",
-    }));
-  });
-
-  const columnNames = table.columns.map((c) => c.name);
-  // 参照先テーブルのスキーマはオンデマンドで読む（参照先カラムの選択肢に要る）
-  const target = useAppStore((s) => (refTable !== "" ? s.tables[refTable] : undefined));
-  useEffect(() => {
-    if (refTable !== "" && refTable !== table.id) void loadTable(refTable);
-  }, [refTable, table.id]);
-  const refColumnNames =
-    refTable === table.id ? columnNames : (target?.columns ?? []).map((c) => c.name);
-  const refLoading = refTable !== "" && refTable !== table.id && target === undefined;
+  const [pairs, setPairs] = useState<PairRow[]>(() =>
+    toPairRows(initial?.columns, initial?.refColumns),
+  );
 
   const columns = pairs.map((p) => p.column);
   const refColumns = pairs.map((p) => p.refColumn);
@@ -739,9 +885,6 @@ export function LogicalFkDialog({
         : duplicate
           ? t("tableEdit.nameDuplicate")
           : null;
-
-  const setPair = (uid: number, patch: Partial<PairRow>): void =>
-    setPairs((ps) => ps.map((p) => (p.uid === uid ? { ...p, ...patch } : p)));
 
   return (
     <Dialog
@@ -772,77 +915,7 @@ export function LogicalFkDialog({
       />
 
       {/* カラムの対応は1行 = 1組。複合キーでも縦に伸びるだけで、対応が読み取れる */}
-      <div className={styles.field}>
-        <span className={styles.fieldLabel}>{t("tableEdit.columnMapping")}</span>
-        <span className={styles.fieldHint}>{t("tableEdit.mappingHint")}</span>
-        <div className={styles.pairHead}>
-          <span className={styles.pairIndex} />
-          <span className={styles.pairHeadCell}>{table.id}</span>
-          <span className={styles.pairArrow} aria-hidden="true">
-            →
-          </span>
-          <span className={styles.pairHeadCell}>
-            {refTable === "" ? t("tableEdit.refTable") : refTable}
-          </span>
-          <span className={styles.removeRowSpacer} />
-        </div>
-        <RowList
-          addLabel={t("tableEdit.addPair")}
-          addTestId="add-pair-row"
-          onAdd={() => setPairs((ps) => [...ps, { uid: newUid(), column: "", refColumn: "" }])}
-        >
-          {pairs.map((p, i) => (
-            <div key={p.uid} className={styles.pairRow}>
-              <span className={styles.pairIndex}>{i + 1}</span>
-              <select
-                className={cx("mono", styles.select)}
-                data-testid={`fk-column-${i}`}
-                value={p.column}
-                onChange={(e) => setPair(p.uid, { column: e.target.value })}
-              >
-                <option value="">{t("tableEdit.selectColumn")}</option>
-                {columnNames
-                  .filter((c) => c === p.column || !columns.includes(c))
-                  .map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-              </select>
-              <span className={styles.pairArrow} aria-hidden="true">
-                →
-              </span>
-              <select
-                className={cx("mono", styles.select)}
-                data-testid={`fk-ref-column-${i}`}
-                value={p.refColumn}
-                disabled={refTable === "" || refLoading}
-                onChange={(e) => setPair(p.uid, { refColumn: e.target.value })}
-              >
-                <option value="">
-                  {refLoading ? t("tableEdit.refLoading") : t("tableEdit.selectColumn")}
-                </option>
-                {refColumnNames
-                  .filter((c) => c === p.refColumn || !refColumns.includes(c))
-                  .map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-              </select>
-              <button
-                type="button"
-                className={styles.removeRow}
-                aria-label={t("tableEdit.remove")}
-                title={t("tableEdit.remove")}
-                onClick={() => setPairs((ps) => ps.filter((x) => x.uid !== p.uid))}
-              >
-                ×
-              </button>
-            </div>
-          ))}
-        </RowList>
-      </div>
+      <ColumnPairsField table={table} refTable={refTable} pairs={pairs} onChange={setPairs} />
 
       <NotesField value={notes} onChange={setNotes} />
 

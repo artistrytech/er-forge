@@ -96,11 +96,19 @@ async function main() {
     await page.goto(`${url}#/w/default/tables/doc/public.users`);
     await page.waitForSelector('[data-doc-table="public.users"] [data-testid="doc-column-row"]', { timeout: 15000 });
     const users = page.locator('[data-doc-table="public.users"]');
-    check("server mode shows the notes pens", (await users.locator('[data-testid="doc-table-meta-edit-public.users"]').count()) === 1);
+    check(
+      "server mode shows a pen per editable field",
+      (await users.locator('[data-testid^="doc-table-meta-edit-public.users-"]').count()) === 4,
+    );
 
     // ---- テーブル注記 ----
-    await users.locator('[data-testid="doc-table-meta-edit-public.users"]').click();
+    await users.locator('[data-testid="doc-table-meta-edit-public.users-notes"]').click();
     await page.waitForSelector('[data-testid="notes-input"]', { timeout: 5000 });
+    // 押したペンの項目に初期フォーカスが当たる（注記のペン → 注記の入力欄）
+    check(
+      "the notes pen focuses the notes input",
+      await page.evaluate(() => document.activeElement?.getAttribute("data-testid") === "notes-input"),
+    );
     await typeInto(page.locator('[data-testid="notes-input"]'), "ドキュメントから書いたテーブル注記");
     await page.locator('[data-testid="notes-apply"]').click();
     await page.waitForSelector('[data-testid="notes-input"]', { state: "detached", timeout: 15000 });
@@ -121,7 +129,7 @@ async function main() {
 
     // ---- カラム注記 ----
     const emailRow = users.locator('[data-testid="doc-column-row"]', { hasText: "email" }).first();
-    await emailRow.locator('[data-testid="doc-column-meta-edit-email"]').click();
+    await emailRow.locator('[data-testid="doc-column-meta-edit-email-notes"]').click();
     await page.waitForSelector('[data-testid="notes-input"]', { timeout: 5000 });
     await typeInto(page.locator('[data-testid="notes-input"]'), "ログイン ID を兼ねる");
     await page.locator('[data-testid="notes-apply"]').click();
@@ -138,7 +146,7 @@ async function main() {
     check("the table notes written earlier survive too", afterColumn.includes('notes: "ドキュメントから書いたテーブル注記"'));
 
     // ---- 空にして確定 → notes キーが消える ----
-    await users.locator('[data-testid="doc-table-meta-edit-public.users"]').click();
+    await users.locator('[data-testid="doc-table-meta-edit-public.users-notes"]').click();
     await page.waitForSelector('[data-testid="notes-input"]', { timeout: 5000 });
     await typeInto(page.locator('[data-testid="notes-input"]'), "");
     await page.locator('[data-testid="notes-apply"]').click();
@@ -181,7 +189,7 @@ async function main() {
       await page.waitForSelector('[data-testid="notes-input"]', { state: "detached", timeout: 15000 });
     };
     // カラム注記（詳細の注記セルのペン）
-    await items.locator('[data-testid="column-meta-edit-quantity"]').click();
+    await items.locator('[data-testid="column-meta-edit-quantity-notes"]').click();
     await applyNotes("1 以上");
     await items.locator('[data-testid="column-notes-quantity"]').waitFor({ timeout: 15000 });
     check("detail: column notes can be edited and show up as the note icon", true);
@@ -208,6 +216,23 @@ async function main() {
     );
     check("detail: the cardinality note is updated in the open dialog", true);
     await waitForFile(itemsFile, "注文には必ず1明細以上が存在する（変更）");
+    // カーディナリティの上書きは別ダイアログ（物理FK でも人が決める情報なので直せる）
+    await page.locator('[data-testid="relation-cardinality-edit"]').click();
+    await page.waitForSelector('[data-testid="cardinality-fields"]', { timeout: 5000 });
+    check(
+      "detail: the cardinality dialog leaves the note to the inline editor",
+      (await page.locator('[data-testid="cardinality-notes"]').count()) === 0,
+    );
+    await page.getByTestId("cardinality-parent").selectOption("1..1");
+    await page.locator('[data-testid="constraint-submit"]').click();
+    await page.waitForSelector('[data-testid="cardinality-fields"]', { state: "detached", timeout: 15000 });
+    await waitForFile(itemsFile, 'parent: "1..1"');
+    check(
+      "detail: the cardinality is written and keeps the note",
+      /"fk:order_items_order_id_fkey": {[^}]*parent: "1..1"[^}]*notes: "注文には必ず1明細以上が存在する（変更）"/.test(
+        readFileSync(itemsFile, "utf-8"),
+      ),
+    );
     await page.keyboard.press("Escape");
     await page.waitForSelector(".dialog", { state: "detached", timeout: 5000 });
     // 論理外部制約の注記: 同じくリレーション詳細の中で
@@ -223,6 +248,19 @@ async function main() {
     await inlineEdit("relation-cardinality-notes", "在庫は後追いで作られる");
     await waitForFile(itemsFile, "在庫は後追いで作られる");
     check("detail: a logical FK gets its cardinality note from the dialog", readFileSync(itemsFile, "utf-8").includes('"lfk:lfk_order_items_inventories": { notes: "在庫は後追いで作られる" }'));
+    // カラム対応は別ダイアログ（選択肢の組み合わせなので本文をその場で入力欄にしない）
+    await page.locator('[data-testid="relation-columns-edit"]').click();
+    await page.waitForSelector('[data-testid="fk-column-0"]', { timeout: 5000 });
+    await page.getByTestId("fk-column-0").selectOption("order_id");
+    await page.locator('[data-testid="constraint-submit"]').click();
+    await page.waitForSelector('[data-testid="fk-column-0"]', { state: "detached", timeout: 15000 });
+    await waitForFile(itemsFile, 'columns: ["order_id"], ref: { table: "public.inventories"');
+    check(
+      "detail: the column mapping is written and the referenced table is kept",
+      readFileSync(itemsFile, "utf-8").includes(
+        'columns: ["order_id"], ref: { table: "public.inventories", columns: ["product_id"] }',
+      ),
+    );
     await page.keyboard.press("Escape");
     await page.waitForSelector(".dialog", { state: "detached", timeout: 5000 });
     await waitForFile(itemsFile, "在庫への論理参照（変更）");
@@ -230,12 +268,12 @@ async function main() {
     check("detail: column notes are written under meta.columns", /quantity: \{[^}]*notes: "1 以上"/.test(itemsAfter));
     check(
       "detail: the physical FK note is written to meta.relations",
-      itemsAfter.includes('"fk:order_items_order_id_fkey": { child: "1..N", notes: "注文には必ず1明細以上が存在する（変更）" }'),
+      itemsAfter.includes('"fk:order_items_order_id_fkey": { parent: "1..1", child: "1..N", notes: "注文には必ず1明細以上が存在する（変更）" }'),
     );
     check("detail: the logical FK note is written", itemsAfter.includes('notes: "在庫への論理参照（変更）"'));
     check("detail: the logical FK definition is otherwise unchanged", itemsAfter.includes('ref: { table: "public.inventories", columns: ["product_id"] }'));
     // テーブル注記（詳細の注記行のペン）
-    await items.locator('[data-testid="table-meta-edit-public.order_items"]').click();
+    await items.locator('[data-testid="table-meta-edit-public.order_items-notes"]').click();
     await applyNotes("詳細から書いたテーブル注記");
     await page.waitForFunction(
       () => document.querySelector('[data-doc-table="public.order_items"] [data-testid="table-notes-text"]')?.textContent?.includes("詳細から書いたテーブル注記"),
@@ -265,8 +303,12 @@ async function main() {
     // ---- 論理名・タグ・色も同じダイアログで（ドキュメント。テーブル） ----
     await page.goto(`${url}#/w/default/tables/doc/public.users`);
     await page.waitForSelector('[data-doc-table="public.users"] [data-testid="doc-column-row"]', { timeout: 15000 });
-    await users.locator('[data-testid="doc-table-meta-edit-public.users"]').click();
+    await users.locator('[data-testid="doc-table-meta-edit-public.users-name"]').click();
     await page.waitForSelector('[data-testid="meta-display-name"]', { timeout: 5000 });
+    check(
+      "the logical name pen focuses the logical name input",
+      await page.evaluate(() => document.activeElement?.getAttribute("data-testid") === "meta-display-name"),
+    );
     check(
       "the table dialog opens with the current logical name",
       (await page.locator('[data-testid="meta-display-name"]').inputValue()) === "外部で変えた論理名",
@@ -297,7 +339,7 @@ async function main() {
 
     // ---- カラムの論理名（辞書の値を上書き） ----
     await users.locator('[data-testid="doc-column-row"]', { hasText: "email" }).first()
-      .locator('[data-testid="doc-column-meta-edit-email"]').click();
+      .locator('[data-testid="doc-column-meta-edit-email-name"]').click();
     await page.waitForSelector('[data-testid="meta-display-name"]', { timeout: 5000 });
     check(
       "the column dialog shows the dictionary value as a placeholder",
@@ -318,8 +360,8 @@ async function main() {
     await page.waitForSelector('[data-testid="constraint-row"][data-kind="logicalUnique"]', { timeout: 15000 });
     check(
       "ER: the table dialog shows the edit pens in server mode",
-      (await page.locator('[data-testid="table-meta-edit-public.user_profiles"]').count()) === 1 &&
-        (await page.locator('[data-testid="column-meta-edit-full_name"]').count()) === 1,
+      (await page.locator('[data-testid="table-meta-edit-public.user_profiles-name"]').count()) === 1 &&
+        (await page.locator('[data-testid="column-meta-edit-full_name-name"]').count()) === 1,
     );
     await page.locator('[data-testid="constraint-row"][data-kind="logicalUnique"] [data-testid="constraint-detail"]').click();
     await page.waitForSelector('[data-testid="constraint-notes-value"]', { timeout: 5000 });
@@ -327,11 +369,23 @@ async function main() {
     await inlineEdit("constraint-notes-value", "1ユーザーにつきプロファイルは1件（ER図から）");
     await waitForFile(profilesFile, "（ER図から）");
     check("ER: the logical unique note is written from the ER dialog", readFileSync(profilesFile, "utf-8").includes('notes: "1ユーザーにつきプロファイルは1件（ER図から）"'));
+    // 対象カラムも制約詳細から直せる（別ダイアログ。制約詳細は開いたまま）
+    await page.locator('[data-testid="constraint-columns-edit"]').click();
+    await page.waitForSelector('[data-testid="unique-column-0"]', { timeout: 5000 });
+    check("ER: the columns dialog stacks on the constraint dialog", (await page.locator('[role="dialog"]').count()) === 3);
+    await page.getByTestId("unique-column-0").selectOption("phone_number");
+    await page.locator('[data-testid="constraint-submit"]').click();
+    await page.waitForSelector('[data-testid="unique-column-0"]', { state: "detached", timeout: 15000 });
+    await waitForFile(profilesFile, 'columns: ["phone_number"]');
+    check(
+      "ER: the logical unique columns are written from the constraint dialog",
+      readFileSync(profilesFile, "utf-8").includes('{ name: "luk_user_profiles_user", columns: ["phone_number"]'),
+    );
     await page.keyboard.press("Escape");
     await page.waitForFunction(() => document.querySelectorAll('[role="dialog"]').length === 1, null, { timeout: 5000 });
     check("ER: Esc closes only the top dialog; the table dialog remains", (await page.locator('[data-testid="constraint-row"][data-kind="logicalUnique"]').count()) === 1);
     // テーブル詳細ダイアログの行末のペン → 論理情報のダイアログが重なる
-    await page.locator('[data-testid="column-meta-edit-full_name"]').click();
+    await page.locator('[data-testid="column-meta-edit-full_name-name"]').click();
     await page.waitForSelector('[data-testid="meta-display-name"]', { timeout: 5000 });
     check("ER: the logical info dialog stacks on the table dialog", (await page.locator('[role="dialog"]').count()) === 2);
     await typeInto(page.locator('[data-testid="meta-display-name"]'), "氏名");

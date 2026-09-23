@@ -10,7 +10,7 @@
  */
 import { useEffect, useMemo, type ReactNode } from "react";
 import { useI18n } from "../i18n/useI18n";
-import { colorAttr } from "../model/colors";
+import { colorAttr, isColorToken } from "../model/colors";
 import { loadTable } from "../model/loader";
 import {
   formatName,
@@ -19,7 +19,7 @@ import {
   resolveColumnTags,
   resolveTableName,
 } from "../model/logicalName";
-import type { MetaTarget } from "../model/metaTarget";
+import type { MetaField, MetaTarget } from "../model/metaTarget";
 import { useAppStore, type ConstraintKind } from "../model/store";
 import { isTableKind, parseEdgeId, type Relation, type Table } from "../model/types";
 import { cx } from "../lib/cx";
@@ -29,6 +29,17 @@ import { Link } from "./Link";
 import { NotePopover } from "./NotePopover";
 import { ScrollTable } from "./ScrollTable";
 import styles from "./TableInfo.module.scss";
+
+/**
+ * ペンの data-testid の後半（`<前半>-name` のように項目で分ける）。
+ * どの項目のペンを押したのかを e2e から指せるようにするため
+ */
+const FIELD_TEST_ID: Record<MetaField, string> = {
+  displayName: "name",
+  tags: "tags",
+  color: "color",
+  notes: "notes",
+};
 
 /** 参照先テーブルへのリンク（存在しなければ物理名のみ） */
 export function TableLink({ tableId, onNavigate }: { tableId: string; onNavigate?: () => void }) {
@@ -63,10 +74,11 @@ interface TableInfoProps {
 
 /**
  * 編集のペン（詳細・ドキュメントで共通の見た目。虫眼鏡と同じ体裁）。
- * hover=true なら、置かれた行（.column-row / .table-notes）にホバーしたときだけ見せる
- * （DOM には残す = キーボードで届く）。毎行に並ぶと表が騒がしくなるため
+ * hover=true なら、**置かれたセル**（`.editable`）にホバーしたときだけ見せる
+ * （DOM には残す = キーボードで届く）。編集できる項目ごとに並ぶため、
+ * 常に見せると表がペンだらけになる
  */
-export function NotesPen({
+export function EditPen({
   label,
   testId,
   className,
@@ -93,16 +105,63 @@ export function NotesPen({
   );
 }
 
+/**
+ * 論理情報の値。編集できるとき（onEdit あり）は**本文の末尾にペンを続ける**
+ * （置かれたセルにホバーしたときだけ見える。`.editable` が掛かり先）。
+ *
+ * ペンを項目ごとに置くのは、行末の1つのペンだと「この行のどれを直すのか」が
+ * ダイアログを開くまで分からないため。開いた先も押した項目に初期フォーカスする（R-05）。
+ * 値が空のときに何を置くか（「（未設定）」/ 何も置かない）は、行かセルかで違うので呼び出し側が決める。
+ */
+export function EditableValue({
+  field,
+  label,
+  testId,
+  onEdit,
+  children,
+}: {
+  field: MetaField;
+  /** ペンのラベルに入れる項目名（「論理名を編集」） */
+  label: string;
+  /** ペンの data-testid（項目名を後ろに付ける） */
+  testId?: string;
+  onEdit?: (field: MetaField) => void;
+  children: ReactNode;
+}) {
+  const { t } = useI18n();
+  if (onEdit === undefined) return <>{children}</>;
+  return (
+    <>
+      {children}
+      <EditPen
+        label={t("doc.editMetaField", { name: label })}
+        testId={testId}
+        hover
+        onClick={() => onEdit(field)}
+      />
+    </>
+  );
+}
+
+/** 論理情報が未設定であることを薄く示す（ペンの掛かり先。値のある行と同じ位置に置く） */
+export function NotSet() {
+  const { t } = useI18n();
+  return <span className="muted">（{t("table.notSet")}）</span>;
+}
+
 /** メタデータ表の1行（値が無い項目は呼び出し側が出さない） */
 function MetaRow({
   label,
   valueTestId,
   className,
+  editable = false,
   children,
 }: {
   label: string;
   valueTestId?: string;
   className?: string;
+  /** 値のセルにペンが載る（ホバーで出す。CSS の掛かり先） */
+  editable?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -110,7 +169,9 @@ function MetaRow({
       <th scope="row" className={styles.metaKey}>
         {label}
       </th>
-      <td data-testid={valueTestId}>{children}</td>
+      <td className={cx(editable && styles.editable)} data-testid={valueTestId}>
+        {children}
+      </td>
     </tr>
   );
 }
@@ -123,25 +184,36 @@ function MetaRow({
  * 増えるのを避ける。値の無い項目は行ごと出さない）。
  * 項目名は各行の先頭にあるので、列見出し（thead）は出さない。
  *
- * @param onEdit 渡すと注記の本文の末尾に論理情報のペンを出す（行にホバーしたときだけ見える）
- * @param editTestId ペンの data-testid
- * @param showEmptyNotes 注記が無いときも「注記なし」の行を出す（ペンの居場所を作る）
+ * 編集できるとき（onEdit あり）は**論理情報の項目（論理名・タグ・色・注記）を必ず行として出し**、
+ * 値のセルにホバーでペンを出す。未設定の項目も行が無いと直しようがないため、
+ * 「（未設定）」を薄く置いて掛かり先にする。
+ *
+ * @param onEdit 渡すと論理情報の各行にペンを出す（押された項目をダイアログへ渡す）
+ * @param editTestId ペンの data-testid の前半（後半は項目名。`…-name` / `-tags` / `-color` / `-notes`）
+ * @param showEmpty 論理情報の項目を値が無くても出す（編集できるときは常に true で呼ぶ）
  */
 export function TableMetaTable({
   table,
   onEdit,
   editTestId,
-  showEmptyNotes = false,
+  showEmpty = false,
 }: {
   table: Table;
-  onEdit?: () => void;
+  onEdit?: (field: MetaField) => void;
   editTestId?: string;
-  showEmptyNotes?: boolean;
+  showEmpty?: boolean;
 }) {
   const { t } = useI18n();
+  const displayName = table.meta?.displayName ?? "";
   const notes = table.meta?.notes ?? "";
   const tags = table.meta?.tags ?? [];
+  const color = table.meta?.color ?? "";
   const comment = table.comment ?? "";
+  const editable = onEdit !== undefined;
+  /** 論理情報の行。値が空でも、編集できるなら行ごと出す（ペンの居場所） */
+  const showField = (empty: boolean): boolean => !empty || showEmpty;
+  const testIdOf = (field: MetaField): string | undefined =>
+    editTestId === undefined ? undefined : `${editTestId}-${FIELD_TEST_ID[field]}`;
   return (
     <ScrollTable testId="table-meta" tableClassName={styles.metaTable}>
       <MetaRow label={t("table.metaId")}>
@@ -154,30 +226,84 @@ export function TableMetaTable({
         </MetaRow>
       )}
       {comment !== "" && <MetaRow label={t("table.colComment")}>{comment}</MetaRow>}
-      {tags.length > 0 && (
-        <MetaRow label={t("table.tags")}>
-          <span className={styles.columnTags}>
-            {tags.map((tag) => (
-              <span key={tag} className={styles.tag}>
-                {tag}
-              </span>
-            ))}
-          </span>
+      {showField(displayName === "") && (
+        <MetaRow label={t("doc.logicalName")} editable={editable}>
+          <EditableValue
+            field="displayName"
+            label={t("doc.logicalName")}
+            testId={testIdOf("displayName")}
+            onEdit={onEdit}
+          >
+            {displayName !== "" ? (
+              <span data-testid="table-display-name">{displayName}</span>
+            ) : (
+              <NotSet />
+            )}
+          </EditableValue>
         </MetaRow>
       )}
-      {(notes !== "" || showEmptyNotes) && (
+      {showField(tags.length === 0) && (
+        <MetaRow label={t("table.tags")} editable={editable}>
+          <EditableValue
+            field="tags"
+            label={t("table.tags")}
+            testId={testIdOf("tags")}
+            onEdit={onEdit}
+          >
+            {tags.length > 0 ? (
+              <span className={styles.columnTags}>
+                {tags.map((tag) => (
+                  <span key={tag} className={styles.tag}>
+                    {tag}
+                  </span>
+                ))}
+              </span>
+            ) : (
+              <NotSet />
+            )}
+          </EditableValue>
+        </MetaRow>
+      )}
+      {showField(!isColorToken(color)) && (
+        <MetaRow label={t("tableEdit.color")} editable={editable}>
+          <EditableValue
+            field="color"
+            label={t("tableEdit.color")}
+            testId={testIdOf("color")}
+            onEdit={onEdit}
+          >
+            {isColorToken(color) ? (
+              <span className={styles.colorValue}>
+                <span className={styles.colorChip} data-color={colorAttr(color)} />
+                {t(`color.${color}` as const)}
+              </span>
+            ) : (
+              <NotSet />
+            )}
+          </EditableValue>
+        </MetaRow>
+      )}
+      {showField(notes === "") && (
         // 注記は人が改行を入れて書くので、本文はそのまま流してペンを末尾に続ける
-        <MetaRow label={t("table.notes")} className={cx("table-notes", styles.tableNotes)}>
-          {notes !== "" ? (
-            <span className={styles.tableNotesText} data-testid="table-notes-text">
-              {notes}
-            </span>
-          ) : (
-            <span className={styles.tableNotesEmpty}>{t("doc.noNotes")}</span>
-          )}
-          {onEdit !== undefined && (
-            <NotesPen label={t("doc.editTableMeta")} testId={editTestId} hover onClick={onEdit} />
-          )}
+        <MetaRow
+          label={t("table.notes")}
+          className={cx("table-notes", styles.tableNotes)}
+          editable={editable}
+        >
+          <EditableValue
+            field="notes"
+            label={t("table.notes")}
+            testId={testIdOf("notes")}
+            onEdit={onEdit}
+          >
+            {notes !== "" ? (
+              <span className={styles.tableNotesText} data-testid="table-notes-text">
+                {notes}
+              </span>
+            ) : (
+              <span className={styles.tableNotesEmpty}>{t("doc.noNotes")}</span>
+            )}
+          </EditableValue>
         </MetaRow>
       )}
     </ScrollTable>
@@ -212,16 +338,23 @@ export function TableInfo({ tableId, onNavigate, fullHeight = false, canEdit = f
   const pk = new Set(table.primaryKey ?? []);
   const fkCols = new Set((table.foreignKeys ?? []).flatMap((fk) => fk.columns));
 
-  // 論理情報の編集はダイアログの積み重ねに載せる（ER図のテーブル詳細ダイアログの上にも重なる）
-  const editMeta = (target: MetaTarget): void => openDialog({ type: "meta", target });
+  // 論理情報の編集はダイアログの積み重ねに載せる（ER図のテーブル詳細ダイアログの上にも重なる）。
+  // 押されたペンの項目（field）を渡し、ダイアログでその入力欄へ初期フォーカスする
+  const editMeta = (target: MetaTarget, field: MetaField): void =>
+    openDialog({ type: "meta", target, field });
+  /** カラム行のペン（閲覧専用なら undefined = ペンを出さない） */
+  const columnEdit = (column: string): ((field: MetaField) => void) | undefined =>
+    canEdit ? (field) => editMeta({ kind: "column", tableId: table.id, column }, field) : undefined;
 
   return (
     <div className={styles.tableInfo}>
       <h3>{t("table.metadata")}</h3>
       <TableMetaTable
         table={table}
-        showEmptyNotes={canEdit}
-        onEdit={canEdit ? () => editMeta({ kind: "table", tableId: table.id }) : undefined}
+        showEmpty={canEdit}
+        onEdit={
+          canEdit ? (field) => editMeta({ kind: "table", tableId: table.id }, field) : undefined
+        }
         editTestId={`table-meta-edit-${table.id}`}
       />
 
@@ -242,8 +375,6 @@ export function TableInfo({ tableId, onNavigate, fullHeight = false, canEdit = f
             <th>{t("table.colComment")}</th>
             <th>{t("table.tags")}</th>
             <th className={styles.notesCell}>{t("table.colNotes")}</th>
-            {/* 末尾は行の編集ペンの専用列（サーバーモードのみ。行にホバーしたときだけ見える） */}
-            {canEdit && <th className={styles.editCell} aria-label={t("doc.editColumnMeta")} />}
           </tr>
         }
       >
@@ -260,15 +391,23 @@ export function TableInfo({ tableId, onNavigate, fullHeight = false, canEdit = f
                 {fkCols.has(c.name) && <span className={cx(styles.keyBadge, styles.keyFk)}>FK</span>}
               </td>
               <td className="mono">{c.name}</td>
-              <td>
-                {logical.source === "physical" ? (
-                  <span className="muted">（{t("table.notSet")}）</span>
-                ) : (
-                  <>
-                    {logical.name}
-                    {logical.source === "dictionary" && <span className="badge badge-dict">辞書</span>}
-                  </>
-                )}
+              {/* 論理名・タグ・注記は行の中で直せる。ペンはそのセルにホバーしたときだけ出す */}
+              <td className={cx(canEdit && styles.editable)}>
+                <EditableValue
+                  field="displayName"
+                  label={t("table.colLogicalName")}
+                  testId={`column-meta-edit-${c.name}-name`}
+                  onEdit={columnEdit(c.name)}
+                >
+                  {logical.source === "physical" ? (
+                    <NotSet />
+                  ) : (
+                    <>
+                      {logical.name}
+                      {logical.source === "dictionary" && <span className="badge badge-dict">辞書</span>}
+                    </>
+                  )}
+                </EditableValue>
               </td>
               <td className="mono">
                 {c.type ?? c.logicalType ?? ""}
@@ -278,40 +417,46 @@ export function TableInfo({ tableId, onNavigate, fullHeight = false, canEdit = f
               <td className="center">{c.nullable === true ? t("common.yes") : t("common.no")}</td>
               <td className="mono">{c.default !== undefined ? String(c.default) : ""}</td>
               <td>{c.comment ?? ""}</td>
-              <td>
-                {tags.length > 0 && (
-                  <span className={styles.columnTags}>
-                    {tags.map((tag) => (
-                      <span key={tag} className={styles.tag}>
-                        {tag}
-                      </span>
-                    ))}
-                  </span>
-                )}
+              <td className={cx(canEdit && styles.editable)}>
+                <EditableValue
+                  field="tags"
+                  label={t("table.tags")}
+                  testId={`column-meta-edit-${c.name}-tags`}
+                  onEdit={columnEdit(c.name)}
+                >
+                  {/* 行では空を「未設定」と書かない（毎行に並ぶと読みの邪魔になる）。
+                      セルは残るのでホバーでペンには届く */}
+                  {tags.length > 0 && (
+                    <span className={styles.columnTags}>
+                      {tags.map((tag) => (
+                        <span key={tag} className={styles.tag}>
+                          {tag}
+                        </span>
+                      ))}
+                    </span>
+                  )}
+                </EditableValue>
               </td>
               {/* 注記は本文を並べると行の高さがばらつくので、印だけ出してポップアップ
                   （ホバー）とダイアログ（クリック）で読ませる */}
-              <td className={cx("center", styles.notesCell)}>
-                <NotePopover
-                  text={meta?.notes ?? ""}
-                  testId={`column-notes-${c.name}`}
-                  dialogTitle={
-                    <>
-                      {t("table.colNotes")}: <span className="mono">{c.name}</span>
-                    </>
-                  }
-                />
-              </td>
-              {canEdit && (
-                <td className={cx("center", styles.editCell)}>
-                  <NotesPen
-                    label={t("doc.editColumnMeta")}
-                    testId={`column-meta-edit-${c.name}`}
-                    hover
-                    onClick={() => editMeta({ kind: "column", tableId: table.id, column: c.name })}
+              <td className={cx("center", styles.notesCell, canEdit && styles.editable)}>
+                <EditableValue
+                  field="notes"
+                  label={t("table.colNotes")}
+                  testId={`column-meta-edit-${c.name}-notes`}
+                  onEdit={columnEdit(c.name)}
+                >
+                  <NotePopover
+                    text={meta?.notes ?? ""}
+                    testId={`column-notes-${c.name}`}
+                    dialogTitle={
+                      <>
+                        {t("table.colNotes")}: <span className="mono">{c.name}</span>
+                      </>
+                    }
                   />
-                </td>
-              )}
+                </EditableValue>
+              </td>
             </tr>
           );
         })}
@@ -382,8 +527,8 @@ interface ConstraintRow {
  * どの行からも虫眼鏡で同じ詳細ダイアログに寄せる。
  *
  * 列は **種別と説明の2列だけ**で、列見出し（thead）は出さない。説明は種別ごとに中身が
- * 違うため形を決めない（相手テーブルの無い制約に空の列を作らない）。モードで入れ替えるのは
- * 説明の中身で、枠組みは変えない:
+ * 違うため形を決めない（相手テーブルの無い制約に空の列を作らない）。虫眼鏡は**その行の本文の末尾**に
+ * 続け、ホバーしたときだけ見せる。モードで入れ替えるのは説明の中身で、枠組みは変えない:
  * - `detail`: 相手テーブル + 対応カラム（注記は虫眼鏡の中で読む）
  * - `doc`: 相手テーブル + 対応カラム + 注記。ただし**外部キー・論理外部制約だけは対応カラムを
  *   落とす**（`col → refCol` の対応は相手テーブル名と注記の間に挟まると読みの邪魔になる。
@@ -512,7 +657,7 @@ export function ConstraintTable({
               </span>
               {row.badge !== undefined && <span className="badge">{row.badge}</span>}
             </td>
-            {/* 説明。中身は種別とモードで変わるが、虫眼鏡だけはどの行でも右端にそろえる */}
+            {/* 説明。中身は種別とモードで変わり、虫眼鏡はその末尾に続く（行にホバーで出す） */}
             <td>
               <span className={styles.constraintDesc}>
                 {row.refTable !== undefined && (
@@ -589,7 +734,11 @@ function ConstraintDetailButton({
   );
 }
 
-/** 一覧行の虫眼鏡。制約の種類によらず同じ見た目・同じ位置にする */
+/**
+ * 一覧行の虫眼鏡。制約の種類によらず同じ見た目・同じ位置にする。
+ * 行にホバー（またはキーボードでフォーカス）したときだけ見せる — 論理情報のペンと同じ扱いで、
+ * 常に出していると、制約が並んだときに虫眼鏡の列が本文より目立ってしまう
+ */
 function DetailButton({
   label,
   testId,
@@ -602,7 +751,7 @@ function DetailButton({
   return (
     <button
       type="button"
-      className={styles.detailButton}
+      className={cx(styles.detailButton, styles.hoverPen)}
       data-testid={testId}
       title={label}
       aria-label={label}

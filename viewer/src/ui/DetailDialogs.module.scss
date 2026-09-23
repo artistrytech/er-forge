@@ -17,6 +17,24 @@
   margin: 0;
 }
 
+/* 値 + 編集のペン。ペンは本文の右に続ける（本文が複数行でも先頭の行に添える）。
+   一覧と違ってダイアログでは常に見せる — 読みながら直す場所がここしか無いため */
+.editable {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.editable > :first-child {
+  min-width: 0;
+}
+
+/* ペン（24px 角）は本文の行より背が高い。上下に負のマージンを入れて**行の高さを押し広げない**
+   ようにする — 行が伸びると値だけが上に寄り、ペンの無い行（制約名など）と高さがそろわなくなる */
+.editable > button {
+  margin-block: -4px;
+}
+
 /* 注記は複数行で書ける（編集側は textarea）。改行をそのまま見せ、長い語は折り返す */
 .notes {
   white-space: pre-wrap;

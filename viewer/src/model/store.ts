@@ -6,7 +6,7 @@
 import { create } from "zustand";
 import { detectLang, type Lang } from "../i18n/messages";
 import type { NameDisplay } from "./logicalName";
-import type { MetaTarget } from "./metaTarget";
+import type { MetaField, MetaTarget } from "./metaTarget";
 import type { Config, Diagram, Dictionary, IndexData, Manifest, Table } from "./types";
 import type { WorkspaceRef } from "./workspace";
 
@@ -60,8 +60,20 @@ export type DialogState =
   | { type: "relationEdit"; id: string }
   /** 名前を持たない制約もあるため、テーブル内の位置（at）で指す */
   | { type: "constraint"; tableId: string; kind: ConstraintKind; at: number }
-  /** テーブル / カラムの論理情報（論理名・タグ・色・注記）の編集（R-05。確定＝即時保存） */
-  | { type: "meta"; target: MetaTarget };
+  /**
+   * テーブル / カラムの論理情報（論理名・タグ・色・注記）の編集（R-05。確定＝即時保存）。
+   * field は押されたペンの項目で、その入力欄へ初期フォーカスを当てる
+   */
+  | { type: "meta"; target: MetaTarget; field?: MetaField }
+  /**
+   * リレーションのカーディナリティの上書き（R-05。確定＝即時保存）。
+   * 物理FK（fk）・論理外部制約（lfk）のどちらも制約名で指す
+   */
+  | { type: "cardinality"; tableId: string; kind: "fk" | "lfk"; name: string }
+  /** 論理外部制約のカラム対応（R-05）。制約の詳細から別ダイアログで開く */
+  | { type: "fkColumns"; tableId: string; name: string }
+  /** 論理一意制約の対象カラム（R-05）。名前を持たない制約もあるため位置で指す */
+  | { type: "uniqueColumns"; tableId: string; at: number; name?: string };
 
 export interface AppState {
   lang: Lang;

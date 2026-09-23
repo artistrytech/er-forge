@@ -26,10 +26,20 @@
   border-bottom: 1px solid var(--divider);
 }
 
+/* 範囲（ページ名・フィルタ語と件数）。バーの右端に寄せる —
+   1テーブルごとの操作より参照の頻度が低く、左は「今読んでいるテーブル」に譲る */
+.range-info {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-left: auto;
+  min-width: 0;
+}
+
 .range {
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 700;
-  color: var(--text-strong);
+  color: var(--text-muted);
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -38,6 +48,32 @@
 
 .count {
   font-size: 12.5px;
+  white-space: nowrap;
+}
+
+/* 読んでいる位置のテーブルとその操作。切替の隣（左）に置く。
+   名前が長いときは ID から先に削り、操作（ペン・ごみ箱）は必ず残す */
+.active-table {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.active-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-strong);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.active-id {
+  font-size: 11.5px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -62,14 +98,14 @@
   contain-intrinsic-size: auto var(--doc-est, 400px);
 }
 
-/* 見出し（テーブル名・ID）のすぐ横に並ぶ操作: 編集画面へのペン・削除のごみ箱（サーバーモードのみ） */
+/* バーの右端に並ぶ操作: 編集画面へのペン・削除のごみ箱（サーバーモードのみ） */
 .head-tools {
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
-/* テーブル編集へのペン。ヘッダの [編集を開始] と同じ青地・白のアイコンにして、行の中の
+/* テーブル編集へのペン。[編集を開始] と同じ青地・白のアイコンにして、表の中の
    ペン（論理情報の編集）と見分けがつくようにする。ごみ箱（TableDelete の .delete-button）と同寸 */
 .edit-button {
   display: inline-flex;

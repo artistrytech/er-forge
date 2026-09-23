@@ -14,7 +14,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../i18n/useI18n";
 import { isColorToken } from "../model/colors";
 import { saveTableMeta } from "../model/editStore";
-import { readMetaFields, writeMetaFields, type MetaFields, type MetaTarget } from "../model/metaTarget";
+import {
+  readMetaFields,
+  writeMetaFields,
+  type MetaField,
+  type MetaFields,
+  type MetaTarget,
+} from "../model/metaTarget";
 import { useAppStore } from "../model/store";
 import type { Table } from "../model/types";
 import { Button } from "./Button";
@@ -23,7 +29,18 @@ import { Dialog } from "./Dialog";
 import { TagInput } from "./TagInput";
 import styles from "./MetaEditDialog.module.scss";
 
-export function MetaEditDialog({ target }: { target: MetaTarget }) {
+/**
+ * 押されたペンの項目 → 初期フォーカスを当てる入力欄。タグ（TagInput）は入力欄そのものが
+ * testId を持ち、色（ColorSelect）はパレットを開くボタンが受け口になる
+ */
+const FIELD_FOCUS: Record<MetaField, string> = {
+  displayName: "#meta-display-name",
+  tags: '[data-testid="meta-tags"]',
+  color: '[data-testid="meta-color-trigger"]',
+  notes: "#meta-notes",
+};
+
+export function MetaEditDialog({ target, field }: { target: MetaTarget; field?: MetaField }) {
   const { t } = useI18n();
   const closeDialog = useAppStore((s) => s.closeDialog);
   const addToast = useAppStore((s) => s.addToast);
@@ -42,12 +59,14 @@ export function MetaEditDialog({ target }: { target: MetaTarget }) {
     () => initial.current?.fields ?? { displayName: "", tags: [], color: "", notes: "" },
   );
   const [busy, setBusy] = useState(false);
-  const nameRef = useRef<HTMLInputElement>(null);
+  const formRef = useRef<HTMLFieldSetElement>(null);
 
-  // Dialog は開いたときに自身へフォーカスする。ここで論理名の入力欄へ移す
+  // Dialog は開いたときに自身へフォーカスする。ここで**押したペンの項目**の入力欄へ移す
+  // （項目ごとにペンが並ぶので、論理名のペンから開いてタグに入るのは筋が通らない）
   useEffect(() => {
-    nameRef.current?.focus();
-  }, []);
+    const selector = FIELD_FOCUS[field ?? "displayName"];
+    formRef.current?.querySelector<HTMLElement>(selector)?.focus();
+  }, [field]);
 
   // タグ候補（P-12）: index.js の使用中タグ ＋ カラム辞書の共通タグ ＋ いま付いているタグ
   const tagCandidates = useMemo(() => {
@@ -104,7 +123,7 @@ export function MetaEditDialog({ target }: { target: MetaTarget }) {
   return (
     <Dialog title={title} onClose={closeDialog}>
       <p className="muted form-hint">{t("doc.metaHint")}</p>
-      <fieldset className={styles.form} disabled={busy}>
+      <fieldset className={styles.form} disabled={busy} ref={formRef}>
         <div className="form-grid">
           <label htmlFor="meta-display-name">
             {isColumn ? t("table.colLogicalName") : t("tableEdit.displayName")}
@@ -112,7 +131,6 @@ export function MetaEditDialog({ target }: { target: MetaTarget }) {
           <div className={styles.withBadge}>
             <input
               id="meta-display-name"
-              ref={nameRef}
               type="text"
               value={fields.displayName}
               data-testid="meta-display-name"

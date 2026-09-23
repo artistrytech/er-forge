@@ -14,7 +14,7 @@ import { writeNotes, type NotesTarget } from "../model/notesTarget";
 import { useAppStore } from "../model/store";
 import { cx } from "../lib/cx";
 import { Button } from "./Button";
-import { NotesPen } from "./TableInfo";
+import { EditPen } from "./TableInfo";
 import styles from "./InlineNotes.module.scss";
 
 export function InlineNotes({
@@ -115,7 +115,7 @@ export function InlineNotes({
       ) : (
         canEdit && <span className={styles.empty}>{t("doc.noNotes")}</span>
       )}
-      {canEdit && <NotesPen label={label} testId={`${testId}-edit`} onClick={start} />}
+      {canEdit && <EditPen label={label} testId={`${testId}-edit`} onClick={start} />}
     </div>
   );
 }

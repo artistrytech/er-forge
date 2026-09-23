@@ -29,7 +29,7 @@ export function PenIcon({ size = 18, strokeWidth = 1.8 }: { size?: number; strok
 }
 
 /**
- * 削除（ごみ箱）。テーブル詳細の見出し横など、対象を消す操作に使う。
+ * 削除（ごみ箱）。テーブル画面のバーなど、対象を消す操作に使う。
  * ペンと同じ線の太さ・視覚的な重さにそろえる（並べたときに片方だけ目立たないように）。
  */
 export function TrashIcon({ size = 18, strokeWidth = 1.8 }: { size?: number; strokeWidth?: number }) {

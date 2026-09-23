@@ -397,8 +397,9 @@ async function main() {
     })();
 
     await page.goto(`${url}#/w/default/tables/public.user_sessions`);
-    // 詳細は左パネルの範囲を連続表示するので、削除はそのテーブルのセクションから
-    const delOf = (id) => page.locator(`[data-doc-table="${id}"] [data-testid="delete-table"]`);
+    // 詳細は左パネルの範囲を連続表示するので、削除は上部のバー（読んでいる位置のテーブル）から
+    const delOf = (id) =>
+      page.locator(`[data-testid="doc-active-table"][data-table-id="${id}"] [data-testid="delete-table"]`);
     await delOf("public.user_sessions").waitFor({ timeout: 15000 });
     await delOf("public.user_sessions").click();
     // 削除の前に影響を提示する（§6.2）: 配置ページと、失われる meta

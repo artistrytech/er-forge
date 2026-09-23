@@ -46,9 +46,29 @@
   border-bottom: none;
 }
 
-/* 注記。人が改行を入れて書くので、改行をそのまま見せ、長い語は折り返す。
-   本文はインラインのまま流し、編集のペンはその末尾（最後の行の直後）に続ける
-   （右端に寄せると、短い注記ではペンが本文から離れてどこの操作か分からない） */
+/* 論理情報の値のセル。ペンは本文の末尾（最後の行の直後）に続ける
+   （右端に寄せると、短い値ではペンが本文から離れてどこの操作か分からない） */
+.editable .hover-pen {
+  vertical-align: middle;
+  margin-left: 4px;
+}
+
+/* 色の値（見本 + 名前）。見本は ER図・行の色と同じ data-color から塗る */
+.color-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.color-chip {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  border: 1px solid var(--c-border, var(--input-border));
+  background: var(--c-surface, var(--panel));
+}
+
+/* 注記。人が改行を入れて書くので、改行をそのまま見せ、長い語は折り返す */
 .table-notes {
   line-height: 1.7;
 }
@@ -60,11 +80,6 @@
 
 .table-notes-empty {
   color: var(--text-faint);
-}
-
-.table-notes .hover-pen {
-  vertical-align: middle;
-  margin-left: 4px;
 }
 
 .tag {
@@ -95,16 +110,19 @@
   max-height: min(58vh, 560px);
 }
 
-/* 注記はノートアイコンの分だけ。列幅を食わせない */
+/* 注記はノートアイコンと編集ペンの分だけ。列幅を食わせない */
 .notes-cell {
-  width: 56px;
+  width: 76px;
   white-space: nowrap;
 }
 
-/* カラムのタグ（P-12）。テーブルのタグと同じ見た目にする */
+/* カラムのタグ（P-12）。テーブルのタグと同じ見た目にする。
+   後ろに編集のペンが続くので inline-flex にする（block だと行が分かれて宙に浮く） */
 .column-tags {
-  display: flex;
+  display: inline-flex;
   flex-wrap: wrap;
+  align-items: center;
+  vertical-align: middle;
   gap: 4px;
 }
 
@@ -139,8 +157,9 @@
   margin-left: 0;
 }
 
-/* 説明。中身は種別ごとに違う（相手テーブル / 対応カラム / 注記）ので形を決めず、
-   虫眼鏡だけは右端にそろえる（どの行にもあり、縦に並ぶと押し先が探しやすい） */
+/* 説明。中身は種別ごとに違う（相手テーブル / 対応カラム / 注記）ので形を決めない。
+   虫眼鏡は**本文の末尾に続ける**（表の右端にそろえると、短い制約では本文から遠く離れ、
+   どの行の詳細を開くのか見失う）。余った幅は本文側が持つ */
 .constraint-desc {
   display: flex;
   align-items: baseline;
@@ -149,7 +168,6 @@
 }
 
 .constraint-detail {
-  margin-left: auto;
   align-self: flex-start;
   /* セルの縦方向のパディング（11px）より詰めて、1行目の高さを押し広げない */
   margin-top: -4px;
@@ -231,20 +249,15 @@
   font-family: var(--mono);
 }
 
-/* 行末の編集ペンの専用列。アイコン1つ分だけ（列幅を食わせない） */
-.edit-cell {
-  width: 36px;
-  white-space: nowrap;
-}
-
-/* 論理情報のペン。置かれた行（カラム行 / テーブル注記の行）にホバー、または
-   キーボードでフォーカスしたときだけ見せる（DOM には残す = Tab で届く） */
+/* 論理情報のペン・制約の虫眼鏡。**置かれたセル**（論理情報）か行（制約）にホバー、または
+   キーボードでフォーカスしたときだけ見せる（DOM には残す = Tab で届く）。
+   編集できる項目ごとに並ぶので、常に出していると表がアイコンだらけになる */
 .hover-pen {
   opacity: 0;
 }
 
-.column-row:hover .hover-pen,
-.table-notes:hover .hover-pen,
+.editable:hover .hover-pen,
+.constraint-row:hover .hover-pen,
 .hover-pen:focus-visible {
   opacity: 1;
 }

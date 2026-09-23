@@ -12,20 +12,19 @@
  * - 物理FK: カーディナリティと注記のみ（定義は machine-owned。J-01〜J-04）
  * - 論理外部制約: 定義・カーディナリティ・注記の全部と、削除
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useI18n } from "../i18n/useI18n";
 import { LogicalFkDialog, PhysicalFkDialog } from "../catalog/ConstraintDialog";
 import { saveTableMeta } from "../model/editStore";
-import { loadTable } from "../model/loader";
 import {
   EMPTY_CARDINALITY,
-  buildDraft,
   newUid,
   type DraftCardinality,
   type DraftLogicalFk,
   type MetaDraft,
 } from "../model/metaDraft";
 import { useAppStore } from "../model/store";
+import { useTableDraft } from "../model/useTableDraft";
 import { parseEdgeId, type Table } from "../model/types";
 import { Button } from "../ui/Button";
 import { ConstraintDeleteDialog } from "../ui/ConstraintDeleteDialog";
@@ -38,28 +37,6 @@ interface SaveState {
 }
 
 const IDLE: SaveState = { busy: false, error: null };
-
-/**
- * 読み込んだテーブルからドラフトを作る。
- *
- * buildDraft は呼ぶたびに新しい uid を振るため、描画のたびに作り直すと行の同一性が崩れる
- * （同じテーブルなら同じドラフトを使い回す）。
- *
- * **一度読めたテーブルは、消えても手元に残す**。保存（saveTableMeta）は読み直しのために
- * 一瞬ストアから消すため、素直に追随すると保存中だけ「読み込み中」に戻り、
- * ダイアログが作り直されて入力途中の内容が消えてしまう。
- */
-function useTableDraft(tableId: string | null): { table: Table | null; draft: MetaDraft | null } {
-  const stored = useAppStore((s) => (tableId === null ? undefined : s.tables[tableId]));
-  const held = useRef<{ id: string | null; table: Table } | null>(null);
-  useEffect(() => {
-    if (tableId !== null) void loadTable(tableId);
-  }, [tableId]);
-  if (stored !== undefined) held.current = { id: tableId, table: stored };
-  const table = stored ?? (held.current?.id === tableId ? held.current.table : undefined);
-  const draft = useMemo(() => (table === undefined ? null : buildDraft(table)), [table]);
-  return { table: table ?? null, draft };
-}
 
 export function RelationEditDialog({ relationId }: { relationId: string }) {
   const { t } = useI18n();

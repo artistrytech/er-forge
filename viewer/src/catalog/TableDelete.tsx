@@ -1,6 +1,6 @@
 /**
- * テーブルの削除（J-02 / O-03 詳細設計 §6.2）。テーブル画面の見出し横のごみ箱から開く
- * （詳細・ドキュメントのどちらでも）。
+ * テーブルの削除（J-02 / O-03 詳細設計 §6.2）。テーブル画面上部のバー（読んでいる位置の
+ * テーブル）のごみ箱から開く（詳細・ドキュメントのどちらでも）。
  *
  * 削除するのは基本的に**スキーマファイルだけ**である。
  * - ER図のノードを一緒に消すかは選べる（既定は消す。外すと孤児ノードとして残る。K-13）
@@ -20,7 +20,7 @@ import { TrashIcon } from "../ui/icons";
 import { hrefs } from "../ui/router";
 import styles from "./TableDelete.module.scss";
 
-/** 見出し横に置く削除の導線（ごみ箱）。サーバーモードでのみ現れる（静的モードは閲覧専用） */
+/** バーに置く削除の導線（ごみ箱）。サーバーモードでのみ現れる（静的モードは閲覧専用） */
 export function TableDeleteButton({ tableId }: { tableId: string }) {
   const { t } = useI18n();
   const serverMode = useAppStore((s) => s.serverMode);

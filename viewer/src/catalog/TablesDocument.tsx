@@ -8,8 +8,10 @@
  * - ドキュメント: カラム表は物理名・論理名・タグ・注記だけ（型・キー・NULL は (i) に退避）、
  *   制約表は対応カラムの代わりに注記を出す
  *
- * 見出しの横には、どちらでも同じ導線（サーバーモードのみ）を置く: テーブル編集画面へのペンと、
- * 削除のごみ箱（TableDeleteButton）。誤って逆生成したテーブルを個別に消す唯一の導線なので、
+ * 上部のバー（表示モードの切替・範囲の見出し）には**読んでいる位置のテーブル**を出し、
+ * そのテーブルへの導線（サーバーモードのみ）をそこに置く: テーブル編集画面へのペンと、
+ * 削除のごみ箱（TableDeleteButton）。連続表示ではセクションの見出しが画面の外へ流れていくため、
+ * 操作は貼り付いたバーに集約する。誤って逆生成したテーブルを個別に消す唯一の導線なので、
  * ドキュメントに切り替えていても隠さない。
  *
  * - 範囲は左パネルが決める（INV-1）。ここでは絞り込みを持たない。
@@ -36,7 +38,7 @@ import {
   resolveColumnTags,
   resolveTableName,
 } from "../model/logicalName";
-import type { MetaTarget } from "../model/metaTarget";
+import type { MetaField, MetaTarget } from "../model/metaTarget";
 import { useAppStore, type TablesView } from "../model/store";
 import type { Column, Dictionary, IndexTable, Table } from "../model/types";
 import { cx } from "../lib/cx";
@@ -48,7 +50,8 @@ import { hrefs } from "../ui/router";
 import { ScrollTable } from "../ui/ScrollTable";
 import {
   ConstraintTable,
-  NotesPen,
+  EditableValue,
+  NotSet,
   PagesSection,
   TableInfo,
   TableLink,
@@ -282,9 +285,10 @@ export const TablesDocument = memo(function TablesDocument({
     };
   }, [setDocActiveTableId]);
 
-  // ペンが押されたら論理情報ダイアログを開く（R-05。ダイアログと保存は MetaEditDialog が持つ）
+  // ペンが押されたら論理情報ダイアログを開く（R-05。ダイアログと保存は MetaEditDialog が持つ）。
+  // field は押されたペンの項目で、ダイアログはその入力欄へ初期フォーカスする
   const openMeta = useCallback(
-    (target: MetaTarget): void => openDialog({ type: "meta", target }),
+    (target: MetaTarget, field: MetaField): void => openDialog({ type: "meta", target, field }),
     [openDialog],
   );
 
@@ -299,11 +303,18 @@ export const TablesDocument = memo(function TablesDocument({
     <div className={styles.doc} ref={rootRef} data-testid="tables-document" data-view={view}>
       <div className={styles.bar} ref={barRef}>
         <ViewSwitch view={view} tableId={activeForSwitch} />
-        <span className={styles.range} data-testid="doc-range">
-          {list.label}
-        </span>
-        <span className={cx("muted", styles.count)} data-testid="doc-count">
-          {t("doc.range.count", { n: entries.length })}
+        {/* 読んでいる位置のテーブルと、その編集・削除。文書を下へ追うと見出しは流れていくので、
+            「今どれを読んでいるか」と、そのテーブルへの操作は貼り付いたバーに置く。
+            切替の隣（左）に置くのは、本文の見出しと同じく左端から読めるようにするため */}
+        <ActiveTable tableId={activeForSwitch} canEdit={serverMode} />
+        {/* 範囲（何を読んでいるか）は右端へ。1テーブルごとの操作より頻度が低い */}
+        <span className={styles.rangeInfo}>
+          <span className={styles.range} data-testid="doc-range">
+            {list.label}
+          </span>
+          <span className={cx("muted", styles.count)} data-testid="doc-count">
+            {t("doc.range.count", { n: entries.length })}
+          </span>
         </span>
       </div>
       {notice !== undefined && <div className="notice-banner">{notice}</div>}
@@ -326,6 +337,46 @@ export const TablesDocument = memo(function TablesDocument({
     </div>
   );
 });
+
+/**
+ * バーの右端に出す「読んでいる位置のテーブル」と、その操作（編集画面へのペン・削除のごみ箱）。
+ *
+ * 操作をセクションの見出しではなくここへ置くのは、文書が連続表示だから — 見出しは
+ * 読み進めると画面の外へ出てしまい、直したいと思った時点では画面に無い。バーは貼り付いて
+ * いるので、どこまで読んでいても対象と操作が同じ場所にある（対象はスクロール追随で決まる）。
+ */
+function ActiveTable({ tableId, canEdit }: { tableId?: string; canEdit: boolean }) {
+  const { t } = useI18n();
+  const index = useAppStore((s) => s.index);
+  const table = useAppStore((s) => (tableId === undefined ? undefined : s.tables[tableId]));
+  const nameDisplay = useAppStore((s) => s.nameDisplay);
+  const entry = index?.tables?.find((it) => it.id === tableId);
+  if (tableId === undefined || entry === undefined) return null;
+  const title = formatName(
+    resolveTableName(entry.name, table?.meta?.displayName ?? entry.displayName),
+    entry.name,
+    nameDisplay,
+  );
+  return (
+    <span
+      className={styles.activeTable}
+      // ラベルを読み上げに載せるため役割を付ける（span のままでは aria-label が無視される）
+      role="group"
+      aria-label={t("doc.activeTable")}
+      data-testid="doc-active-table"
+      data-table-id={tableId}
+    >
+      <span className={styles.activeName}>{title}</span>
+      <span className={cx("mono", "muted", styles.activeId)}>{tableId}</span>
+      {canEdit && (
+        <span className={styles.headTools}>
+          <TableEditButton tableId={tableId} />
+          <TableDeleteButton tableId={tableId} />
+        </span>
+      )}
+    </span>
+  );
+}
 
 // ------------------------------------------------------------------ 1テーブル分のセクション
 
@@ -350,7 +401,7 @@ const TableSection = memo(function TableSection({
   canEdit: boolean;
   /** 画面外の描画を省くか（範囲が大きいときだけ） */
   lazy: boolean;
-  onEditMeta: (target: MetaTarget) => void;
+  onEditMeta: (target: MetaTarget, field: MetaField) => void;
 }) {
   const { t } = useI18n();
   const stored = useAppStore((s) => s.tables[entry.id]);
@@ -385,15 +436,10 @@ const TableSection = memo(function TableSection({
       data-testid="doc-section"
       style={style}
     >
+      {/* 編集・削除の導線はバー（ActiveTable）に集約する。見出しは読むためのもの */}
       <div className="catalog-header">
         <h2>{title}</h2>
         <span className="mono muted">{entry.id}</span>
-        {canEdit && (
-          <span className={styles.headTools}>
-            <TableEditButton tableId={entry.id} />
-            <TableDeleteButton tableId={entry.id} />
-          </span>
-        )}
       </div>
       {view === "detail" ? (
         <TableInfo tableId={entry.id} fullHeight canEdit={canEdit} />
@@ -406,8 +452,12 @@ const TableSection = memo(function TableSection({
           <h3 className={styles.sectionHeading}>{t("table.metadata")}</h3>
           <TableMetaTable
             table={table}
-            showEmptyNotes
-            onEdit={canEdit ? () => onEditMeta({ kind: "table", tableId: entry.id }) : undefined}
+            showEmpty={canEdit}
+            onEdit={
+              canEdit
+                ? (field) => onEditMeta({ kind: "table", tableId: entry.id }, field)
+                : undefined
+            }
             editTestId={`doc-table-meta-edit-${entry.id}`}
           />
           <h3 className={styles.sectionHeading}>{t("table.columns")}</h3>
@@ -420,8 +470,6 @@ const TableSection = memo(function TableSection({
                 <th>{t("table.colLogicalName")}</th>
                 <th>{t("table.tags")}</th>
                 <th className={styles.notesHead}>{t("table.colNotes")}</th>
-                {/* 末尾は行の編集ペンの専用列（サーバーモードのみ。行にホバーしたときだけ見える） */}
-                {canEdit && <th className={infoStyles.editCell} aria-label={t("doc.editColumnMeta")} />}
               </tr>
             }
           >
@@ -448,7 +496,7 @@ const TableSection = memo(function TableSection({
 });
 
 /**
- * 見出し横のペン。テーブル編集画面（O-03。ヘッダの [編集を開始] と同じ行き先）への近道。
+ * バーのペン。テーブル編集画面（O-03。[編集を開始] と同じ行き先）への近道。
  * ページ情報の編集中は、ヘッダと同じ理由で押せない（編集セッションは相互排他）。
  */
 function TableEditButton({ tableId }: { tableId: string }) {
@@ -492,7 +540,7 @@ function ColumnRow({
   column: Column;
   dictionary: Dictionary | null;
   canEdit: boolean;
-  onEditMeta: (target: MetaTarget) => void;
+  onEditMeta: (target: MetaTarget, field: MetaField) => void;
 }) {
   const { t } = useI18n();
   const logical = resolveColumnName(table, c.name, dictionary);
@@ -500,6 +548,10 @@ function ColumnRow({
   const color = resolveColumnColor(table, c.name, dictionary).color;
   const tags = resolveColumnTags(table, c.name, dictionary).tags;
   const notes = table.meta?.columns?.[c.name]?.notes ?? "";
+  /** 論理情報のペン（閲覧専用なら undefined = ペンを出さない） */
+  const edit = canEdit
+    ? (field: MetaField) => onEditMeta({ kind: "column", tableId: table.id, column: c.name }, field)
+    : undefined;
   return (
     <tr className={infoStyles.columnRow} data-color={colorAttr(color)} data-testid="doc-column-row">
       <td>
@@ -519,43 +571,55 @@ function ColumnRow({
           />
         </span>
       </td>
-      <td>
-        {logical.source === "physical" ? (
-          <span className="muted">（{t("table.notSet")}）</span>
-        ) : (
-          <>
-            {logical.name}
-            {logical.source === "dictionary" && <span className="badge badge-dict">辞書</span>}
-          </>
-        )}
+      {/* 論理情報のセルはホバーでペンが出る（押した項目がダイアログの初期フォーカス。R-05） */}
+      <td className={cx(canEdit && infoStyles.editable)}>
+        <EditableValue
+          field="displayName"
+          label={t("table.colLogicalName")}
+          testId={`doc-column-meta-edit-${c.name}-name`}
+          onEdit={edit}
+        >
+          {logical.source === "physical" ? (
+            <NotSet />
+          ) : (
+            <>
+              {logical.name}
+              {logical.source === "dictionary" && <span className="badge badge-dict">辞書</span>}
+            </>
+          )}
+        </EditableValue>
       </td>
-      <td>
-        {tags.length > 0 && (
-          <span className={infoStyles.columnTags}>
-            {tags.map((tag) => (
-              <span key={tag} className={infoStyles.tag}>
-                {tag}
-              </span>
-            ))}
+      <td className={cx(canEdit && infoStyles.editable)}>
+        <EditableValue
+          field="tags"
+          label={t("table.tags")}
+          testId={`doc-column-meta-edit-${c.name}-tags`}
+          onEdit={edit}
+        >
+          {tags.length > 0 && (
+            <span className={infoStyles.columnTags}>
+              {tags.map((tag) => (
+                <span key={tag} className={infoStyles.tag}>
+                  {tag}
+                </span>
+              ))}
+            </span>
+          )}
+        </EditableValue>
+      </td>
+      <td className={cx(canEdit && infoStyles.editable)}>
+        <EditableValue
+          field="notes"
+          label={t("table.colNotes")}
+          testId={`doc-column-meta-edit-${c.name}-notes`}
+          onEdit={edit}
+        >
+          {/* 行では空を「注記なし」と書かない（毎行に並ぶと読みの邪魔になる） */}
+          <span className={styles.notesText} data-testid={notes !== "" ? "doc-column-notes" : undefined}>
+            {notes}
           </span>
-        )}
+        </EditableValue>
       </td>
-      <td>
-        {/* 行では空を「注記なし」と書かない（毎行に並ぶと読みの邪魔になる） */}
-        <span className={styles.notesText} data-testid={notes !== "" ? "doc-column-notes" : undefined}>
-          {notes}
-        </span>
-      </td>
-      {canEdit && (
-        <td className={cx("center", infoStyles.editCell)}>
-          <NotesPen
-            label={t("doc.editColumnMeta")}
-            testId={`doc-column-meta-edit-${c.name}`}
-            hover
-            onClick={() => onEditMeta({ kind: "column", tableId: table.id, column: c.name })}
-          />
-        </td>
-      )}
     </tr>
   );
 }

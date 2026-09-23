@@ -17,6 +17,13 @@ export type MetaTarget =
   /** カラム（meta.columns[<column>] の displayName / tags / color / notes） */
   | { kind: "column"; tableId: string; column: string };
 
+/**
+ * ダイアログを開くきっかけになった項目（R-05）。
+ * 一覧では項目ごとにペンを出すため、押した項目の入力欄へ初期フォーカスを当てる
+ * （論理名のペンから開いたのにタグへ入力させない）。
+ */
+export type MetaField = keyof MetaFields;
+
 /** ダイアログで編集する4項目（テーブル・カラムとも同じ形） */
 export interface MetaFields {
   displayName: string;

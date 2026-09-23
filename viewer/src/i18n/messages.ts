@@ -774,8 +774,6 @@ const ja = {
   "doc.showInfo": "属性を表示",
   "doc.info.key": "キー",
   "doc.info.unique": "ユニーク",
-  "doc.editTableMeta": "テーブルの論理情報を編集",
-  "doc.editColumnMeta": "カラムの論理情報を編集",
   "doc.editRelationNotes": "リレーションの注記を編集",
   "doc.editConstraintNotes": "制約の注記を編集",
   "doc.tableMetaTitle": "テーブルの論理情報",
@@ -783,6 +781,19 @@ const ja = {
   "doc.metaHint": "確定するとすぐに保存されます。論理制約の追加はテーブルの編集画面から行います。",
   "doc.notesSaved": "注記を保存しました",
   "doc.metaSaved": "論理情報を保存しました",
+  // ---- 項目ごとのペン・虫眼鏡（R-05。一覧の行ではホバーしたときだけ見せる） ----
+  "doc.editMetaField": "{name}を編集",
+  "doc.editCardinality": "カーディナリティを編集",
+  "doc.editColumnMapping": "カラムの対応を編集",
+  "doc.editConstraintColumns": "対象カラムを編集",
+  "doc.activeTable": "表示中のテーブル",
+  // ---- 詳細ダイアログから開く1項目の編集（R-05。確定＝即時保存） ----
+  "cardinalityEdit.title": "カーディナリティの編集",
+  "cardinalityEdit.hint": "確定するとすぐに保存されます。多重度の根拠（補足）は詳細の注記から書きます。",
+  "fkColumns.title": "カラムの対応の編集",
+  "fkColumns.hint": "確定するとすぐに保存されます。参照先テーブルの変更はテーブルの編集画面から行います。",
+  "uniqueColumns.title": "対象カラムの編集",
+  "uniqueColumns.hint": "確定するとすぐに保存されます。カラムの並び順は制約の意味に含まれます。",
 } as const;
 
 export type MsgKey = keyof typeof ja;
@@ -1545,8 +1556,6 @@ const en: Record<MsgKey, string> = {
   "doc.showInfo": "Show attributes",
   "doc.info.key": "Key",
   "doc.info.unique": "Unique",
-  "doc.editTableMeta": "Edit table logical info",
-  "doc.editColumnMeta": "Edit column logical info",
   "doc.editRelationNotes": "Edit relation notes",
   "doc.editConstraintNotes": "Edit constraint notes",
   "doc.tableMetaTitle": "Table logical info",
@@ -1554,6 +1563,17 @@ const en: Record<MsgKey, string> = {
   "doc.metaHint": "Saved as soon as you apply. Logical constraints are added on the table edit page.",
   "doc.notesSaved": "Notes saved",
   "doc.metaSaved": "Logical info saved",
+  "doc.editMetaField": "Edit {name}",
+  "doc.editCardinality": "Edit cardinality",
+  "doc.editColumnMapping": "Edit column mapping",
+  "doc.editConstraintColumns": "Edit columns",
+  "doc.activeTable": "Current table",
+  "cardinalityEdit.title": "Edit cardinality",
+  "cardinalityEdit.hint": "Saved as soon as you apply. The note behind the cardinality is written in the detail dialog.",
+  "fkColumns.title": "Edit column mapping",
+  "fkColumns.hint": "Saved as soon as you apply. The referenced table is changed on the table edit page.",
+  "uniqueColumns.title": "Edit columns",
+  "uniqueColumns.hint": "Saved as soon as you apply. The order of the columns is part of the constraint.",
 };
 
 export const messages: Record<Lang, Record<MsgKey, string>> = { ja, en };

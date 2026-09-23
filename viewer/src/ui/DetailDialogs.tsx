@@ -24,7 +24,7 @@ import { Button } from "./Button";
 import { ConstraintDeleteDialog } from "./ConstraintDeleteDialog";
 import { Dialog } from "./Dialog";
 import { InlineNotes } from "./InlineNotes";
-import { RelationKindBadge, TableLink } from "./TableInfo";
+import { EditPen, RelationKindBadge, TableLink } from "./TableInfo";
 import styles from "./DetailDialogs.module.scss";
 
 /**
@@ -49,6 +49,7 @@ function useCanEditNotes(): boolean {
 export function RelationDialog({ relationId }: { relationId: string }) {
   const { t } = useI18n();
   const closeDialog = useAppStore((s) => s.closeDialog);
+  const openDialog = useAppStore((s) => s.openDialog);
   const closeAllDialogs = useAppStore((s) => s.closeAllDialogs);
   const canEdit = useCanEditNotes();
   const index = useAppStore((s) => s.index);
@@ -128,12 +129,29 @@ export function RelationDialog({ relationId }: { relationId: string }) {
           {relation.dangling === true && <span className="error-text"> {t("relation.dangling")}</span>}
         </dd>
         <dt>{t("relation.columns")}</dt>
-        <dd className="mono">
-          {(relation.columns ?? []).map(([from, to], i) => (
-            <div key={i}>
-              {from} → {to}
-            </div>
-          ))}
+        <dd className={styles.editable}>
+          <div className="mono">
+            {(relation.columns ?? []).map(([from, to], i) => (
+              <div key={i}>
+                {from} → {to}
+              </div>
+            ))}
+          </div>
+          {/* カラム対応を直せるのは論理外部制約だけ（物理FK の定義は machine-owned）。
+              選択肢の組み合わせで決まるので、本文をその場で入力欄にせず別ダイアログで編集する */}
+          {editable && lfk !== undefined && parts !== null && (
+            <EditPen
+              label={t("doc.editColumnMapping")}
+              testId="relation-columns-edit"
+              onClick={() =>
+                openDialog({
+                  type: "fkColumns",
+                  tableId: relation.from,
+                  name: parts.constraintName,
+                })
+              }
+            />
+          )}
         </dd>
         {fk?.onDelete !== undefined && (
           <>
@@ -149,17 +167,38 @@ export function RelationDialog({ relationId }: { relationId: string }) {
         )}
         <dt>{t("relation.cardinality")}</dt>
         <dd>
-          <div>
-            {t("relation.parentSide")}: <span className="mono">{relation.cardinality?.parent ?? "?"}</span>{" "}
-            <span className="muted">
-              ({explicit.includes("parent") ? t("relation.explicit") : t("relation.derived")})
-            </span>
-          </div>
-          <div>
-            {t("relation.childSide")}: <span className="mono">{relation.cardinality?.child ?? "?"}</span>{" "}
-            <span className="muted">
-              ({explicit.includes("child") ? t("relation.explicit") : t("relation.derived")})
-            </span>
+          <div className={styles.editable}>
+            <div>
+              <div>
+                {t("relation.parentSide")}:{" "}
+                <span className="mono">{relation.cardinality?.parent ?? "?"}</span>{" "}
+                <span className="muted">
+                  ({explicit.includes("parent") ? t("relation.explicit") : t("relation.derived")})
+                </span>
+              </div>
+              <div>
+                {t("relation.childSide")}:{" "}
+                <span className="mono">{relation.cardinality?.child ?? "?"}</span>{" "}
+                <span className="muted">
+                  ({explicit.includes("child") ? t("relation.explicit") : t("relation.derived")})
+                </span>
+              </div>
+            </div>
+            {/* 上書きは親・子をまとめて1つのダイアログで選ぶ（片側だけ直す導線を2つ置かない） */}
+            {editable && parts !== null && (
+              <EditPen
+                label={t("doc.editCardinality")}
+                testId="relation-cardinality-edit"
+                onClick={() =>
+                  openDialog({
+                    type: "cardinality",
+                    tableId: relation.from,
+                    kind: parts.kind,
+                    name: parts.constraintName,
+                  })
+                }
+              />
+            )}
           </div>
           {/* 多重度の補足。編集ダイアログでもカーディナリティ欄の一部なので、同じ場所に置く */}
           {cardinalityTarget !== null && (editable || (relationMeta?.notes ?? "") !== "") && (
@@ -221,6 +260,7 @@ export function ConstraintInfoDialog({
   const { t } = useI18n();
   const closeDialog = useAppStore((s) => s.closeDialog);
   const closeAllDialogs = useAppStore((s) => s.closeAllDialogs);
+  const openDialog = useAppStore((s) => s.openDialog);
   const table = useHeldTable(tableId);
   const canEdit = useCanEditNotes();
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -295,13 +335,26 @@ export function ConstraintInfoDialog({
         </dd>
         <dt>{t("constraint.columns")}</dt>
         {/* 複合キーは順序に意味があるため、番号を振って1行ずつ縦に並べる */}
-        <dd className="mono">
-          {entry.columns.map((c, i) => (
-            <div key={c}>
-              <span className={styles.ordinal}>{i + 1}</span>
-              {c}
-            </div>
-          ))}
+        <dd className={styles.editable}>
+          <div className="mono">
+            {entry.columns.map((c, i) => (
+              <div key={c}>
+                <span className={styles.ordinal}>{i + 1}</span>
+                {c}
+              </div>
+            ))}
+          </div>
+          {/* 直せるのは論理一意制約だけ（DB のユニーク制約・インデックスは machine-owned）。
+              カラムの選び直しは別ダイアログで行う */}
+          {deletable && (
+            <EditPen
+              label={t("doc.editConstraintColumns")}
+              testId="constraint-columns-edit"
+              onClick={() =>
+                openDialog({ type: "uniqueColumns", tableId, at, name: entry.name })
+              }
+            />
+          )}
         </dd>
         {unique !== undefined && (
           <>
