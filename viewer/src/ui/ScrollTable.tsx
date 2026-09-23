@@ -16,8 +16,11 @@ import { cx } from "../lib/cx";
 import styles from "./ScrollTable.module.scss";
 
 interface ScrollTableProps {
-  /** thead に入れる中身（`<tr>…</tr>`） */
-  head: ReactNode;
+  /**
+   * thead に入れる中身（`<tr>…</tr>`）。
+   * 省略すると thead ごと出さない（項目名が行の中にある表 = テーブル情報・制約）
+   */
+  head?: ReactNode;
   /** tbody に入れる行 */
   children: ReactNode;
   /** 親の残り高さいっぱいに広げる（既定は内容なり） */
@@ -47,7 +50,7 @@ export function ScrollTable({
       data-testid={testId}
     >
       <table className={cx("data-table", tableClassName)}>
-        <thead className={styles.head}>{head}</thead>
+        {head !== undefined && <thead className={styles.head}>{head}</thead>}
         <tbody>{children}</tbody>
       </table>
     </div>

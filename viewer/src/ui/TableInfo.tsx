@@ -1,10 +1,14 @@
 /**
  * テーブル詳細の共通表示（G-01〜G-05 / O-02 で共用）。
- * カラム表・制約・論理制約・被参照一覧・meta・配置ページを表示する。
+ * メタデータ表・カラム表・制約表（被参照を含む）・配置ページを表示する。
  * サーバーモード（canEdit）では、テーブル・カラムの論理情報（論理名・タグ・色・注記）を
  * ペンから開くダイアログでその場編集できる（R-05）。物理情報は常に閲覧専用。
+ *
+ * メタデータ（物理名・種別・コメント・タグ・注記）は {@link TableMetaTable} の
+ * 「項目名と値」の表に、制約（主キー・ユニーク・インデックス・外部キー・論理制約）と被参照は
+ * {@link ConstraintTable} の1つの表にまとめる。どちらも詳細とドキュメント（R-01）で共用する。
  */
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, type ReactNode } from "react";
 import { useI18n } from "../i18n/useI18n";
 import { colorAttr } from "../model/colors";
 import { loadTable } from "../model/loader";
@@ -89,15 +93,41 @@ export function NotesPen({
   );
 }
 
+/** メタデータ表の1行（値が無い項目は呼び出し側が出さない） */
+function MetaRow({
+  label,
+  valueTestId,
+  className,
+  children,
+}: {
+  label: string;
+  valueTestId?: string;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <tr className={className}>
+      <th scope="row" className={styles.metaKey}>
+        {label}
+      </th>
+      <td data-testid={valueTestId}>{children}</td>
+    </tr>
+  );
+}
+
 /**
- * テーブルの見出し直下に出す共通情報（種別バッジ・DB コメント・タグ・注記）。
- * 詳細とドキュメント（R-01）で同じ見た目にするため切り出す。
+ * テーブルのメタデータ（物理名・種別・DB コメント・タグ・注記）を
+ * 「項目名と値」の表にまとめたもの。詳細とドキュメント（R-01）で共用する。
+ *
+ * 項目ごとに段落を積むのをやめ、1つの表に集約した（項目が増えるたびに見た目の決めごとが
+ * 増えるのを避ける。値の無い項目は行ごと出さない）。
+ * 項目名は各行の先頭にあるので、列見出し（thead）は出さない。
  *
  * @param onEdit 渡すと注記の本文の末尾に論理情報のペンを出す（行にホバーしたときだけ見える）
  * @param editTestId ペンの data-testid
- * @param showEmptyNotes 注記が無いときも「注記なし」を出す（ドキュメント。ペンの居場所を作る）
+ * @param showEmptyNotes 注記が無いときも「注記なし」の行を出す（ペンの居場所を作る）
  */
-export function TableMetaHeader({
+export function TableMetaTable({
   table,
   onEdit,
   editTestId,
@@ -110,29 +140,34 @@ export function TableMetaHeader({
 }) {
   const { t } = useI18n();
   const notes = table.meta?.notes ?? "";
+  const tags = table.meta?.tags ?? [];
+  const comment = table.comment ?? "";
   return (
-    <>
+    <ScrollTable testId="table-meta" tableClassName={styles.metaTable}>
+      <MetaRow label={t("table.metaId")}>
+        <span className="mono">{table.id}</span>
+      </MetaRow>
       {/* ビュー等の種別バッジ（O-10）。DB が返した原文をそのまま出すため翻訳しない */}
       {!isTableKind(table.kind) && (
-        <p className={styles.objectKind} data-testid="object-kind">
+        <MetaRow label={t("table.objectKind")} valueTestId="object-kind">
           <span className={styles.objectKindBadge}>{table.kind}</span>
-        </p>
+        </MetaRow>
       )}
-      {table.comment !== undefined && table.comment !== "" && (
-        <p className={styles.tableComment}>{table.comment}</p>
-      )}
-      {(table.meta?.tags?.length ?? 0) > 0 && (
-        <p className={styles.tableTags}>
-          {table.meta?.tags?.map((tag) => (
-            <span key={tag} className={styles.tag}>
-              {tag}
-            </span>
-          ))}
-        </p>
+      {comment !== "" && <MetaRow label={t("table.colComment")}>{comment}</MetaRow>}
+      {tags.length > 0 && (
+        <MetaRow label={t("table.tags")}>
+          <span className={styles.columnTags}>
+            {tags.map((tag) => (
+              <span key={tag} className={styles.tag}>
+                {tag}
+              </span>
+            ))}
+          </span>
+        </MetaRow>
       )}
       {(notes !== "" || showEmptyNotes) && (
-        <p className={cx("table-notes", styles.tableNotes)}>
-          <span className="label">{t("table.notes")}: </span>
+        // 注記は人が改行を入れて書くので、本文はそのまま流してペンを末尾に続ける
+        <MetaRow label={t("table.notes")} className={cx("table-notes", styles.tableNotes)}>
           {notes !== "" ? (
             <span className={styles.tableNotesText} data-testid="table-notes-text">
               {notes}
@@ -143,9 +178,9 @@ export function TableMetaHeader({
           {onEdit !== undefined && (
             <NotesPen label={t("doc.editTableMeta")} testId={editTestId} hover onClick={onEdit} />
           )}
-        </p>
+        </MetaRow>
       )}
-    </>
+    </ScrollTable>
   );
 }
 
@@ -163,12 +198,6 @@ export function TableInfo({ tableId, onNavigate, fullHeight = false, canEdit = f
   }, [tableId]);
 
   const indexEntry = index?.tables?.find((x) => x.id === tableId);
-
-  // 被参照一覧（G-02）: index.relations から to === 自分 を拾う（物理・論理とも）
-  const referencedBy = useMemo(
-    () => (index?.relations ?? []).filter((r) => r.to === tableId && r.from !== tableId),
-    [index, tableId],
-  );
 
   if (error !== undefined) {
     return <p className="error-text">{t("table.loadError", { error })}</p>;
@@ -188,7 +217,8 @@ export function TableInfo({ tableId, onNavigate, fullHeight = false, canEdit = f
 
   return (
     <div className={styles.tableInfo}>
-      <TableMetaHeader
+      <h3>{t("table.metadata")}</h3>
+      <TableMetaTable
         table={table}
         showEmptyNotes={canEdit}
         onEdit={canEdit ? () => editMeta({ kind: "table", tableId: table.id }) : undefined}
@@ -287,118 +317,10 @@ export function TableInfo({ tableId, onNavigate, fullHeight = false, canEdit = f
         })}
       </ScrollTable>
 
-      {/* 制約は種類ごとに見出しを立て、1件 = 1枠で区切る（「制約」の下に種類を入れ子に
-          していたが、階層を深くしても読みやすくならないため平坦に並べる） */}
-      {(table.primaryKey?.length ?? 0) > 0 && (
-        <>
-          <h3>{t("table.primaryKey")}</h3>
-          <ul className={styles.itemList}>
-            <li className={styles.item}>
-              <span className="mono">{table.primaryKey?.join(", ")}</span>
-            </li>
-          </ul>
-        </>
-      )}
+      <h3>{t("table.constraints")}</h3>
+      <ConstraintTable table={table} mode="detail" onNavigate={onNavigate} />
 
-      {(table.uniques?.length ?? 0) > 0 && (
-        <>
-          <h3>{t("table.uniques")}</h3>
-          <ul className={styles.itemList} data-testid="unique-list">
-            {table.uniques?.map((u, i) => (
-              <li key={u.name ?? i} className={styles.item}>
-                <span className="mono">{u.columns.join(", ")}</span>
-                <ConstraintDetailButton tableId={table.id} kind="unique" at={i} />
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-
-      {(table.indexes?.length ?? 0) > 0 && (
-        <>
-          <h3>{t("table.indexes")}</h3>
-          <ul className={styles.itemList} data-testid="index-list">
-            {table.indexes?.map((ix, i) => (
-              <li key={ix.name ?? i} className={styles.item}>
-                <span className="mono">{ix.columns.join(", ")}</span>
-                {ix.unique === true && <span className="badge">unique</span>}
-                <ConstraintDetailButton tableId={table.id} kind="index" at={i} />
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-
-      {/* 外部キーは被参照と同じ形（相手テーブル + カラム対応）で見せる。
-          制約名などの詳細は虫眼鏡から開くリレーション詳細に寄せる */}
-      {(table.foreignKeys?.length ?? 0) > 0 && (
-        <>
-          <h3>{t("table.foreignKeys")}</h3>
-          <ul className={styles.itemList} data-testid="fk-list">
-            {table.foreignKeys?.map((fk, i) => (
-              <li key={fk.name ?? i} className={styles.item}>
-                <TableLink tableId={fk.ref.table} onNavigate={onNavigate} />
-                <span className="mono muted">({pairsText(fk.columns, fk.ref.columns)})</span>
-                {/* 注記（多重度の補足）はリレーション詳細の中で読み書きする */}
-                <RelationDetailButton relationId={edgeIdOf(table.id, "fk", fk.name)} />
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-
-      {(table.meta?.logicalUniques?.length ?? 0) > 0 && (
-        <>
-          <h3>{t("table.logicalUniques")}</h3>
-          <ul className={styles.itemList} data-testid="lunique-list">
-            {/* 注記は虫眼鏡（制約の詳細）に寄せる。物理のユニーク制約と同じ形にして、
-                注記の長さで1件の幅が変わらないようにする */}
-            {table.meta?.logicalUniques?.map((u, i) => (
-              <li key={u.name ?? i} className={cx(styles.item, styles.itemLogical)}>
-                <span className="mono">{u.columns.join(", ")}</span>
-                <ConstraintDetailButton tableId={table.id} kind="logicalUnique" at={i} />
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-
-      {(table.meta?.logicalForeignKeys?.length ?? 0) > 0 && (
-        <>
-          <h3>{t("table.logicalForeignKeys")}</h3>
-          <ul className={styles.itemList} data-testid="lfk-list">
-            {table.meta?.logicalForeignKeys?.map((fk, i) => (
-              // 注記は虫眼鏡（リレーション詳細）に寄せる。物理FK の並びと同じ形にして、
-              // 注記の長さで1件の幅が変わらないようにする
-              <li key={fk.name ?? i} className={cx(styles.item, styles.itemLogical)}>
-                <TableLink tableId={fk.ref.table} onNavigate={onNavigate} />
-                <span className="mono muted">({pairsText(fk.columns, fk.ref.columns)})</span>
-                <RelationDetailButton relationId={edgeIdOf(table.id, "lfk", fk.name)} />
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-
-      <h3>{t("table.referencedBy")}</h3>
-      {referencedBy.length === 0 ? (
-        <p className="muted">{t("table.noReferences")}</p>
-      ) : (
-        <ul className={styles.itemList}>
-          {referencedBy.map((r) => (
-            <li key={r.id} className={cx(styles.item, r.kind === "logical" && styles.itemLogical)}>
-              <RelationKindBadge relation={r} />
-              <TableLink tableId={r.from} onNavigate={onNavigate} />
-              <span className="mono muted">
-                ({(r.columns ?? []).map(([from, to]) => `${from} → ${to}`).join(", ")})
-              </span>
-              <RelationDetailButton relationId={r.id} />
-            </li>
-          ))}
-        </ul>
-      )}
-
-      <PagesSection table={table} onNavigate={onNavigate} />
+      <PagesSection tableId={table.id} onNavigate={onNavigate} />
 
       {/* ビュー等の定義 SQL（K-18 / O-11）。行の配列で持っているので改行で繋ぎ直す */}
       {(table.definition?.length ?? 0) > 0 && (
@@ -417,6 +339,202 @@ export function TableInfo({ tableId, onNavigate, fullHeight = false, canEdit = f
         </>
       )}
     </div>
+  );
+}
+
+// ------------------------------------------------------------------ 制約・被参照の表
+
+/** 制約表の行の種別。`data-kind` に出して、見た目と e2e の指し先を種類ごとに分ける */
+type ConstraintRowKind =
+  | "pk"
+  | "unique"
+  | "index"
+  | "fk"
+  | "logicalUnique"
+  | "logicalFk"
+  | "referencedBy";
+
+interface ConstraintRow {
+  key: string;
+  kind: ConstraintRowKind;
+  label: string;
+  /** 論理（ER図の破線と同じ意味づけ）。種別バッジの色で示す */
+  logical: boolean;
+  /** 相手テーブル（外部キー・論理外部制約・被参照だけ持つ） */
+  refTable?: string;
+  /** 対応カラム（詳細モードで出す） */
+  columns: string;
+  /** 注記（ドキュメントモードで出す）。物理の主キー・ユニーク・インデックスは持たない */
+  notes: string;
+  /** 種別に付く補足バッジ（インデックスの unique 指定） */
+  badge?: string;
+  /** 詳細を開く虫眼鏡 */
+  detail: ReactNode;
+}
+
+/**
+ * 制約（主キー・ユニーク・インデックス・外部キー・論理一意制約・論理外部制約）と被参照を
+ * 1つの表にまとめたもの。詳細とドキュメント（R-01）で共用する。
+ *
+ * 種類ごとに見出しを立てて並べていたが、テーブルを読むときに知りたいのは
+ * 「このテーブルにどんな決まりがあるか」であって種類の区切りではないため、
+ * 種別を1列にして1つの表に集約した。細部（制約名・カーディナリティ・ON DELETE …）は
+ * どの行からも虫眼鏡で同じ詳細ダイアログに寄せる。
+ *
+ * 列は **種別と説明の2列だけ**で、列見出し（thead）は出さない。説明は種別ごとに中身が
+ * 違うため形を決めない（相手テーブルの無い制約に空の列を作らない）。モードで入れ替えるのは
+ * 説明の中身で、枠組みは変えない:
+ * - `detail`: 相手テーブル + 対応カラム（注記は虫眼鏡の中で読む）
+ * - `doc`: 相手テーブル + 対応カラム + 注記。ただし**外部キー・論理外部制約だけは対応カラムを
+ *   落とす**（`col → refCol` の対応は相手テーブル名と注記の間に挟まると読みの邪魔になる。
+ *   知りたいのは「どこを参照しているか」と「なぜそうしたか」で、どのカラムかは虫眼鏡の中で足りる）。
+ *   ほかの種別は注記を持たないか短いので、構成カラムを出したほうが行が読める
+ */
+export function ConstraintTable({
+  table,
+  mode,
+  onNavigate,
+}: {
+  table: Table;
+  mode: "detail" | "doc";
+  onNavigate?: () => void;
+}) {
+  const { t } = useI18n();
+  const index = useAppStore((s) => s.index);
+  const tableId = table.id;
+
+  // 被参照（G-02）: index.relations から to === 自分 を拾う（物理・論理とも）
+  const referencedBy = useMemo(
+    () => (index?.relations ?? []).filter((r) => r.to === tableId && r.from !== tableId),
+    [index, tableId],
+  );
+
+  const rows: ConstraintRow[] = [];
+  if ((table.primaryKey?.length ?? 0) > 0) {
+    rows.push({
+      key: "pk",
+      kind: "pk",
+      label: t("table.primaryKey"),
+      logical: false,
+      columns: (table.primaryKey ?? []).join(", "),
+      notes: "",
+      detail: <ConstraintDetailButton tableId={tableId} kind="primaryKey" at={0} />,
+    });
+  }
+  table.uniques?.forEach((u, i) => {
+    rows.push({
+      key: `unique-${u.name ?? i}`,
+      kind: "unique",
+      label: t("table.uniques"),
+      logical: false,
+      columns: u.columns.join(", "),
+      notes: "",
+      detail: <ConstraintDetailButton tableId={tableId} kind="unique" at={i} />,
+    });
+  });
+  table.indexes?.forEach((ix, i) => {
+    rows.push({
+      key: `index-${ix.name ?? i}`,
+      kind: "index",
+      label: t("table.indexes"),
+      logical: false,
+      columns: ix.columns.join(", "),
+      notes: "",
+      badge: ix.unique === true ? "unique" : undefined,
+      detail: <ConstraintDetailButton tableId={tableId} kind="index" at={i} />,
+    });
+  });
+  table.foreignKeys?.forEach((fk, i) => {
+    rows.push({
+      key: `fk-${fk.name ?? i}`,
+      kind: "fk",
+      label: t("table.foreignKeys"),
+      logical: false,
+      refTable: fk.ref.table,
+      columns: pairsText(fk.columns, fk.ref.columns),
+      // 物理FK 自身は注記を持たない。書けるのは多重度の補足（meta.relations）だけ
+      notes: table.meta?.relations?.[`fk:${fk.name ?? ""}`]?.notes ?? "",
+      detail: <RelationDetailButton relationId={edgeIdOf(tableId, "fk", fk.name)} />,
+    });
+  });
+  table.meta?.logicalUniques?.forEach((u, i) => {
+    rows.push({
+      key: `lunique-${u.name ?? i}`,
+      kind: "logicalUnique",
+      label: t("table.logicalUniques"),
+      logical: true,
+      columns: u.columns.join(", "),
+      notes: u.notes ?? "",
+      detail: <ConstraintDetailButton tableId={tableId} kind="logicalUnique" at={i} />,
+    });
+  });
+  table.meta?.logicalForeignKeys?.forEach((fk, i) => {
+    rows.push({
+      key: `lfk-${fk.name ?? i}`,
+      kind: "logicalFk",
+      label: t("table.logicalForeignKeys"),
+      logical: true,
+      refTable: fk.ref.table,
+      columns: pairsText(fk.columns, fk.ref.columns),
+      notes: fk.notes ?? "",
+      detail: <RelationDetailButton relationId={edgeIdOf(tableId, "lfk", fk.name)} />,
+    });
+  });
+  for (const r of referencedBy) {
+    rows.push({
+      key: `ref-${r.id}`,
+      kind: "referencedBy",
+      label: t("table.refBadge"),
+      logical: r.kind === "logical" || parseEdgeId(r.id)?.kind === "lfk",
+      refTable: r.from,
+      columns: (r.columns ?? []).map(([from, to]) => `${from} → ${to}`).join(", "),
+      // 注記は参照元テーブルの meta にあり、ここでは読み込んでいない（虫眼鏡の詳細で読む）
+      notes: "",
+      detail: <RelationDetailButton relationId={r.id} />,
+    });
+  }
+
+  if (rows.length === 0) {
+    return <p className="muted">{t("table.noConstraints")}</p>;
+  }
+
+  return (
+    <ScrollTable testId="constraint-table">
+      {rows.map((row) => {
+        // ドキュメントでは外部キー・論理外部制約だけ対応カラムを落とし、その場所を注記に譲る
+        const showColumns =
+          row.columns !== "" && (mode === "detail" || (row.kind !== "fk" && row.kind !== "logicalFk"));
+        return (
+          <tr key={row.key} className={styles.constraintRow} data-testid="constraint-row" data-kind={row.kind}>
+            <td className={styles.constraintKindCell}>
+              <span className={cx("badge", row.logical ? "badge-logical" : "badge-physical")}>
+                {row.label}
+              </span>
+              {row.badge !== undefined && <span className="badge">{row.badge}</span>}
+            </td>
+            {/* 説明。中身は種別とモードで変わるが、虫眼鏡だけはどの行でも右端にそろえる */}
+            <td>
+              <span className={styles.constraintDesc}>
+                {row.refTable !== undefined && (
+                  <TableLink tableId={row.refTable} onNavigate={onNavigate} />
+                )}
+                {showColumns &&
+                  // 相手テーブルに続くときだけ括弧で括る（単体なら構成カラムそのもの）
+                  (row.refTable !== undefined ? (
+                    <span className="mono muted">({row.columns})</span>
+                  ) : (
+                    <span className="mono">{row.columns}</span>
+                  ))}
+                {mode === "doc" && row.notes !== "" && (
+                  <span className={styles.constraintNotes}>{row.notes}</span>
+                )}
+                <span className={styles.constraintDetail}>{row.detail}</span>
+              </span>
+            </td>
+          </tr>
+        );
+      })}
+    </ScrollTable>
   );
 }
 
@@ -515,26 +633,38 @@ export function RelationKindBadge({ relation }: { relation: Relation }) {
   );
 }
 
-/** 所属ページ一覧（G-05 / O-04）。未配置なら明示する */
-function PagesSection({ table, onNavigate }: { table: Table; onNavigate?: () => void }) {
+/**
+ * 所属ページ一覧（G-05 / O-04）。未配置なら明示する。詳細とドキュメント（R-01）で共用する。
+ *
+ * @param headingClassName 見出しの追加クラス（TableInfo の外に置くドキュメントが渡す）
+ */
+export function PagesSection({
+  tableId,
+  onNavigate,
+  headingClassName,
+}: {
+  tableId: string;
+  onNavigate?: () => void;
+  headingClassName?: string;
+}) {
   const { t } = useI18n();
   const index = useAppStore((s) => s.index);
   const manifest = useAppStore((s) => s.manifest);
-  const entry = index?.tables?.find((x) => x.id === table.id);
+  const entry = index?.tables?.find((x) => x.id === tableId);
   const diagramIds = entry?.diagrams ?? [];
   return (
     <>
-      <h3>{t("table.pages")}</h3>
+      <h3 className={headingClassName}>{t("table.pages")}</h3>
       {diagramIds.length === 0 ? (
         <p className="muted">{t("table.unplacedNote")}</p>
       ) : (
-        // 制約・被参照と同じ「1件 = 1枠」で横に並べる
+        // 「1件 = 1枠」で横に並べる
         <ul className={styles.itemList} data-testid="page-list">
           {diagramIds.map((id) => {
             const ref = manifest?.diagrams?.find((d) => d.id === id);
             return (
               <li key={id} className={styles.item}>
-                <Link href={hrefs.erd(id, table.id)} onClick={onNavigate}>
+                <Link href={hrefs.erd(id, tableId)} onClick={onNavigate}>
                   {ref?.title ?? id}
                 </Link>
               </li>

@@ -145,6 +145,44 @@ async function main() {
   await page.mouse.move(5, 5);
   await fkPop.waitFor({ state: "detached" });
 
+  // 3b) 制約表: ドキュメントでは注記を出す。対応カラムは外部キー・論理外部制約だけ落とし
+  //（相手テーブル名と注記の間に挟むと読みの邪魔になる）、ほかの種別は構成カラムを出す
+  const cRows = (kind) => users.locator(`[data-testid="constraint-row"][data-kind="${kind}"]`);
+  const cText = async (kind) => (await cRows(kind).allInnerTexts()).join("\n");
+  check(
+    "the constraint table shows the logical unique note inline",
+    (await cText("logicalUnique")).includes("組織内でメールは重複しない"),
+  );
+  check(
+    "foreign keys drop the column mapping in doc mode",
+    !(await cText("logicalFk")).includes("→") && !(await cText("fk")).includes("→"),
+  );
+  check(
+    "foreign keys still name the related table in doc mode",
+    (await cRows("fk").locator('a[href="#/w/default/tables/public.organizations"]').count()) === 1,
+  );
+  // 外部キー以外は対応カラムを出す（注記が無い種別で行が空にならないように）
+  check(
+    "other kinds keep their columns in doc mode",
+    (await cText("pk")).includes("id") &&
+      (await cText("unique")).includes("email") &&
+      (await cText("index")).includes("created_at") &&
+      (await cText("logicalUnique")).includes("org_id") &&
+      (await cText("referencedBy")).includes("→"),
+  );
+  check("the primary key is one row of the constraint table", (await cRows("pk").count()) === 1);
+  // 項目名・種別が行の中にあるので、この2つの表には列見出し（thead）を出さない
+  check(
+    "the metadata and constraint tables carry no header row",
+    (await users.locator('[data-testid="table-meta"] thead').count()) === 0 &&
+      (await users.locator('[data-testid="constraint-table"] thead').count()) === 0,
+  );
+  check("the constraint table has two columns", (await cRows("fk").locator("td").count()) === 2);
+  check(
+    "the doc view links the pages the table is placed on",
+    (await users.locator('[data-testid="page-list"] a[href^="#/w/default/erd/"]').count()) > 0,
+  );
+
   // 4) 左パネルのクリック → 文書内の見出しへ（詳細に遷移しない）
   await page.locator(V + '[data-testid="lp-item"]', { hasText: "注文" }).first().locator("button").first().click();
   await page.waitForFunction(() => location.hash === "#/w/default/tables/doc/public.orders");

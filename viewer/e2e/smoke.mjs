@@ -166,28 +166,42 @@ async function main() {
   await page.waitForSelector('[data-testid="erd-node"]');
   check("navigates back to diagram with focus", page.url().includes("#/w/default/erd/"));
 
-  // 5b) 制約は種類ごとの見出しで平坦に並び、1件 = 1枠。外部キーは被参照と同じ形
-  //（相手テーブル + カラム対応）で見せ、制約名などは虫眼鏡のリレーション詳細に寄せる
+  // 5b) 制約と被参照は1つの表にまとめ、種別と説明の2列で見せる。詳細では説明に対応カラムを出し、
+  // 制約名などは虫眼鏡のリレーション詳細 / 制約詳細に寄せる
   await page.goto("file:///" + DIST + "#/w/default/tables/public.users");
   // 詳細は左パネルの範囲（コアドメインの3テーブル）を連続表示するので、users のセクションに絞って見る
   const U = '[data-doc-table="public.users"] ';
-  await page.waitForSelector(U + '[data-testid="fk-list"]');
+  /** 制約表の行を種別で絞る（複数件ありうるので本文はまとめて見る） */
+  const rows = (kind) => page.locator(U + `[data-testid="constraint-row"][data-kind="${kind}"]`);
+  const rowsText = async (kind) => (await rows(kind).allInnerTexts()).join("\n");
+  await page.waitForSelector(U + '[data-testid="constraint-table"]');
   check(
     "foreign keys show the referenced table with the column mapping",
-    (await page.locator(U + '[data-testid="fk-list"] a[href="#/w/default/tables/public.organizations"]').count()) === 1 &&
-      (await page.locator(U + '[data-testid="fk-list"]').textContent()).includes("org_id → id"),
+    (await rows("fk").locator('a[href="#/w/default/tables/public.organizations"]').count()) === 1 &&
+      (await rowsText("fk")).includes("org_id → id"),
   );
   check(
-    "the physical constraint name is not shown in the list",
-    !(await page.locator(U + '[data-testid="fk-list"]').textContent()).includes("users_org_id_fkey"),
+    "the physical constraint name is not shown in the table",
+    !(await rowsText("fk")).includes("users_org_id_fkey"),
   );
   // 一意制約・インデックスも同じ形（構成カラム + 虫眼鏡）。制約名は詳細ダイアログに寄せる
   check(
     "uniques and indexes show their columns without the constraint name",
-    (await page.locator(U + '[data-testid="unique-list"]').textContent()).trim() === "email" &&
-      !(await page.locator(U + '[data-testid="index-list"]').textContent()).includes("idx_users_created_at"),
+    (await rowsText("unique")).includes("email") &&
+      (await rowsText("index")).includes("created_at") &&
+      !(await rowsText("index")).includes("idx_users_created_at"),
   );
-  await page.locator(U + '[data-testid="lunique-list"] [data-testid="constraint-detail"]').click();
+  // 主キーも同じ表に並び、虫眼鏡から制約詳細を開ける
+  check("the primary key is one row of the same table", (await rows("pk").count()) === 1);
+  check("back-references are rows of the same table", (await rows("referencedBy").count()) > 0);
+  // 種別と説明の2列だけ。項目名が行の中にあるので列見出しは出さない
+  check("the constraint table has two columns and no header row", (await rows("pk").locator("td").count()) === 2);
+  check(
+    "the metadata and constraint tables carry no header row",
+    (await page.locator(U + '[data-testid="table-meta"] thead').count()) === 0 &&
+      (await page.locator(U + '[data-testid="constraint-table"] thead').count()) === 0,
+  );
+  await rows("logicalUnique").locator('[data-testid="constraint-detail"]').first().click();
   await page.waitForSelector(".dialog");
   const luniqueText = await page.locator(".dialog").textContent();
   check(
@@ -216,15 +230,15 @@ async function main() {
   );
   await page.keyboard.press("Escape");
 
-  // 5b-2) 外部制約の注記は一覧に出さず、詳細ダイアログでだけ読ませる
-  // （注記の長さで1件の幅が変わると、並んだ制約同士を見比べられなくなる）
+  // 5b-2) 詳細モードの制約表は注記を出さず、詳細ダイアログでだけ読ませる
+  // （注記の長さで行の高さが変わると、並んだ制約同士を見比べられなくなる）
   check(
-    "the constraint lists carry no notes",
-    !(await page.locator(U + '[data-testid="lfk-list"]').innerText()).includes("性能上") &&
-      !(await page.locator(U + '[data-testid="fk-list"]').innerText()).includes("組織には") &&
-      !(await page.locator(U + '[data-testid="lunique-list"]').innerText()).includes("組織内で"),
+    "the constraint table carries no notes in the detail view",
+    !(await rowsText("logicalFk")).includes("性能上") &&
+      !(await rowsText("fk")).includes("組織には") &&
+      !(await rowsText("logicalUnique")).includes("組織内で"),
   );
-  await page.locator(U + '[data-testid="lfk-list"] [data-testid="relation-detail"]').click();
+  await rows("logicalFk").locator('[data-testid="relation-detail"]').first().click();
   await page.waitForSelector(".dialog");
   check(
     "a logical FK shows its own note in the detail dialog",

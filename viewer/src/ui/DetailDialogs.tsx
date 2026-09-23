@@ -206,8 +206,8 @@ export function RelationDialog({ relationId }: { relationId: string }) {
 }
 
 /**
- * ユニーク制約・インデックス・論理一意制約の詳細。
- * 名前を持たない制約もあるため、テーブル内の位置（at）で指す。
+ * 主キー・ユニーク制約・インデックス・論理一意制約の詳細。
+ * 名前を持たない制約もあるため、テーブル内の位置（at）で指す（主キーは1つなので常に 0）。
  */
 export function ConstraintInfoDialog({
   tableId,
@@ -229,12 +229,17 @@ export function ConstraintInfoDialog({
     void loadTable(tableId);
   }, [tableId]);
 
-  const entry =
-    kind === "unique"
-      ? table?.uniques?.[at]
-      : kind === "index"
-        ? table?.indexes?.[at]
-        : table?.meta?.logicalUniques?.[at];
+  // 主キーは `primaryKey: string[]` で持っており制約名を持たないので、ここで同じ形に均す
+  const entry: { name?: string; columns: string[] } | undefined =
+    kind === "primaryKey"
+      ? (table?.primaryKey?.length ?? 0) > 0
+        ? { columns: table?.primaryKey ?? [] }
+        : undefined
+      : kind === "unique"
+        ? table?.uniques?.[at]
+        : kind === "index"
+          ? table?.indexes?.[at]
+          : table?.meta?.logicalUniques?.[at];
 
   if (!entry) {
     return (
@@ -246,11 +251,13 @@ export function ConstraintInfoDialog({
 
   const logical = kind === "logicalUnique";
   const kindLabel =
-    kind === "unique"
-      ? t("constraint.kindUnique")
-      : kind === "index"
-        ? t("constraint.kindIndex")
-        : t("constraint.kindLogicalUnique");
+    kind === "primaryKey"
+      ? t("constraint.kindPrimaryKey")
+      : kind === "unique"
+        ? t("constraint.kindUnique")
+        : kind === "index"
+          ? t("constraint.kindIndex")
+          : t("constraint.kindLogicalUnique");
   // インデックスのユニーク指定と、論理一意制約の注記はそれぞれの種別にしかない
   const unique = kind === "index" ? (entry as { unique?: boolean }).unique === true : undefined;
   const notes = logical ? (entry as { notes?: string }).notes : undefined;

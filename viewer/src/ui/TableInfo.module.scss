@@ -15,14 +15,6 @@
 }
 
 /* ビュー等の種別表示（O-10）。種別名は DB が返した原文なので翻訳せず等幅で出す */
-.object-kind {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0 0 8px;
-  font-size: 12px;
-}
-
 .object-kind-badge {
   font-family: var(--mono);
   font-size: 10px;
@@ -34,19 +26,30 @@
   color: var(--text-muted);
 }
 
-.table-comment {
-  margin: 0 0 8px;
+/* テーブルのメタデータ（項目名と値）。列見出しは出さず、項目名を各行の先頭に置く。
+   項目名の列は内容なりの固定幅で、どのテーブルでも値の始まる位置がそろうようにする */
+.meta-table .meta-key {
+  width: 132px;
+  white-space: nowrap;
 }
 
-.table-tags {
-  margin: 0 0 8px;
+/* 行見出しのセルは、thead の濃色ではなく通常のセルの体裁にする */
+.meta-table tbody th.meta-key {
+  background: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  border-bottom: 1px solid var(--divider);
+}
+
+.meta-table tbody tr:last-child th.meta-key {
+  border-bottom: none;
 }
 
 /* 注記。人が改行を入れて書くので、改行をそのまま見せ、長い語は折り返す。
    本文はインラインのまま流し、編集のペンはその末尾（最後の行の直後）に続ける
    （右端に寄せると、短い注記ではペンが本文から離れてどこの操作か分からない） */
 .table-notes {
-  margin: 0 0 8px;
   line-height: 1.7;
 }
 
@@ -124,7 +127,43 @@
   color: var(--accent);
 }
 
-/* 制約・被参照はすべて「1件 = 1枠」で区切る（モック 2a の被参照チップに揃えた） */
+/* 制約・被参照の表。列見出しは出さず、種別と説明の2列だけにする。
+   種別の列は折り返さず固定幅で、残りは説明に渡す */
+.constraint-kind-cell {
+  width: 132px;
+  white-space: nowrap;
+}
+
+/* 種別バッジは行頭に置くので、.badge の既定の左マージンを消す */
+.constraint-row :global(.badge):first-child {
+  margin-left: 0;
+}
+
+/* 説明。中身は種別ごとに違う（相手テーブル / 対応カラム / 注記）ので形を決めず、
+   虫眼鏡だけは右端にそろえる（どの行にもあり、縦に並ぶと押し先が探しやすい） */
+.constraint-desc {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.constraint-detail {
+  margin-left: auto;
+  align-self: flex-start;
+  /* セルの縦方向のパディング（11px）より詰めて、1行目の高さを押し広げない */
+  margin-top: -4px;
+}
+
+/* 注記は人が改行を入れて書くので、そのまま見せて長い語は折り返す */
+.constraint-notes {
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.7;
+}
+
+/* 配置ページは「1件 = 1枠」で区切る（モック 2a の被参照チップに揃えた） */
 .item-list {
   display: flex;
   flex-wrap: wrap;
@@ -143,21 +182,6 @@
   border-radius: 8px;
   background: var(--panel);
   font-size: 12.5px;
-}
-
-/* 論理制約は ER図の破線と同じ意味づけで、枠線も破線にする */
-.item-logical {
-  border-style: dashed;
-}
-
-/* チップ内の種別バッジは塗りのグレーピル。.badge は global 共有のため :global で狙う */
-.item :global(.badge) {
-  margin: 0;
-  border: none;
-  background: var(--divider);
-  color: var(--text-muted);
-  padding: 2px 6px;
-  border-radius: 5px;
 }
 
 /* リレーション詳細（虫眼鏡）。行の中では控えめに、ホバーで前に出す */

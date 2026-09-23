@@ -2,9 +2,11 @@
  * テーブル画面の右ペイン `#/tables/<id>`（詳細）/ `#/tables/doc/<id>`（ドキュメント。R-01〜R-05）。
  *
  * どちらも、左パネルに並んでいるテーブル群（appStore.tablesPanelList）をその順序のまま
- * **1本のスクロール文書**として描く。違いは1テーブルの中身だけ:
- * - 詳細: TableInfo（カラム表・制約・被参照・配置ページ …）
- * - ドキュメント: 見出し＋注記＋カラム表（物理名・論理名・タグ・注記）。型・キー・NULL は (i) に退避
+ * **1本のスクロール文書**として描く。骨組み（メタデータ表 → カラム表 → 制約表）は共通で、
+ * 違いは1テーブルの密度だけ:
+ * - 詳細: TableInfo（カラム表は全属性・制約表は対応カラム・配置ページ・定義 SQL …）
+ * - ドキュメント: カラム表は物理名・論理名・タグ・注記だけ（型・キー・NULL は (i) に退避）、
+ *   制約表は対応カラムの代わりに注記を出す
  *
  * 見出しの横には、どちらでも同じ導線（サーバーモードのみ）を置く: テーブル編集画面へのペンと、
  * 削除のごみ箱（TableDeleteButton）。誤って逆生成したテーブルを個別に消す唯一の導線なので、
@@ -44,7 +46,14 @@ import { NotFound } from "../ui/NotFound";
 import { PenIcon } from "../ui/icons";
 import { hrefs } from "../ui/router";
 import { ScrollTable } from "../ui/ScrollTable";
-import { NotesPen, TableInfo, TableLink, TableMetaHeader } from "../ui/TableInfo";
+import {
+  ConstraintTable,
+  NotesPen,
+  PagesSection,
+  TableInfo,
+  TableLink,
+  TableMetaTable,
+} from "../ui/TableInfo";
 import { TableDeleteButton } from "./TableDelete";
 import { ViewSwitch } from "./ViewSwitch";
 import styles from "./TablesDocument.module.scss";
@@ -320,10 +329,13 @@ export const TablesDocument = memo(function TablesDocument({
 
 // ------------------------------------------------------------------ 1テーブル分のセクション
 
-/** セクションの推定高さ（px）。画面外の contain-intrinsic-size に使う（見出し + 行数 × 行高 + 詳細の付随情報） */
+/**
+ * セクションの推定高さ（px）。画面外の contain-intrinsic-size に使う
+ * （見出し + メタデータ表 + 行数 × 行高 + 制約表 + 配置ページ + 詳細の付随情報）
+ */
 function estimateHeight(view: TablesView, columns: number | undefined): number {
   const rows = columns ?? 8;
-  return view === "detail" ? 420 + 46 * rows : 150 + 42 * rows;
+  return view === "detail" ? 460 + 46 * rows : 440 + 42 * rows;
 }
 
 const TableSection = memo(function TableSection({
@@ -382,21 +394,6 @@ const TableSection = memo(function TableSection({
             <TableDeleteButton tableId={entry.id} />
           </span>
         )}
-        {view === "doc" && table !== null && (
-          <span className={styles.headActions}>
-            <InfoPopover
-              content={<TableFacts table={table} entry={entry} />}
-              icon={<InfoIcon />}
-              label={t("doc.showInfo")}
-              testId={`doc-table-info-${entry.id}`}
-              dialogTitle={
-                <>
-                  {title} <span className="mono muted">{entry.id}</span>
-                </>
-              }
-            />
-          </span>
-        )}
       </div>
       {view === "detail" ? (
         <TableInfo tableId={entry.id} fullHeight canEdit={canEdit} />
@@ -406,13 +403,14 @@ const TableSection = memo(function TableSection({
         <p className="muted">{t("table.loading")}</p>
       ) : (
         <>
-          <TableMetaHeader
+          <h3 className={styles.sectionHeading}>{t("table.metadata")}</h3>
+          <TableMetaTable
             table={table}
             showEmptyNotes
             onEdit={canEdit ? () => onEditMeta({ kind: "table", tableId: entry.id }) : undefined}
             editTestId={`doc-table-meta-edit-${entry.id}`}
           />
-          <h3 className={styles.columnsHeading}>{t("table.columns")}</h3>
+          <h3 className={styles.sectionHeading}>{t("table.columns")}</h3>
           {/* 表の器・濃色ヘッダ・行の体裁は詳細（TableInfo）と同じ ScrollTable。高さ制限は付けない */}
           <ScrollTable
             testId="doc-columns"
@@ -438,6 +436,11 @@ const TableSection = memo(function TableSection({
               />
             ))}
           </ScrollTable>
+          {/* 制約・被参照。対応カラムの代わりに注記を出し、細部は虫眼鏡の詳細に寄せる */}
+          <h3 className={styles.sectionHeading}>{t("table.constraints")}</h3>
+          <ConstraintTable table={table} mode="doc" />
+          {/* 配置ページ（G-05 / O-04）。読みながら ER図へ渡れる導線は詳細と同じく出す */}
+          <PagesSection tableId={entry.id} headingClassName={styles.sectionHeading} />
         </>
       )}
     </section>
@@ -631,40 +634,6 @@ function ColumnFacts({
               {tag}
             </span>
           ))}
-      </Fact>
-    </dl>
-  );
-}
-
-function TableFacts({ table, entry }: { table: Table; entry: IndexTable }) {
-  const { t } = useI18n();
-  const manifest = useAppStore((s) => s.manifest);
-  const pages = entry.diagrams ?? [];
-  const pageTitle = (id: string): string => manifest?.diagrams?.find((d) => d.id === id)?.title ?? id;
-  const count = (n: number | undefined): string => (n ? t("doc.info.count", { n }) : t("doc.info.none"));
-  return (
-    <dl className={styles.facts}>
-      <Fact label={t("table.primaryKey")}>
-        {(table.primaryKey?.length ?? 0) > 0 && <span className="mono">{table.primaryKey?.join(", ")}</span>}
-      </Fact>
-      <Fact label={t("table.uniques")}>{count(table.uniques?.length)}</Fact>
-      <Fact label={t("table.indexes")}>{count(table.indexes?.length)}</Fact>
-      <Fact label={t("table.foreignKeys")}>{count(table.foreignKeys?.length)}</Fact>
-      <Fact label={t("table.logicalUniques")}>{count(table.meta?.logicalUniques?.length)}</Fact>
-      <Fact label={t("table.logicalForeignKeys")}>{count(table.meta?.logicalForeignKeys?.length)}</Fact>
-      <Fact label={t("table.colComment")}>{table.comment ?? ""}</Fact>
-      <Fact label={t("table.pages")}>
-        {pages.length === 0 ? (
-          <span className="muted">{t("table.unplacedNote")}</span>
-        ) : (
-          <span className={styles.pages}>
-            {pages.map((d) => (
-              <Link key={d} href={hrefs.erd(d, entry.id)}>
-                {pageTitle(d)}
-              </Link>
-            ))}
-          </span>
-        )}
       </Fact>
     </dl>
   );

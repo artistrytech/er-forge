@@ -24,8 +24,11 @@ export type Fatal =
   /** URL が存在しないワークスペースを指している（一覧への導線を出す） */
   | { kind: "workspace-not-found"; id: string };
 
-/** 詳細ダイアログで開ける制約の種類（リレーション以外。テーブル詳細の虫眼鏡から開く） */
-export type ConstraintKind = "unique" | "index" | "logicalUnique";
+/**
+ * 詳細ダイアログで開ける制約の種類（リレーション以外。テーブル詳細の虫眼鏡から開く）。
+ * 主キーはテーブルに1つなので `at` は常に 0
+ */
+export type ConstraintKind = "primaryKey" | "unique" | "index" | "logicalUnique";
 
 /** 左パネルのレーン（アイコンレール: ページ / 全て / 検索） */
 export type PanelLane = "pages" | "all" | "search";

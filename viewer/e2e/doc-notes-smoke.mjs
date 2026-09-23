@@ -172,7 +172,7 @@ async function main() {
     // ---- 詳細でも注記を編集できる（テーブル・カラム・物理FK の多重度の補足・論理外部制約） ----
     const itemsFile = join(dir, "workspace-default", "data", "schema", "public", "order_items.js");
     await page.goto(`${url}#/w/default/tables/public.order_items`);
-    await page.waitForSelector('[data-doc-table="public.order_items"] [data-testid="fk-list"]', { timeout: 15000 });
+    await page.waitForSelector('[data-doc-table="public.order_items"] [data-testid="constraint-row"][data-kind="fk"]', { timeout: 15000 });
     const items = page.locator('[data-doc-table="public.order_items"]');
     const applyNotes = async (text) => {
       await page.waitForSelector('[data-testid="notes-input"]', { timeout: 5000 });
@@ -193,7 +193,7 @@ async function main() {
       await page.locator(`[data-testid="${testId}-apply"]`).click();
       await page.waitForSelector(`[data-testid="${testId}-editor"]`, { state: "detached", timeout: 15000 });
     };
-    await items.locator('[data-testid="fk-list"] [data-testid="relation-detail"]').first().click();
+    await items.locator('[data-testid="constraint-row"][data-kind="fk"] [data-testid="relation-detail"]').first().click();
     await page.waitForSelector('[data-testid="relation-cardinality-notes"]', { timeout: 5000 });
     check(
       "detail: the relation dialog shows the cardinality note with a pen",
@@ -211,7 +211,7 @@ async function main() {
     await page.keyboard.press("Escape");
     await page.waitForSelector(".dialog", { state: "detached", timeout: 5000 });
     // 論理外部制約の注記: 同じくリレーション詳細の中で
-    await items.locator('[data-testid="lfk-list"] [data-testid="relation-detail"]').first().click();
+    await items.locator('[data-testid="constraint-row"][data-kind="logicalFk"] [data-testid="relation-detail"]').first().click();
     await page.waitForSelector('[data-testid="relation-notes"]', { timeout: 5000 });
     await inlineEdit("relation-notes", "在庫への論理参照（変更）");
     await page.waitForFunction(
@@ -246,14 +246,14 @@ async function main() {
     check("detail: editing keeps the URL in detail mode", page.url().includes("#/w/default/tables/public.order_items"));
 
     // ---- 詳細: 論理外部制約をリレーション詳細から削除する（確認をはさんで即時保存） ----
-    await items.locator('[data-testid="lfk-list"] [data-testid="relation-detail"]').first().click();
+    await items.locator('[data-testid="constraint-row"][data-kind="logicalFk"] [data-testid="relation-detail"]').first().click();
     await page.waitForSelector('[data-testid="relation-delete"]', { timeout: 5000 });
     await page.locator('[data-testid="relation-delete"]').click();
     await page.waitForSelector('[data-testid="constraint-delete-confirm"]', { timeout: 5000 });
     await page.locator('[data-testid="constraint-delete-confirm"]').click();
     await page.waitForSelector(".dialog", { state: "detached", timeout: 15000 });
     await page.waitForFunction(
-      () => document.querySelector('[data-doc-table="public.order_items"] [data-testid="lfk-list"]') === null,
+      () => document.querySelector('[data-doc-table="public.order_items"] [data-testid="constraint-row"][data-kind="logicalFk"]') === null,
       null,
       { timeout: 15000 },
     );
@@ -315,13 +315,13 @@ async function main() {
     await page.goto(`${url}#/w/default/erd/users`);
     await page.waitForSelector('.react-flow__node[data-id="public.user_profiles"]', { timeout: 15000 });
     await page.dblclick('.react-flow__node[data-id="public.user_profiles"]');
-    await page.waitForSelector('[data-testid="lunique-list"]', { timeout: 15000 });
+    await page.waitForSelector('[data-testid="constraint-row"][data-kind="logicalUnique"]', { timeout: 15000 });
     check(
       "ER: the table dialog shows the edit pens in server mode",
       (await page.locator('[data-testid="table-meta-edit-public.user_profiles"]').count()) === 1 &&
         (await page.locator('[data-testid="column-meta-edit-full_name"]').count()) === 1,
     );
-    await page.locator('[data-testid="lunique-list"] [data-testid="constraint-detail"]').click();
+    await page.locator('[data-testid="constraint-row"][data-kind="logicalUnique"] [data-testid="constraint-detail"]').click();
     await page.waitForSelector('[data-testid="constraint-notes-value"]', { timeout: 5000 });
     check("ER: the constraint dialog stacks on the table dialog", (await page.locator('[role="dialog"]').count()) === 2);
     await inlineEdit("constraint-notes-value", "1ユーザーにつきプロファイルは1件（ER図から）");
@@ -329,7 +329,7 @@ async function main() {
     check("ER: the logical unique note is written from the ER dialog", readFileSync(profilesFile, "utf-8").includes('notes: "1ユーザーにつきプロファイルは1件（ER図から）"'));
     await page.keyboard.press("Escape");
     await page.waitForFunction(() => document.querySelectorAll('[role="dialog"]').length === 1, null, { timeout: 5000 });
-    check("ER: Esc closes only the top dialog; the table dialog remains", (await page.locator('[data-testid="lunique-list"]').count()) === 1);
+    check("ER: Esc closes only the top dialog; the table dialog remains", (await page.locator('[data-testid="constraint-row"][data-kind="logicalUnique"]').count()) === 1);
     // テーブル詳細ダイアログの行末のペン → 論理情報のダイアログが重なる
     await page.locator('[data-testid="column-meta-edit-full_name"]').click();
     await page.waitForSelector('[data-testid="meta-display-name"]', { timeout: 5000 });
@@ -347,13 +347,13 @@ async function main() {
     check("ER: the table dialog stays open and reflects the change", (await page.locator('[role="dialog"]').count()) === 1);
 
     // ---- ER図: 論理一意制約を制約詳細から削除する（テーブル詳細は開いたまま） ----
-    await page.locator('[data-testid="lunique-list"] [data-testid="constraint-detail"]').click();
+    await page.locator('[data-testid="constraint-row"][data-kind="logicalUnique"] [data-testid="constraint-detail"]').click();
     await page.waitForSelector('[data-testid="constraint-delete"]', { timeout: 5000 });
     await page.locator('[data-testid="constraint-delete"]').click();
     await page.waitForSelector('[data-testid="constraint-delete-confirm"]', { timeout: 5000 });
     await page.locator('[data-testid="constraint-delete-confirm"]').click();
     await page.waitForFunction(() => document.querySelectorAll('[role="dialog"]').length === 1, null, { timeout: 15000 });
-    await page.waitForFunction(() => document.querySelector('[data-testid="lunique-list"]') === null, null, { timeout: 15000 });
+    await page.waitForFunction(() => document.querySelector('[data-testid="constraint-row"][data-kind="logicalUnique"]') === null, null, { timeout: 15000 });
     check("ER: a logical unique can be deleted from the constraint dialog", !readFileSync(profilesFile, "utf-8").includes("luk_user_profiles_user"));
     check("ER: the table dialog stays open after the deletion", (await page.locator('[data-testid="table-columns"]').count()) === 1);
 

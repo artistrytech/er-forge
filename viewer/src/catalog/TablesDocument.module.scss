@@ -95,16 +95,8 @@
   cursor: default;
 }
 
-/* 見出し右端の操作（ドキュメントのみ: (i)） */
-.head-actions {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-left: auto;
-}
-
-/* 詳細と同じ h3（TableInfo の見出し） */
-.columns-heading {
+/* 詳細と同じ h3（TableInfo の見出し）。メタデータ・カラム・制約の各表の上に置く */
+.section-heading {
   margin: 20px 0 10px;
   font-size: 12px;
   font-weight: 700;
@@ -132,7 +124,7 @@
   line-height: 1.7;
 }
 
-/* (i) の中身: 定義リスト */
+/* カラムの (i) の中身: 定義リスト */
 .facts {
   margin: 0;
   display: flex;
@@ -178,12 +170,6 @@
 .key-unique {
   background: var(--divider);
   color: var(--text-muted);
-}
-
-.pages {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 12px;
 }
 
 .dialog-logical {
