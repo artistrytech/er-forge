@@ -75,6 +75,9 @@ const LAZY_RENDER_FROM = 30;
 /** 見出しへの合わせ直しを、文書の大きさの変化が止まってから終えるまでの時間（ms） */
 const ALIGN_SETTLE_MS = 1500;
 
+/** 人がスクロールしようとした合図。見出しへの合わせ直しを打ち切る（pointerdown はスクロールバーのドラッグ） */
+const USER_SCROLL_EVENTS = ["wheel", "touchstart", "keydown", "pointerdown"] as const;
+
 export const TablesDocument = memo(function TablesDocument({
   view,
   tableId,
@@ -121,6 +124,10 @@ export const TablesDocument = memo(function TablesDocument({
 
   /** 進行中の合わせ直しを止める関数。次の移動が始まったとき・離れるときに呼ぶ */
   const stopAlign = useRef<() => void>(() => {});
+  /** 見出しへの合わせ直しの最中か。この間はスクロール追随で「読んでいる位置」を書き換えない */
+  const aligning = useRef(false);
+  /** スクロール追随の判定を1回走らせる（合わせ直しを終えたとき、止めていた間のスクロールを反映する） */
+  const requestSpy = useRef<() => void>(() => {});
 
   /**
    * 見出しを上端（バーの下端）へ合わせる。
@@ -129,9 +136,11 @@ export const TablesDocument = memo(function TablesDocument({
    * `content-visibility: auto` の推定高さで置かれており、読み込み・描画が進むと実寸に変わって
    * 目的の見出しがずれる（フォントの差し替えでも動く）。目的のセクション自身が最後で
    * まだ小さいと、末尾で止まって届かないこともある。そこで、移動後しばらくは文書の大きさの変化
-   * （ResizeObserver）を見張り、**こちらが置いたスクロール位置のまま**で見出しが上端から外れて
-   * いれば合わせ直す。人がその間にスクロールしていれば（位置が変わっている）手を出さず、
-   * ホイール・タッチ・キーの入力があれば打ち切る。変化が止まって少し経ったら終える
+   * （ResizeObserver）を見張り、見出しが上端から外れていれば合わせ直す。
+   * 人の操作（ホイール・タッチ・キー・スクロールバーのドラッグ）があれば打ち切る。
+   * スクロール位置の変化では判定しない: 上のセクションが推定高さから実寸へ変わると、
+   * ブラウザのスクロールアンカリングが位置を勝手に動かすため、人のスクロールと区別できない。
+   * 変化が止まって少し経ったら終える
    */
   const alignTo = useCallback((el: HTMLElement): void => {
     stopAlign.current();
@@ -141,13 +150,15 @@ export const TablesDocument = memo(function TablesDocument({
     const offset = (): number =>
       el.getBoundingClientRect().top - (barRef.current?.getBoundingClientRect().bottom ?? 0);
     el.scrollIntoView({ block: "start" });
-    let placed = scroller?.scrollTop ?? 0;
+    aligning.current = true;
     let timer = 0;
     const stop = (): void => {
       window.clearTimeout(timer);
       observer.disconnect();
-      for (const ev of ["wheel", "touchstart", "keydown"]) scroller?.removeEventListener(ev, stop);
+      for (const ev of USER_SCROLL_EVENTS) scroller?.removeEventListener(ev, stop);
+      aligning.current = false;
       stopAlign.current = () => {};
+      requestSpy.current();
     };
     // 変化が止まってからこの時間だけ待って終える（読み込みの間隔より長め）
     const armTimer = (): void => {
@@ -159,15 +170,11 @@ export const TablesDocument = memo(function TablesDocument({
         stop();
         return;
       }
-      const untouched = (scroller?.scrollTop ?? 0) === placed;
-      if (untouched && Math.abs(offset()) > 1) {
-        el.scrollIntoView({ block: "start" });
-        placed = scroller?.scrollTop ?? 0;
-      }
+      if (Math.abs(offset()) > 1) el.scrollIntoView({ block: "start" });
       armTimer();
     });
     if (root !== null) observer.observe(root);
-    for (const ev of ["wheel", "touchstart", "keydown"]) {
+    for (const ev of USER_SCROLL_EVENTS) {
       scroller?.addEventListener(ev, stop, { passive: true });
     }
     armTimer();
@@ -248,6 +255,10 @@ export const TablesDocument = memo(function TablesDocument({
     let raf = 0;
     const update = (): void => {
       raf = 0;
+      // 見出しへ移動した直後は、移動先が「読んでいる位置」（jump が書いた）。合わせ直しの途中の
+      // 位置で書き換えると、上のセクションが実寸に変わる間に一つ上のテーブルが選ばれてしまう。
+      // 合わせ直しを終えたときに改めて判定する（requestSpy）
+      if (aligning.current) return;
       // 見出しは貼り付いたバーの下にそろう（scroll-margin-top）ので、バーの下端を基準にする
       const top = barRef.current?.getBoundingClientRect().bottom ?? scroller.getBoundingClientRect().top;
       const sections = rootRef.current?.querySelectorAll<HTMLElement>("[data-doc-table]") ?? [];
@@ -268,7 +279,9 @@ export const TablesDocument = memo(function TablesDocument({
       if (raf === 0) raf = requestAnimationFrame(update);
     };
     scroller.addEventListener("scroll", onScroll, { passive: true });
+    requestSpy.current = onScroll;
     return () => {
+      requestSpy.current = () => {};
       scroller.removeEventListener("scroll", onScroll);
       if (raf !== 0) cancelAnimationFrame(raf);
     };
