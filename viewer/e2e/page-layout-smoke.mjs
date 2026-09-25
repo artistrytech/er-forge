@@ -137,7 +137,8 @@ async function main() {
     // 「未配置」は index.tables[].diagrams が空という導出結果（K-12 §7.1）。
     // 左パネル「ページ」レーンの未配置疑似ページを選ぶとトレイが現れる（回答3）
     const V = '[data-testid="panel-slot"]:not([data-hidden]) '; // 表示中パネルに限定（両パネル常時マウント）
-    await page.click(V + '[data-testid="unplaced-page"]');
+    await page.click(V + '[data-testid="page-select"]');
+    await page.click(V + '[data-testid="page-option"][data-page-id="__unplaced__"]');
     await page.waitForSelector('[data-testid="unplaced-tray"]', { timeout: 10000 });
     const inTray = await page.locator('[data-testid="unplaced-tray"]').textContent();
     check("K-12: removed table appears in the unplaced tray", inTray.includes("user_sessions"));
@@ -197,7 +198,8 @@ async function main() {
     check("N-04: Delete key removes the selected node",
         nodesInFile(dir, "users")["public.user_sessions"] === undefined);
 
-    await page.click(V + '[data-testid="unplaced-page"]');
+    await page.click(V + '[data-testid="page-select"]');
+    await page.click(V + '[data-testid="page-option"][data-page-id="__unplaced__"]');
     await page.waitForSelector('[data-testid="unplaced-tray"]');
     await page.locator('[data-testid="unplaced-tray"] [data-testid="tray-item"]').first()
         .dragTo(page.locator(".react-flow__pane"), { targetPosition: { x: 200, y: 500 } });
@@ -291,7 +293,8 @@ async function main() {
         (await page.locator('nav [data-disabled="true"]').count()) === 3);
     // ページを選んでも編集ルートのまま（編集が終わらない）
     await page.click(V + '[data-testid="lane-pages"]');
-    await page.click(V + '[data-testid="page-row"] button');
+    await page.click(V + '[data-testid="page-select"]');
+    await page.locator(V + '[data-testid="page-option"]').first().click();
     await page.waitForFunction(() => location.hash.endsWith("/edit"), null, { timeout: 5000 });
     check("selecting a page keeps the edit route", true);
     await page.goto(`${url}#/w/default/erd/billing/edit`);

@@ -27,11 +27,6 @@
 
 /* ---- ページ管理と未配置トレイ ---- */
 
-.sidebar-page-row {
-  display: flex;
-  align-items: center;
-}
-
 /* 「ページ」見出しの右側（ペン = ページ管理ダイアログを開く） */
 .page-head-actions {
   display: flex;
@@ -242,9 +237,9 @@
   color: var(--ink-muted);
 }
 
-/* ---- 「ページ」レーン: ページ一覧とテーブル一覧を独立にスクロールさせる ----
-   レーン全体をパネルの高さに収め（パネル側はスクロールしない）、各区画の一覧だけが自前で
-   スクロールする。ページ一覧は上限 40% までで、残りはテーブル（または未配置トレイ）が使う */
+/* ---- 「ページ」レーン: テーブル一覧だけをスクロールさせる ----
+   レーン全体をパネルの高さに収め（パネル側はスクロールしない）、ページはプルダウンで
+   高さを取らないので、残りはテーブル（または未配置トレイ）の一覧が使う */
 .lp-lane-split {
   flex: 1;
   min-height: 0;
@@ -258,10 +253,9 @@
 }
 
 .lp-lane-split > .sidebar-section:first-child {
-  max-height: 40%;
+  flex: none;
 }
 
-.lp-lane-split .page-list,
 .lp-lane-split .lp-list {
   min-height: 0;
   overflow-y: auto;
@@ -504,4 +498,55 @@
   background: var(--accent-soft);
   color: var(--accent);
   font-weight: 600;
+}
+
+/* ---- ページ選択（見た目は強調しないページ行。押すと同じ行の一覧が下に開き、選択中だけ強調する） ---- */
+
+.page-select {
+  position: relative;
+  /* 開いた一覧を下の「テーブル」区画より手前に出す */
+  z-index: 3;
+}
+
+.page-select-trigger:disabled {
+  cursor: default;
+}
+
+/* ページ名は省略せず折り返し、件数はその下に置く（右に並べると長い名前が押し潰される） */
+.page-option-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.page-option-text .sidebar-count {
+  font-weight: 400;
+}
+
+.page-select-chevron {
+  flex: none;
+  transition: transform 0.15s;
+}
+
+.page-select-chevron.open {
+  transform: rotate(180deg);
+}
+
+.page-select-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 50vh;
+  overflow-y: auto;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
 }

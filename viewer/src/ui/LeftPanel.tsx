@@ -4,7 +4,7 @@
  * scope 違いで共用する（差は挙動のみ: 遷移先と、ER×編集時だけ出る配置編集の導線）。
  *
  * - 64px のアイコンレール（ページ / 全て / 検索）＋隣接する一覧パネル。
- * - 「ページ」: ページ一覧＋選択ページのテーブル＋未配置トレイ（{@link PagesLane}）。
+ * - 「ページ」: ページ選択（プルダウン）＋選択ページのテーブル＋未配置トレイ（{@link PagesLane}）。
  * - 「全て」: 全テーブル＋テーブル名フィルタ。
  * - 「検索」: カラム・タグ含む総合検索（一致条件つき）。
  *
@@ -46,6 +46,7 @@ import { Dialog } from "./Dialog";
 import { PenIcon } from "./icons";
 import { Link } from "./Link";
 import { hrefs, useRoute } from "./router";
+import { useDropdown } from "./useDropdown";
 import { cx } from "../lib/cx";
 import { useSessionState } from "../lib/useSessionState";
 import styles from "./LeftPanel.module.scss";
@@ -510,42 +511,21 @@ function PagesLane({
             </span>
           )}
         </div>
-        {/* ページが増えても下の「テーブル」が押し出されないよう、一覧の側だけをスクロールさせる（.lp-lane-split） */}
-        <ul className={styles.pageList} data-testid="page-list">
-          {diagrams.map((d) => (
-            <li
-              key={d.id}
-              className={styles.sidebarPageRow}
-              data-testid="page-row"
-              data-active={d.id === selectedPage ? "true" : undefined}
-            >
-              <button
-                type="button"
-                className={cx(styles.lpPageRow, d.id === selectedPage && styles.active)}
-                onClick={() => selectPage(d.id)}
-              >
-                <span className={styles.lpItemName}>{d.title ?? d.id}</span>
-                <span className={styles.sidebarCount}>
-                  {t("sidebar.tableCount", { n: tableCountByDiagram.get(d.id) ?? 0 })}
-                </span>
-              </button>
-            </li>
-          ))}
-          {unplaced.length > 0 && (
-            <li>
-              <button
-                type="button"
-                data-testid="unplaced-page"
-                data-active={selectedPage === UNPLACED ? "true" : undefined}
-                className={cx(styles.lpPageRow, selectedPage === UNPLACED && styles.active)}
-                onClick={() => selectPage(UNPLACED)}
-              >
-                <span className={cx(styles.lpItemName, "muted")}>{t("sidebar.unplaced")}</span>
-                <span className={styles.sidebarCount}>{unplaced.length}</span>
-              </button>
-            </li>
-          )}
-        </ul>
+        {/* ページが増えても下の「テーブル」が押し出されないよう、一覧ではなくプルダウンで選ばせる */}
+        <PageSelect
+          options={[
+            ...diagrams.map((d) => ({
+              id: d.id,
+              label: d.title ?? d.id,
+              count: t("sidebar.tableCount", { n: tableCountByDiagram.get(d.id) ?? 0 }),
+            })),
+            ...(unplaced.length > 0
+              ? [{ id: UNPLACED, label: t("sidebar.unplaced"), count: t("sidebar.tableCount", { n: unplaced.length }), muted: true }]
+              : []),
+          ]}
+          value={selectedPage}
+          onChange={selectPage}
+        />
       </div>
 
       {showTray ? (
@@ -586,6 +566,109 @@ function PagesLane({
         </div>
       )}
     </div>
+  );
+}
+
+interface PageOption {
+  id: string;
+  label: string;
+  count: string;
+  /** 未配置の疑似ページ（実ページと見分けられるよう淡く出す） */
+  muted?: boolean;
+}
+
+/**
+ * 「ページ」レーンのページ選択。見た目は従来のページ一覧の行（強調なし）にし、
+ * 押すとその下に同じ見た目の行でページ一覧を出す（ネイティブの <select> は行の見た目を保てない）。
+ */
+function PageSelect({
+  options,
+  value,
+  onChange,
+}: {
+  options: PageOption[];
+  value: string | undefined;
+  onChange: (id: string) => void;
+}) {
+  const { t } = useI18n();
+  const { open, setOpen, toggle, ref } = useDropdown();
+  const listRef = useRef<HTMLDivElement>(null);
+  const current = options.find((o) => o.id === value);
+
+  // 開いたら選択中の行へフォーカスする（キーボードだけで選べるように）
+  useEffect(() => {
+    if (!open) return;
+    const list = listRef.current;
+    const selected = list?.querySelector<HTMLButtonElement>('[aria-selected="true"]');
+    (selected ?? list?.querySelector("button"))?.focus();
+    selected?.scrollIntoView({ block: "nearest" });
+  }, [open]);
+
+  const pick = (id: string): void => {
+    setOpen(false);
+    if (id !== value) onChange(id);
+  };
+
+  const onListKeyDown = (e: React.KeyboardEvent<HTMLDivElement>): void => {
+    const step = e.key === "ArrowDown" ? 1 : e.key === "ArrowUp" ? -1 : 0;
+    if (step === 0) return;
+    e.preventDefault();
+    const buttons = [...(listRef.current?.querySelectorAll("button") ?? [])];
+    const at = buttons.indexOf(document.activeElement as HTMLButtonElement);
+    buttons[(at + step + buttons.length) % buttons.length]?.focus();
+  };
+
+  return (
+    <div className={styles.pageSelect} ref={ref}>
+      <button
+        type="button"
+        className={cx(styles.lpPageRow, styles.pageSelectTrigger)}
+        data-testid="page-select"
+        data-value={value}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={t("sidebar.pages")}
+        disabled={options.length === 0}
+        onClick={toggle}
+      >
+        {current !== undefined ? <PageOptionText option={current} /> : <span />}
+        <ChevronIcon open={open} />
+      </button>
+      {open && (
+        <div
+          ref={listRef}
+          className={styles.pageSelectList}
+          role="listbox"
+          aria-label={t("sidebar.pages")}
+          onKeyDown={onListKeyDown}
+        >
+          {options.map((o) => (
+            <button
+              key={o.id}
+              type="button"
+              role="option"
+              aria-selected={o.id === value}
+              className={cx(styles.lpPageRow, o.id === value && styles.active)}
+              data-testid="page-option"
+              data-page-id={o.id}
+              onClick={() => pick(o.id)}
+            >
+              <PageOptionText option={o} />
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** ページ名（省略せず折り返す）と、その下に件数 */
+function PageOptionText({ option }: { option: PageOption }) {
+  return (
+    <span className={styles.pageOptionText}>
+      <span className={cx(styles.lpItemName, option.muted === true && "muted")}>{option.label}</span>
+      <span className={styles.sidebarCount}>{option.count}</span>
+    </span>
   );
 }
 
@@ -1020,6 +1103,22 @@ function AllIcon() {
       <circle cx="3.5" cy="6" r="1.2" fill="currentColor" stroke="none" />
       <circle cx="3.5" cy="12" r="1.2" fill="currentColor" stroke="none" />
       <circle cx="3.5" cy="18" r="1.2" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+function ChevronIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      className={cx(styles.pageSelectChevron, open && styles.open)}
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      aria-hidden="true"
+    >
+      <polyline points="6 9 12 15 18 9" />
     </svg>
   );
 }

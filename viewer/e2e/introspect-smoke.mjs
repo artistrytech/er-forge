@@ -232,7 +232,8 @@ async function main() {
     // トレイは「未配置」の擬似ページを選んだときに出る（左パネルの2レーン構成）。
     // ER用・テーブル用の2パネルが常時マウントされているため、表示中のものに限定する
     const visiblePanel = '[data-testid="panel-slot"]:not([data-hidden]) ';
-    await page.click(visiblePanel + '[data-testid="unplaced-page"]');
+    await page.click(visiblePanel + '[data-testid="page-select"]');
+    await page.click(visiblePanel + '[data-testid="page-option"][data-page-id="__unplaced__"]');
     await page.click(visiblePanel + '[data-testid="tray-auto-place"]');
     await page.waitForSelector('.react-flow__node[data-id="public.users"]', { timeout: 20000 });
     await page.keyboard.press("Control+s");
