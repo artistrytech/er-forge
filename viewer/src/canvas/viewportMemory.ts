@@ -61,6 +61,19 @@ export function readViewport(diagramId: string): StoredViewport | null {
   return isViewport(v) ? { x: v.x, y: v.y, zoom: v.zoom } : null;
 }
 
+/** ページIDが変わったとき、覚えていた視点を新しい ID へ引き継ぐ */
+export function moveViewport(fromId: string, toId: string): void {
+  const all = readAll();
+  if (!(fromId in all)) return;
+  all[toId] = all[fromId]!;
+  delete all[fromId];
+  try {
+    sessionStorage.setItem(storageKey(), JSON.stringify(all));
+  } catch {
+    // sessionStorage が使えなくても致命的ではない（復元されないだけ）
+  }
+}
+
 export function saveViewport(diagramId: string, viewport: StoredViewport): void {
   if (!isViewport(viewport)) return;
   const all = readAll();

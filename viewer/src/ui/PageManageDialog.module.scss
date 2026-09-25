@@ -31,7 +31,7 @@
   white-space: nowrap;
 }
 
-/* ページID は改名しても変わらない（ファイル名）。名前と取り違えないよう控えめに置く */
+/* ページID はファイル名。名前と取り違えないよう控えめに置く */
 .row-id {
   flex: 0 1 auto;
   min-width: 0;
@@ -84,15 +84,28 @@
 }
 
 .row-form {
+  width: 100%;
+}
+
+.row-fields {
   display: flex;
   align-items: center;
   gap: 6px;
-  width: 100%;
 }
 
 .row-input {
   flex: 1 1 auto;
   min-width: 0;
+}
+
+.row-id-input {
+  flex: 0 1 140px;
+  min-width: 0;
+}
+
+.row-note {
+  margin: 6px 0 0;
+  font-size: 12px;
 }
 
 .row-confirm {

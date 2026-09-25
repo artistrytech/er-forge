@@ -238,6 +238,49 @@ class DiagramServiceTest {
         assertEquals(5, ref.order());
     }
 
+    // I-03: ページIDの変更はファイル名の変更。manifest.js / index.js の参照も新しい ID に追随する
+    @Test
+    void patchChangesPageId() throws Exception {
+        var outcome = service.patch(dataDir, "core", json.readTree("""
+                { "baseHash": "%s", "newId": "domain", "title": "ドメイン" }
+                """.formatted(hashOf("diagrams/core.js"))));
+
+        assertInstanceOf(DiagramService.Ok.class, outcome);
+        var ok = (DiagramService.Ok) outcome;
+        assertFalse(Files.exists(dataDir.resolve("diagrams/core.js")));
+        assertTrue(ok.writtenFiles().containsKey("diagrams/core.js"));
+        assertNull(ok.writtenFiles().get("diagrams/core.js"));
+        assertEquals(hashOf("diagrams/domain.js"), ok.writtenFiles().get("diagrams/domain.js"));
+
+        DiagramPage page = parser.parseDiagram(
+                Files.readString(dataDir.resolve("diagrams/domain.js"), StandardCharsets.UTF_8)).value();
+        assertEquals("domain", page.id());
+        assertEquals("ドメイン", page.title());
+        assertEquals(1, page.order());
+        assertEquals(new Point(120, 80), page.nodes().get("public.users").pos());
+
+        Manifest manifest = new ProjectStore().readManifestOnly(dataDir);
+        assertEquals(List.of("domain"), manifest.diagrams().stream().map(Manifest.DiagramRef::id).toList());
+        assertEquals("diagrams/domain.js", manifest.diagrams().get(0).file());
+        String index = Files.readString(dataDir.resolve("index.js"), StandardCharsets.UTF_8);
+        assertTrue(index.contains("\"domain\""));
+        assertFalse(index.contains("\"core\""));
+    }
+
+    @Test
+    void patchRejectsDuplicateOrBadNewId() throws Exception {
+        service.create(dataDir, json.readTree("{ \"id\": \"billing\", \"title\": \"課金\" }"));
+        String base = hashOf("diagrams/core.js");
+        assertInstanceOf(DiagramService.Duplicate.class, service.patch(dataDir, "core",
+                json.readTree("{ \"baseHash\": \"%s\", \"newId\": \"billing\" }".formatted(base))));
+        assertInstanceOf(DiagramService.Invalid.class, service.patch(dataDir, "core",
+                json.readTree("{ \"baseHash\": \"%s\", \"newId\": \"../evil\" }".formatted(base))));
+        assertInstanceOf(DiagramService.Stale.class, service.patch(dataDir, "core",
+                json.readTree("{ \"baseHash\": \"sha256:0000\", \"newId\": \"other\" }")));
+        assertTrue(Files.exists(dataDir.resolve("diagrams/core.js")));
+        assertFalse(Files.exists(dataDir.resolve("diagrams/other.js")));
+    }
+
     @Test
     void patchRejectsBlankTitle() throws Exception {
         var outcome = service.patch(dataDir, "core", json.readTree("""

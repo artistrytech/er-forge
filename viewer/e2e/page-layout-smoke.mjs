@@ -358,25 +358,42 @@ async function main() {
     check("I-03: rename is reflected in the page file",
         readFileSync(join(dir, "workspace-default", "data", "diagrams", "billing.js"), "utf-8").includes("課金ドメイン"));
 
-    // ---- 6. I-03: 並び替え（billing は末尾 → 1つ上へ） ----
-    const orderBefore = manifestText(dir).indexOf('id: "billing"');
+    // ---- 5b. I-03: ページIDの変更 → ファイル名・manifest・URL が新しい ID に変わる ----
+    await page.click('[data-testid="page-rename-billing"]');
+    await page.locator('[data-testid="page-id-input"]').fill("");
+    await page.locator('[data-testid="page-id-input"]').pressSequentially("billing-domain");
+    check("I-03: changing the ID warns that the URL changes",
+        (await page.locator('[data-testid="page-id-change-note"]').count()) === 1);
+    await page.click('[data-testid="page-rename-save"]');
+    const diagramsDir = join(dir, "workspace-default", "data", "diagrams");
+    check("I-03: ID change renames the page file",
+        await waitFile(() => existsSync(join(diagramsDir, "billing-domain.js"))
+            && !existsSync(join(diagramsDir, "billing.js"))));
+    check("I-03: ID change is reflected in manifest.js",
+        await waitFile(() => manifestText(dir).includes('id: "billing-domain"')));
+    check("I-03: the open page follows the new ID in the URL",
+        await waitFile(() => page.url().includes("/erd/billing-domain")));
+    await page.waitForSelector('[data-testid="page-rename-billing-domain"]', { timeout: 5000 });
+
+    // ---- 6. I-03: 並び替え（billing-domain は末尾 → 1つ上へ） ----
+    const orderBefore = manifestText(dir).indexOf('id: "billing-domain"');
     await page
-        .locator('[data-testid="page-manage-row"]:has([data-testid="page-delete-billing"]) button[title="上へ"]')
+        .locator('[data-testid="page-manage-row"]:has([data-testid="page-delete-billing-domain"]) button[title="上へ"]')
         .click();
     check("I-03: reordering moves the page up in manifest.js",
-        await waitFile(() => manifestText(dir).indexOf('id: "billing"') < orderBefore));
+        await waitFile(() => manifestText(dir).indexOf('id: "billing-domain"') < orderBefore));
 
     // ---- 7. I-02: 削除（スキーマ情報には影響しない） ----
-    await page.click('[data-testid="page-delete-billing"]');
+    await page.click('[data-testid="page-delete-billing-domain"]');
     // 確認も行の中。押し間違いで即座に消えないよう一段挟む
     check("deleting asks for confirmation in the row",
         (await page.locator('[role="dialog"]').count()) === 1
         && (await page.locator('[data-testid="page-delete-confirm"]').count()) === 1);
     await page.click('[data-testid="page-delete-confirm"]');
     check("I-02: page file is deleted",
-        await waitFile(() => !existsSync(join(dir, "workspace-default", "data", "diagrams", "billing.js"))));
+        await waitFile(() => !existsSync(join(dir, "workspace-default", "data", "diagrams", "billing-domain.js"))));
     check("I-02: manifest no longer lists the page",
-        !manifestText(dir).includes('id: "billing"'));
+        !manifestText(dir).includes('id: "billing-domain"'));
     check("I-02: table definitions are untouched",
         existsSync(join(dir, "workspace-default", "data", "schema", "public", "users.js")));
 

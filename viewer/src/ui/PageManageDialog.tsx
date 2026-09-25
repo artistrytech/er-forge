@@ -1,5 +1,5 @@
 /**
- * ページの管理（I-01 追加 / I-02 削除 / I-03 改名・並び替え）。
+ * ページの管理（I-01 追加 / I-02 削除 / I-03 改名・ID変更・並び替え）。
  *
  * 以前は左パネルを「ページ情報の編集モード」に切り替え、ページ一覧の各行に操作アイコンを
  * 生やしていた。閲覧のための一覧が編集用の見た目に変わるうえ、狭い行に4つのアイコンが並び、
@@ -18,7 +18,8 @@ import { AddPageForm } from "./AddPage";
 import { Button } from "./Button";
 import { Dialog } from "./Dialog";
 import { PenIcon } from "./icons";
-import { hrefs } from "./router";
+import { moveViewport } from "../canvas/viewportMemory";
+import { hrefs, parseHash, replaceRoute } from "./router";
 import styles from "./PageManageDialog.module.scss";
 
 /** 行が今どの状態か。同時に開くのは1行だけ（別の行を触ったら畳む） */
@@ -166,7 +167,7 @@ export function PageManageDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
-/** 改名（I-03）。行をそのまま入力欄に差し替える */
+/** 改名・ID変更（I-03）。行をそのまま入力欄に差し替える */
 function RenameRow({
   diagramId,
   current,
@@ -181,33 +182,77 @@ function RenameRow({
   const { t } = useI18n();
   const renamePage = useEditStore((s) => s.renamePage);
   const [title, setTitle] = useState(current);
+  const [id, setId] = useState(diagramId);
   const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => inputRef.current?.select(), []);
 
+  const newId = id.trim();
+  const idChanged = newId !== diagramId;
+  const idValid = /^[A-Za-z0-9._-]+$/.test(newId);
+
   const submit = (e: React.FormEvent): void => {
     e.preventDefault();
-    void renamePage(diagramId, title.trim()).then((r) => {
+    void renamePage(diagramId, title.trim(), newId).then((r) => {
       onError(r.ok ? null : (r.error ?? ""));
-      if (r.ok) onDone();
+      if (!r.ok) return;
+      if (idChanged) followIdChange(diagramId, newId);
+      onDone();
     });
   };
 
   return (
     <form className={styles.rowForm} onSubmit={submit}>
-      <input
-        ref={inputRef}
-        type="text"
-        className={styles.rowInput}
-        data-testid="page-rename-input"
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-      />
-      <Button type="submit" variant="primary" data-testid="page-rename-save" disabled={title.trim() === ""}>
-        {t("page.rename")}
-      </Button>
-      <Button onClick={onDone}>{t("layout.cancel")}</Button>
+      <div className={styles.rowFields}>
+        <input
+          ref={inputRef}
+          type="text"
+          className={styles.rowInput}
+          data-testid="page-rename-input"
+          aria-label={t("page.title")}
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+        />
+        <input
+          type="text"
+          className={cx("mono", styles.rowIdInput)}
+          data-testid="page-id-input"
+          aria-label={t("page.id")}
+          title={t("page.idHint")}
+          value={id}
+          onChange={(e) => setId(e.target.value)}
+        />
+        <Button
+          type="submit"
+          variant="primary"
+          data-testid="page-rename-save"
+          disabled={title.trim() === "" || !idValid}
+        >
+          {t("page.renameSave")}
+        </Button>
+        <Button onClick={onDone}>{t("layout.cancel")}</Button>
+      </div>
+      {idChanged && (
+        <p className={cx("muted", styles.rowNote)} data-testid="page-id-change-note">
+          {idValid ? t("page.idChangeNote") : t("page.idHint")}
+        </p>
+      )}
     </form>
   );
+}
+
+/**
+ * ID を変えたページの後始末。覚えていた視点を引き継ぎ、そのページを開いていたなら
+ * 新しい URL へ置き換える（古い URL は行き先が無いので履歴に残さない）
+ */
+function followIdChange(oldId: string, newId: string): void {
+  moveViewport(oldId, newId);
+  if (useAppStore.getState().currentDiagramId !== oldId) return;
+  const route = parseHash(location.hash);
+  if (route.kind === "erdEdit") {
+    replaceRoute(hrefs.erdEdit(newId, route.tableId));
+  } else {
+    replaceRoute(hrefs.erd(newId, route.kind === "erd" ? route.tableId : undefined));
+  }
 }
 
 /** 削除（I-02）。何が失われるかを行の中で示してから消す */

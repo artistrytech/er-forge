@@ -83,11 +83,13 @@ final class McpDiagramTools {
                 }, "id", "title"));
 
         tools.add(defs.tool("erd_update_diagram",
-                "Rename a page or change its display order.",
+                "Rename a page, change its id, or change its display order. Changing the id renames the page file "
+                        + "and changes the page URL.",
                 props -> {
                     props.set("workspace", defs.str("Workspace id. Optional when only one exists."));
                     props.set("diagramId", defs.str("Page id."));
                     props.set("title", defs.str("New title."));
+                    props.set("newId", defs.str("New page id: letters, digits, dots, underscores, hyphens."));
                     props.set("order", defs.integer("New display order."));
                 }, "diagramId"));
 
@@ -169,11 +171,12 @@ final class McpDiagramTools {
     }
 
     private String update(Path dataDir, JsonNode args) {
-        McpWriteTools.rejectUnknownKeys(args, Set.of("workspace", "diagramId", "title", "order"), "");
+        McpWriteTools.rejectUnknownKeys(args, Set.of("workspace", "diagramId", "title", "newId", "order"), "");
         String id = McpTools.required(args, "diagramId");
-        if (!args.has("title") && !args.has("order")) {
-            throw new McpTools.ToolException("Pass \"title\" and/or \"order\".");
+        if (!args.has("title") && !args.has("newId") && !args.has("order")) {
+            throw new McpTools.ToolException("Pass \"title\", \"newId\" and/or \"order\".");
         }
+        String newId = args.has("newId") ? McpTools.text(args, "newId").trim() : id;
         return McpWriteTools.retry(() -> {
             Loaded page = pageOrThrow(dataDir, id);
             ObjectNode body = mapper.createObjectNode().put("baseHash", page.baseHash());
@@ -181,7 +184,13 @@ final class McpDiagramTools {
             if (args.hasNonNull("order") && args.get("order").canConvertToInt()) {
                 body.put("order", args.get("order").asInt());
             }
-            return outcomeOrNull(dataDir, id, diagrams.patch(dataDir, id, body), "updated");
+            if (!newId.equals(id)) body.put("newId", newId);
+            DiagramService.Outcome outcome = diagrams.patch(dataDir, id, body);
+            if (outcome instanceof DiagramService.Duplicate) {
+                throw new McpTools.ToolException("Diagram page \"" + newId + "\" already exists. "
+                        + "Pick another id. " + existingPages(dataDir));
+            }
+            return outcomeOrNull(dataDir, newId, outcome, "updated");
         });
     }
 

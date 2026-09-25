@@ -53,7 +53,7 @@ public final class DiagramService {
     public record Invalid(String message) implements Outcome {}
 
     /**
-     * @param body { baseHash, force, title, order, nodes: { id: {pos,w}|null }, edges: { id: {waypoints}|null } }
+     * @param body { baseHash, force, title, order, newId, nodes: { id: {pos,w}|null }, edges: { id: {waypoints}|null } }
      */
     public Outcome patch(Path dataDir, String diagramId, JsonNode body) {
         if (!SAFE_ID.matcher(diagramId).matches()) return new NotFound();
@@ -75,14 +75,37 @@ public final class DiagramService {
         if (body.has("title") && body.get("title").asText("").isBlank()) {
             return new Invalid("Enter a page title.");
         }
+        // I-03: ページIDの変更（= ファイル名の変更）。省略時・同じ値なら変更しない
+        String newId = body.has("newId") ? body.get("newId").asText("").trim() : diagramId;
+        boolean changeId = !newId.equals(diagramId);
+        if (changeId) {
+            if (!SAFE_ID.matcher(newId).matches()) {
+                return new Invalid("Page ID may only contain letters, numbers, dots, underscores, and hyphens: " + newId);
+            }
+            if (Files.exists(dataDir.resolve("diagrams/" + newId + ".js"))) return new Duplicate(newId);
+        }
 
         DiagramPage page = parser.parseDiagram(new String(current, StandardCharsets.UTF_8)).value();
-        DiagramPage patched = apply(page, body);
+        DiagramPage patched = apply(page, body, newId);
         String content = printer.printDiagram(patched);
 
         Map<String, String> written = new LinkedHashMap<>();
         String newHash = Hashes.sha256(content.getBytes(StandardCharsets.UTF_8));
         try {
+            if (changeId) {
+                // manifest.js は古いファイルを指したままなので、ファイルを動かす前に読んでおく
+                ProjectStore.LoadResult loaded = store.read(dataDir);
+                List<DiagramPage> pages = loaded.model().diagrams().stream()
+                        .map(d -> d.id().equals(diagramId) ? patched : d).toList();
+                // 新しいファイルを書いてから古いファイルを消す（途中で失敗してもページは失われない）
+                FileWrites.writeAtomic(dataDir.resolve("diagrams/" + newId + ".js"), content);
+                Files.delete(file);
+                written.put("diagrams/" + diagramId + ".js", null);
+                written.put("diagrams/" + newId + ".js", newHash);
+                regenerateDerived(dataDir, written, loaded.model().manifest(),
+                        loaded.model().tables(), pages);
+                return new Ok(newHash, written);
+            }
             if (!newHash.equals(currentHash)) {
                 FileWrites.writeAtomic(file, content);
                 written.put("diagrams/" + diagramId + ".js", newHash);
@@ -199,7 +222,7 @@ public final class DiagramService {
 
     // ------------------------------------------------------------ patch 適用
 
-    private DiagramPage apply(DiagramPage page, JsonNode body) {
+    private DiagramPage apply(DiagramPage page, JsonNode body, String pageId) {
         Map<String, NodeLayout> nodes = new LinkedHashMap<>(page.nodes());
         JsonNode nodePatch = body.path("nodes");
         for (Iterator<String> it = nodePatch.fieldNames(); it.hasNext(); ) {
@@ -225,7 +248,7 @@ public final class DiagramService {
         // I-03: ページ名・表示順の変更。省略時は既存値のまま
         String title = body.has("title") ? body.get("title").asText().trim() : page.title();
         int order = body.has("order") ? body.get("order").asInt() : page.order();
-        return new DiagramPage(page.id(), title, order, nodes, edges, page.unknown());
+        return new DiagramPage(pageId, title, order, nodes, edges, page.unknown());
     }
 
     /** 既存ノードの unknown / 省略されたキー（w）は保持する。座標は防御的に再正規化する（INV-2）。 */

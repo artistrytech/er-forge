@@ -97,7 +97,8 @@ interface EditState {
 
   /** ページ管理（I-01〜I-03）。書き込みは保存経路と直列化する */
   createPage(id: string, title: string): Promise<PageOpResult>;
-  renamePage(diagramId: string, title: string): Promise<PageOpResult>;
+  /** newId を渡すとページID（ファイル名）も変える */
+  renamePage(diagramId: string, title: string, newId?: string): Promise<PageOpResult>;
   reorderPage(diagramId: string, direction: "up" | "down"): Promise<PageOpResult>;
   deletePage(diagramId: string): Promise<PageOpResult>;
 
@@ -365,12 +366,16 @@ export const useEditStore = create<EditState>((set, get) => ({
   createPage: (id, title) =>
     pageOp(() => apiPost(wpath("/diagrams"), { id, title })),
 
-  renamePage: (diagramId, title) =>
-    pageOp(async () =>
-      apiPatch(wpath(`/diagrams/${encodeURIComponent(diagramId)}`), {
-        baseHash: await baseHashOf(diagramId),
-        title,
-      }),
+  renamePage: (diagramId, title, newId) =>
+    pageOp(
+      async () =>
+        apiPatch(wpath(`/diagrams/${encodeURIComponent(diagramId)}`), {
+          baseHash: await baseHashOf(diagramId),
+          title,
+          ...(newId !== undefined && newId !== diagramId ? { newId } : {}),
+        }),
+      // ID を変えたら古い ID のキャッシュ・編集状態は行き場を失う（新しい ID で読み直す）
+      newId !== undefined && newId !== diagramId ? () => forgetDiagram(diagramId) : undefined,
     ),
 
   reorderPage: (diagramId, direction) => {
@@ -494,7 +499,7 @@ async function waitForIdle(): Promise<void> {
   }
 }
 
-/** 削除されたページのキャッシュ・編集状態を捨てる */
+/** 削除された（または ID が変わった）ページのキャッシュ・編集状態を捨てる */
 function forgetDiagram(diagramId: string): void {
   committed.delete(diagramId);
   baseHashes.delete(`diagrams/${diagramId}.js`);

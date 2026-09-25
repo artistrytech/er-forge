@@ -568,10 +568,16 @@ class McpEndpointTest {
         assertEquals("中核", page.path("title").asText());
         assertEquals(5, page.path("order").asInt());
 
-        JsonNode deleted = ok(mcp(mcpToken, call("erd_delete_diagram",
-                mapper.createObjectNode().put("diagramId", "core")), Map.of()));
-        assertFalse(deleted.path("isError").asBoolean(), deleted.toString());
+        JsonNode renamed = ok(mcp(mcpToken, call("erd_update_diagram",
+                mapper.createObjectNode().put("diagramId", "core").put("newId", "domain")), Map.of()));
+        assertFalse(renamed.path("isError").asBoolean(), renamed.toString());
         assertFalse(Files.exists(root.resolve("workspace-default/data/diagrams/core.js")));
+        assertEquals("中核", diagram("domain").path("title").asText());
+
+        JsonNode deleted = ok(mcp(mcpToken, call("erd_delete_diagram",
+                mapper.createObjectNode().put("diagramId", "domain")), Map.of()));
+        assertFalse(deleted.path("isError").asBoolean(), deleted.toString());
+        assertFalse(Files.exists(root.resolve("workspace-default/data/diagrams/domain.js")));
         assertTrue(Files.exists(root.resolve("workspace-default/data/schema/public/users.js")), "スキーマが消えた");
         JsonNode list = mapper.readTree(ok(mcp(mcpToken,
                 call("erd_list_diagrams", mapper.createObjectNode()), Map.of()))

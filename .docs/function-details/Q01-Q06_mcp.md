@@ -232,7 +232,7 @@ Existing page IDs: core, billing, inventory.
 | ツール | 引数 | 経由するサービス |
 |---|---|---|
 | `erd_create_diagram` | `id`, `title`, `order?` | `DiagramService.create` |
-| `erd_update_diagram` | `diagramId`, `title?`, `order?` | `DiagramService.patch` |
+| `erd_update_diagram` | `diagramId`, `title?`, `newId?`, `order?` | `DiagramService.patch` |
 | `erd_delete_diagram` | `diagramId` | `DiagramService.delete` |
 | **`erd_place_tables`** | `diagramId`, `add?: []`, `remove?: []`, `layout?: "auto"(既定) \| "keep"` | `AutoLayout` → `DiagramService.patch` |
 | `erd_auto_layout` | `diagramId` | 同上（ページ全体を再配置） |
