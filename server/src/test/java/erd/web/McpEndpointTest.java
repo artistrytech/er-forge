@@ -302,6 +302,146 @@ class McpEndpointTest {
     }
 
     @Test
+    @DisplayName("erd_set_table_meta_batch: 複数テーブルを1回で更新できる")
+    void setTableMetaBatch() throws Exception {
+        enableMcp(true);
+        var args = mapper.createObjectNode();
+        var tables = args.putArray("tables");
+        tables.addObject().put("tableId", "public.orders").put("displayName", "注文");
+        var users = tables.addObject().put("tableId", "public.users").put("notes", "会員");
+        users.putArray("columns").addObject().put("name", "id").put("displayName", "会員ID");
+        JsonNode result = ok(mcp(mcpToken, call("erd_set_table_meta_batch", args), Map.of()));
+        assertFalse(result.path("isError").asBoolean(), result.toString());
+        JsonNode out = mapper.readTree(result.path("content").get(0).path("text").asText());
+        assertEquals("[\"public.orders\",\"public.users\"]", out.path("tables").toString());
+        assertTrue(out.path("written").toString().contains("index.js"), out.toString());
+
+        JsonNode orders = getTable("public.orders");
+        assertEquals("注文", orders.path("displayName").asText());
+        JsonNode u = getTable("public.users");
+        assertEquals("ユーザー", u.path("displayName").asText(), "省略した displayName が消えた");
+        assertEquals("会員", u.path("notes").asText());
+        assertEquals("会員ID", u.path("columns").get(0).path("displayName").asText());
+    }
+
+    @Test
+    @DisplayName("一括ツール: 1件でも不正なら1バイトも書かない")
+    void batchIsAllOrNothing() throws Exception {
+        enableMcp(true);
+        Path orders = root.resolve("workspace-default/data/schema/public/orders.js");
+        Path users = root.resolve("workspace-default/data/schema/public/users.js");
+        byte[] ordersBefore = Files.readAllBytes(orders);
+        byte[] usersBefore = Files.readAllBytes(users);
+
+        // 存在しないカラム
+        var badColumn = mapper.createObjectNode();
+        var t1 = badColumn.putArray("tables");
+        t1.addObject().put("tableId", "public.orders").put("displayName", "注文");
+        t1.addObject().put("tableId", "public.users").putArray("columns").addObject().put("name", "nope");
+        assertBatchRejected("erd_set_table_meta_batch", badColumn, "nope");
+
+        // 存在しないテーブル
+        var badTable = mapper.createObjectNode();
+        var t2 = badTable.putArray("tables");
+        t2.addObject().put("tableId", "public.orders").put("displayName", "注文");
+        t2.addObject().put("tableId", "public.nope").put("displayName", "x");
+        assertBatchRejected("erd_set_table_meta_batch", badTable, "public.nope");
+
+        // 同じテーブルが2回
+        var dup = mapper.createObjectNode();
+        var t3 = dup.putArray("tables");
+        t3.addObject().put("tableId", "public.orders").put("displayName", "注文");
+        t3.addObject().put("tableId", "public.orders").put("notes", "x");
+        assertBatchRejected("erd_set_table_meta_batch", dup, "more than once");
+
+        // 物理情報のキー（INV-1）
+        var physical = mapper.createObjectNode();
+        physical.putArray("tables").addObject().put("tableId", "public.orders").put("primaryKey", "id");
+        assertBatchRejected("erd_set_table_meta_batch", physical, "primaryKey");
+
+        // 論理外部制約の検証エラー（P-08）。どのテーブルの問題かが分かる
+        var badLfk = mapper.createObjectNode();
+        var t4 = badLfk.putArray("tables");
+        t4.addObject().put("tableId", "public.users").putArray("logicalUniques")
+                .addObject().put("name", "uq_id").putArray("columns").add("id");
+        var lfk = t4.addObject().put("tableId", "public.orders").putArray("logicalForeignKeys")
+                .addObject().put("name", "lfk_bad").put("references", "public.nope");
+        lfk.putArray("columns").add("user_id");
+        lfk.putArray("referencedColumns").add("id");
+        assertBatchRejected("erd_set_logical_constraints_batch", badLfk, "public.orders:");
+
+        // 空配列
+        var empty = mapper.createObjectNode();
+        empty.putArray("tables");
+        assertBatchRejected("erd_set_table_meta_batch", empty, "non-empty");
+
+        assertArrayEquals(ordersBefore, Files.readAllBytes(orders), "orders が書かれた");
+        assertArrayEquals(usersBefore, Files.readAllBytes(users), "users が書かれた");
+    }
+
+    @Test
+    @DisplayName("erd_set_logical_constraints_batch: 複数テーブルの論理制約を1回で書ける")
+    void setLogicalConstraintsBatch() throws Exception {
+        enableMcp(true);
+        var args = mapper.createObjectNode();
+        var tables = args.putArray("tables");
+        var lfk = tables.addObject().put("tableId", "public.orders").putArray("logicalForeignKeys")
+                .addObject().put("name", "lfk_orders_user").put("references", "public.users");
+        lfk.putArray("columns").add("user_id");
+        lfk.putArray("referencedColumns").add("id");
+        tables.addObject().put("tableId", "public.users").putArray("logicalUniques")
+                .addObject().put("name", "uq_users_id").putArray("columns").add("id");
+        JsonNode result = ok(mcp(mcpToken, call("erd_set_logical_constraints_batch", args), Map.of()));
+        assertFalse(result.path("isError").asBoolean(), result.toString());
+
+        JsonNode rels = mapper.readTree(ok(mcp(mcpToken,
+                call("erd_list_relations", mapper.createObjectNode().put("tableId", "public.orders")), Map.of()))
+                .path("content").get(0).path("text").asText());
+        assertEquals("public.orders#lfk:lfk_orders_user", rels.path("relations").get(0).path("id").asText());
+        String users = Files.readString(root.resolve("workspace-default/data/schema/public/users.js"));
+        assertTrue(users.contains("uq_users_id"), users);
+    }
+
+    @Test
+    @DisplayName("erd_set_dictionary_batch: 複数カラムの辞書を1回で書け、既存エントリは残る")
+    void setDictionaryBatch() throws Exception {
+        enableMcp(true);
+        ok(mcp(mcpToken, call("erd_set_dictionary_entry",
+                mapper.createObjectNode().put("column", "created_at").put("displayName", "作成日時")), Map.of()));
+
+        var args = mapper.createObjectNode();
+        var entries = args.putArray("entries");
+        entries.addObject().put("column", "id").put("displayName", "ID");
+        entries.addObject().put("column", "user_id").put("displayName", "ユーザーID");
+        JsonNode result = ok(mcp(mcpToken, call("erd_set_dictionary_batch", args), Map.of()));
+        assertFalse(result.path("isError").asBoolean(), result.toString());
+
+        String dict = Files.readString(root.resolve("workspace-default/data/dictionary.js"));
+        assertTrue(dict.contains("作成日時"), "既存エントリが消えた: " + dict);
+        assertTrue(dict.contains("\"ID\""), dict);
+        assertTrue(dict.contains("ユーザーID"), dict);
+
+        var dup = mapper.createObjectNode();
+        var d = dup.putArray("entries");
+        d.addObject().put("column", "id").put("displayName", "A");
+        d.addObject().put("column", "id").put("displayName", "B");
+        assertBatchRejected("erd_set_dictionary_batch", dup, "more than once");
+    }
+
+    private JsonNode getTable(String tableId) throws Exception {
+        return mapper.readTree(ok(mcp(mcpToken,
+                call("erd_get_table", mapper.createObjectNode().put("tableId", tableId)), Map.of()))
+                .path("content").get(0).path("text").asText());
+    }
+
+    private void assertBatchRejected(String tool, JsonNode args, String mention) throws Exception {
+        JsonNode result = ok(mcp(mcpToken, call(tool, args), Map.of()));
+        assertTrue(result.path("isError").asBoolean(), result.toString());
+        String text = result.path("content").get(0).path("text").asText();
+        assertTrue(text.contains(mention), "何が駄目かを言う（" + mention + "）: " + text);
+    }
+
+    @Test
     @DisplayName("erd_set_dictionary_entry / erd_set_ignore_tables: 辞書と無視リストを書ける")
     void setDictionaryAndIgnoreTables() throws Exception {
         enableMcp(true);

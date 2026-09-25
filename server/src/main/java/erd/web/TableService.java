@@ -102,7 +102,81 @@ public final class TableService {
      * 検証・正規化・{@code index.js} の再生成は JSON 版と完全に同じ経路を通る（INV-4）。
      */
     public Outcome put(Path dataDir, String tableId, Table incoming, String baseHash, boolean force) {
-        Path file = tableFile(dataDir, tableId);
+        Object checked = check(dataDir, new Put(tableId, incoming, baseHash), force);
+        if (checked instanceof Outcome failed) return failed;
+        Checked c = (Checked) checked;
+
+        ProjectStore.LoadResult loaded = store.read(dataDir);
+        Map<String, Table> byId = byId(loaded);
+        byId.put(c.incoming().id(), c.incoming());
+
+        List<Issue> errors = new ArrayList<>();
+        List<Issue> warnings = new ArrayList<>();
+        validate(c.incoming(), byId, errors, warnings);
+        if (!errors.isEmpty()) {
+            return new Invalid(errors, warnings);
+        }
+        Map<String, String> written = new LinkedHashMap<>();
+        String newHash = write(dataDir, c, written);
+        regenerateIndex(dataDir, byId, loaded, written);
+        return new Ok(newHash, written, warnings);
+    }
+
+    /** {@link #putAll} の1件分。 */
+    public record Put(String tableId, Table incoming, String baseHash) {}
+
+    /**
+     * 複数テーブルの一括保存（MCP の一括ツール用）。全体の読み込みと {@code index.js} の再生成を1回で済ませる。
+     *
+     * <p><b>全件を検証してから書く。</b> 1件でも NotFound / Stale / Invalid があれば1バイトも書かない。
+     * 検証は同じ一括の中の他テーブルの変更後の値を見る（論理外部制約が一括内の相手を参照できる）。
+     * 問題の {@link Issue#path()} は {@code <テーブルID>: <元のパス>} の形で返す。
+     *
+     * @return {@link Ok#newHash()} は常に null
+     */
+    public Outcome putAll(Path dataDir, List<Put> puts) {
+        List<Checked> checkedAll = new ArrayList<>();
+        for (Put put : puts) {
+            Object checked = check(dataDir, put, false);
+            if (checked instanceof Invalid invalid) return prefixed(put.tableId(), invalid);
+            if (checked instanceof Outcome failed) return failed;
+            checkedAll.add((Checked) checked);
+        }
+
+        ProjectStore.LoadResult loaded = store.read(dataDir);
+        Map<String, Table> byId = byId(loaded);
+        checkedAll.forEach(c -> byId.put(c.incoming().id(), c.incoming()));
+
+        List<Issue> errors = new ArrayList<>();
+        List<Issue> warnings = new ArrayList<>();
+        for (Checked c : checkedAll) {
+            List<Issue> e = new ArrayList<>();
+            List<Issue> w = new ArrayList<>();
+            validate(c.incoming(), byId, e, w);
+            e.forEach(i -> errors.add(prefix(c.incoming().id(), i)));
+            w.forEach(i -> warnings.add(prefix(c.incoming().id(), i)));
+        }
+        if (!errors.isEmpty()) {
+            return new Invalid(errors, warnings);
+        }
+        Map<String, String> written = new LinkedHashMap<>();
+        for (Checked c : checkedAll) {
+            write(dataDir, c, written);
+        }
+        regenerateIndex(dataDir, byId, loaded, written);
+        return new Ok(null, written, warnings);
+    }
+
+    /** 書き込み前の検査を通った1件。 */
+    private record Checked(Path file, String currentHash, Table incoming) {}
+
+    /**
+     * 1件分の事前検査（存在・STALE・リネーム禁止）と正規化。
+     *
+     * @return 通れば {@link Checked}、駄目ならその {@link Outcome}
+     */
+    private Object check(Path dataDir, Put put, boolean force) {
+        Path file = tableFile(dataDir, put.tableId());
         if (file == null || !Files.isRegularFile(file)) return new NotFound();
 
         byte[] current;
@@ -112,55 +186,69 @@ public final class TableService {
             throw new UncheckedIOException(e);
         }
         String currentHash = Hashes.sha256(current);
-        if (!force && !currentHash.equals(baseHash)) {
+        if (!force && !currentHash.equals(put.baseHash())) {
             return new Stale(currentHash);
         }
 
         // タグ・色は保存前に正規化する（trim / 空要素・重複の除去）。検証は validate で行う
-        incoming = normalizeMeta(incoming);
+        Table incoming = normalizeMeta(put.incoming());
 
         Table existing = parser.parseTable(new String(current, StandardCharsets.UTF_8)).value();
 
         // リネームはこの API の対象外（INV-1: リネームをリネームとして扱わない入口を作らない）
-        if (!incoming.id().equals(tableId)
+        if (!incoming.id().equals(put.tableId())
                 || !incoming.schema().name().equals(existing.schema().name())
                 || !equalsNullable(incoming.schema().schema(), existing.schema().schema())) {
             return new Invalid(List.of(new Issue("id", "RENAME_UNSUPPORTED",
                     "renaming a table is not supported by this endpoint")), List.of());
         }
+        return new Checked(file, currentHash, incoming);
+    }
 
-        ProjectStore.LoadResult loaded = store.read(dataDir);
+    private static Map<String, Table> byId(ProjectStore.LoadResult loaded) {
         Map<String, Table> byId = new HashMap<>();
         for (Table t : loaded.model().tables()) {
             byId.put(t.id(), t);
         }
-        byId.put(incoming.id(), incoming);
+        return byId;
+    }
 
-        List<Issue> errors = new ArrayList<>();
-        List<Issue> warnings = new ArrayList<>();
-        validate(incoming, byId, errors, warnings);
-        if (!errors.isEmpty()) {
-            return new Invalid(errors, warnings);
-        }
-
-        String content = printer.printTable(incoming);
+    /** @return 書き込み後（変化なしなら現在）の内容ハッシュ */
+    private String write(Path dataDir, Checked c, Map<String, String> written) {
+        String content = printer.printTable(c.incoming());
         String newHash = Hashes.sha256(content.getBytes(StandardCharsets.UTF_8));
-        Map<String, String> written = new LinkedHashMap<>();
-        try {
-            if (!newHash.equals(currentHash)) {
-                FileWrites.writeAtomic(file, content);
-                written.put(dataDir.relativize(file).toString().replace('\\', '/'), newHash);
+        if (!newHash.equals(c.currentHash())) {
+            try {
+                FileWrites.writeAtomic(c.file(), content);
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
             }
-            // 論理制約・論理名・タグはいずれも index.js に影響する。条件分岐せず必ず再生成する（P §4.3）
-            List<Table> tables = new ArrayList<>(byId.values());
-            String indexHash = FileWrites.regenerateIndex(dataDir, tables, loaded.model().diagrams());
+            written.put(dataDir.relativize(c.file()).toString().replace('\\', '/'), newHash);
+        }
+        return newHash;
+    }
+
+    /** 論理制約・論理名・タグはいずれも index.js に影響する。条件分岐せず必ず再生成する（P §4.3） */
+    private static void regenerateIndex(Path dataDir, Map<String, Table> byId, ProjectStore.LoadResult loaded,
+                                        Map<String, String> written) {
+        try {
+            String indexHash = FileWrites.regenerateIndex(dataDir, new ArrayList<>(byId.values()),
+                    loaded.model().diagrams());
             if (indexHash != null) {
                 written.put("index.js", indexHash);
             }
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
-        return new Ok(newHash, written, warnings);
+    }
+
+    private static Invalid prefixed(String tableId, Invalid invalid) {
+        return new Invalid(invalid.errors().stream().map(i -> prefix(tableId, i)).toList(),
+                invalid.warnings().stream().map(i -> prefix(tableId, i)).toList());
+    }
+
+    private static Issue prefix(String tableId, Issue issue) {
+        return new Issue(tableId + ": " + issue.path(), issue.code(), issue.message());
     }
 
     // --------------------------------------------------------------- DELETE

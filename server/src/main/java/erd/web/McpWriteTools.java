@@ -23,6 +23,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -64,8 +65,11 @@ final class McpWriteTools {
     /** 論理情報（Q-03）のツール。ER図の構成（Q-04）は {@link McpDiagramTools#NAMES}。 */
     static final List<String> META_NAMES = List.of(
             "erd_set_table_meta",
+            "erd_set_table_meta_batch",
             "erd_set_logical_constraints",
+            "erd_set_logical_constraints_batch",
             "erd_set_dictionary_entry",
+            "erd_set_dictionary_batch",
             "erd_set_ignore_tables");
 
     /** 書き込みツールの全体（許可の判定と振り分けはこれで行う）。 */
@@ -77,89 +81,69 @@ final class McpWriteTools {
                 "Update human-written information on a table: logical name (displayName), notes, tags, "
                         + "color, and the same per column. Only the fields you pass are changed; pass null to "
                         + "clear one. Physical information (column types, keys, indexes) cannot be changed "
-                        + "here — it comes from the database.",
+                        + "here — it comes from the database. For more than one table, use "
+                        + "erd_set_table_meta_batch instead.",
                 props -> {
                     props.set("workspace", defs.str("Workspace id. Optional when only one exists."));
                     props.set("tableId", defs.str("Fully qualified table id, e.g. \"public.orders\"."));
-                    props.set("displayName", defs.str("Logical (human-readable) table name."));
-                    props.set("notes", defs.str("Free-form notes about the table (Markdown is fine)."));
-                    props.set("tags", defs.strArray("Tags. Replaces the whole list."));
-                    props.set("color", defs.enumStr("Color token.",
-                            "gray", "red", "amber", "green", "blue", "purple", "muted"));
-                    ObjectNode column = mapper.createObjectNode().put("type", "object");
-                    ObjectNode cp = column.putObject("properties");
-                    cp.set("name", defs.str("Physical column name (must exist on the table)."));
-                    cp.set("displayName", defs.str("Logical column name."));
-                    cp.set("notes", defs.str("Notes about the column."));
-                    cp.set("tags", defs.strArray("Tags. Replaces the whole list."));
-                    cp.set("color", defs.enumStr("Color token.",
-                            "gray", "red", "amber", "green", "blue", "purple", "muted"));
-                    column.putArray("required").add("name");
-                    column.put("additionalProperties", false);
-                    ObjectNode columns = mapper.createObjectNode().put("type", "array");
-                    columns.set("items", column);
-                    columns.put("description", "Per-column updates. Columns not listed are untouched.");
-                    props.set("columns", columns);
+                    tableMetaFields(props, defs);
                 }, "tableId"));
+
+        tools.add(defs.tool("erd_set_table_meta_batch",
+                "Same as erd_set_table_meta for many tables in one call — much faster than calling it per "
+                        + "table. Every entry is checked first; if any entry is invalid, nothing is written.",
+                props -> {
+                    props.set("workspace", defs.str("Workspace id. Optional when only one exists."));
+                    props.set("tables", batchArray(defs, "One entry per table (each table at most once).",
+                            item -> {
+                                item.set("tableId", defs.str("Fully qualified table id, e.g. \"public.orders\"."));
+                                tableMetaFields(item, defs);
+                            }, "tableId"));
+                }, "tables"));
 
         tools.add(defs.tool("erd_set_logical_constraints",
                 "Define relationships and uniqueness that exist in the application but not as database "
                         + "constraints. Logical foreign keys are drawn as dashed edges on ER diagrams. "
-                        + "Each list you pass replaces that list entirely; omit a list to keep it.",
+                        + "Each list you pass replaces that list entirely; omit a list to keep it. "
+                        + "For more than one table, use erd_set_logical_constraints_batch instead.",
                 props -> {
                     props.set("workspace", defs.str("Workspace id. Optional when only one exists."));
                     props.set("tableId", defs.str("Fully qualified table id that holds the referencing columns."));
-
-                    ObjectNode lfk = mapper.createObjectNode().put("type", "object");
-                    ObjectNode lp = lfk.putObject("properties");
-                    lp.set("name", defs.str("Constraint name, unique within the table, e.g. \"lfk_orders_user\"."));
-                    lp.set("columns", defs.strArray("Referencing columns on this table."));
-                    lp.set("references", defs.str("Referenced table id, e.g. \"public.users\"."));
-                    lp.set("referencedColumns", defs.strArray("Referenced columns, same count and order."));
-                    lp.set("notes", defs.str("Why this relationship exists (optional)."));
-                    ArrayNode lreq = lfk.putArray("required");
-                    lreq.add("name").add("columns").add("references").add("referencedColumns");
-                    lfk.put("additionalProperties", false);
-                    ObjectNode lfks = mapper.createObjectNode().put("type", "array");
-                    lfks.set("items", lfk);
-                    props.set("logicalForeignKeys", lfks);
-
-                    ObjectNode lu = mapper.createObjectNode().put("type", "object");
-                    ObjectNode up = lu.putObject("properties");
-                    up.set("name", defs.str("Constraint name, unique within the table."));
-                    up.set("columns", defs.strArray("Columns that are unique together."));
-                    up.set("notes", defs.str("Optional notes."));
-                    lu.putArray("required").add("name").add("columns");
-                    lu.put("additionalProperties", false);
-                    ObjectNode lus = mapper.createObjectNode().put("type", "array");
-                    lus.set("items", lu);
-                    props.set("logicalUniques", lus);
-
-                    ObjectNode rel = mapper.createObjectNode().put("type", "object");
-                    rel.put("description", "Cardinality overrides keyed by constraint name (physical FK or "
-                            + "logical FK on this table). parent/child use \"0..1\", \"1..1\", \"0..N\", \"1..N\".");
-                    ObjectNode relItem = mapper.createObjectNode().put("type", "object");
-                    ObjectNode rp = relItem.putObject("properties");
-                    rp.set("parent", defs.str("Cardinality on the referenced (parent) side."));
-                    rp.set("child", defs.str("Cardinality on the referencing (child) side."));
-                    rp.set("notes", defs.str("Reasoning (optional)."));
-                    relItem.put("additionalProperties", false);
-                    rel.set("additionalProperties", relItem);
-                    props.set("relations", rel);
+                    constraintFields(props, defs);
                 }, "tableId"));
+
+        tools.add(defs.tool("erd_set_logical_constraints_batch",
+                "Same as erd_set_logical_constraints for many tables in one call. Logical foreign keys may "
+                        + "reference tables changed in the same call. Every entry is checked first; if any "
+                        + "entry is invalid, nothing is written.",
+                props -> {
+                    props.set("workspace", defs.str("Workspace id. Optional when only one exists."));
+                    props.set("tables", batchArray(defs, "One entry per table (each table at most once).",
+                            item -> {
+                                item.set("tableId", defs.str(
+                                        "Fully qualified table id that holds the referencing columns."));
+                                constraintFields(item, defs);
+                            }, "tableId"));
+                }, "tables"));
 
         tools.add(defs.tool("erd_set_dictionary_entry",
                 "Set the shared logical name, tags or color for every column with this physical name "
                         + "across the workspace (the column dictionary). Per-table settings still win. "
-                        + "Pass null for displayName, tags and color together to remove the entry.",
+                        + "Pass null for displayName, tags and color together to remove the entry. "
+                        + "For more than one column, use erd_set_dictionary_batch instead.",
                 props -> {
                     props.set("workspace", defs.str("Workspace id. Optional when only one exists."));
-                    props.set("column", defs.str("Physical column name, e.g. \"created_at\"."));
-                    props.set("displayName", defs.str("Shared logical name."));
-                    props.set("tags", defs.strArray("Shared tags. Replaces the whole list."));
-                    props.set("color", defs.enumStr("Color token.",
-                            "gray", "red", "amber", "green", "blue", "purple", "muted"));
+                    dictionaryFields(props, defs);
                 }, "column"));
+
+        tools.add(defs.tool("erd_set_dictionary_batch",
+                "Same as erd_set_dictionary_entry for many columns in one call. Every entry is checked "
+                        + "first; if any entry is invalid, nothing is written.",
+                props -> {
+                    props.set("workspace", defs.str("Workspace id. Optional when only one exists."));
+                    props.set("entries", batchArray(defs, "One entry per column name (each at most once).",
+                            item -> dictionaryFields(item, defs), "column"));
+                }, "entries"));
 
         tools.add(defs.tool("erd_set_ignore_tables",
                 "Replace the workspace's ignore list: tables that must be treated as if they did not "
@@ -174,6 +158,88 @@ final class McpWriteTools {
         diagramTools.define(tools, defs);
     }
 
+    /** 一括ツールの配列引数（items は1件分のオブジェクト）。 */
+    private ObjectNode batchArray(McpTools.Defs defs, String description, McpTools.Defs.Props fields,
+                                  String required) {
+        ObjectNode item = mapper.createObjectNode().put("type", "object");
+        fields.fill(item.putObject("properties"));
+        item.putArray("required").add(required);
+        item.put("additionalProperties", false);
+        ObjectNode array = mapper.createObjectNode().put("type", "array").put("description", description);
+        array.put("minItems", 1);
+        array.set("items", item);
+        return array;
+    }
+
+    private void tableMetaFields(ObjectNode props, McpTools.Defs defs) {
+        props.set("displayName", defs.str("Logical (human-readable) table name."));
+        props.set("notes", defs.str("Free-form notes about the table (Markdown is fine)."));
+        props.set("tags", defs.strArray("Tags. Replaces the whole list."));
+        props.set("color", defs.enumStr("Color token.",
+                "gray", "red", "amber", "green", "blue", "purple", "muted"));
+        ObjectNode column = mapper.createObjectNode().put("type", "object");
+        ObjectNode cp = column.putObject("properties");
+        cp.set("name", defs.str("Physical column name (must exist on the table)."));
+        cp.set("displayName", defs.str("Logical column name."));
+        cp.set("notes", defs.str("Notes about the column."));
+        cp.set("tags", defs.strArray("Tags. Replaces the whole list."));
+        cp.set("color", defs.enumStr("Color token.",
+                "gray", "red", "amber", "green", "blue", "purple", "muted"));
+        column.putArray("required").add("name");
+        column.put("additionalProperties", false);
+        ObjectNode columns = mapper.createObjectNode().put("type", "array");
+        columns.set("items", column);
+        columns.put("description", "Per-column updates. Columns not listed are untouched.");
+        props.set("columns", columns);
+    }
+
+    private void constraintFields(ObjectNode props, McpTools.Defs defs) {
+        ObjectNode lfk = mapper.createObjectNode().put("type", "object");
+        ObjectNode lp = lfk.putObject("properties");
+        lp.set("name", defs.str("Constraint name, unique within the table, e.g. \"lfk_orders_user\"."));
+        lp.set("columns", defs.strArray("Referencing columns on this table."));
+        lp.set("references", defs.str("Referenced table id, e.g. \"public.users\"."));
+        lp.set("referencedColumns", defs.strArray("Referenced columns, same count and order."));
+        lp.set("notes", defs.str("Why this relationship exists (optional)."));
+        ArrayNode lreq = lfk.putArray("required");
+        lreq.add("name").add("columns").add("references").add("referencedColumns");
+        lfk.put("additionalProperties", false);
+        ObjectNode lfks = mapper.createObjectNode().put("type", "array");
+        lfks.set("items", lfk);
+        props.set("logicalForeignKeys", lfks);
+
+        ObjectNode lu = mapper.createObjectNode().put("type", "object");
+        ObjectNode up = lu.putObject("properties");
+        up.set("name", defs.str("Constraint name, unique within the table."));
+        up.set("columns", defs.strArray("Columns that are unique together."));
+        up.set("notes", defs.str("Optional notes."));
+        lu.putArray("required").add("name").add("columns");
+        lu.put("additionalProperties", false);
+        ObjectNode lus = mapper.createObjectNode().put("type", "array");
+        lus.set("items", lu);
+        props.set("logicalUniques", lus);
+
+        ObjectNode rel = mapper.createObjectNode().put("type", "object");
+        rel.put("description", "Cardinality overrides keyed by constraint name (physical FK or "
+                + "logical FK on this table). parent/child use \"0..1\", \"1..1\", \"0..N\", \"1..N\".");
+        ObjectNode relItem = mapper.createObjectNode().put("type", "object");
+        ObjectNode rp = relItem.putObject("properties");
+        rp.set("parent", defs.str("Cardinality on the referenced (parent) side."));
+        rp.set("child", defs.str("Cardinality on the referencing (child) side."));
+        rp.set("notes", defs.str("Reasoning (optional)."));
+        relItem.put("additionalProperties", false);
+        rel.set("additionalProperties", relItem);
+        props.set("relations", rel);
+    }
+
+    private static void dictionaryFields(ObjectNode props, McpTools.Defs defs) {
+        props.set("column", defs.str("Physical column name, e.g. \"created_at\"."));
+        props.set("displayName", defs.str("Shared logical name."));
+        props.set("tags", defs.strArray("Shared tags. Replaces the whole list."));
+        props.set("color", defs.enumStr("Color token.",
+                "gray", "red", "amber", "green", "blue", "purple", "muted"));
+    }
+
     // ----------------------------------------------------------- tools/call
 
     String call(Path root, String workspaceId, Path dataDir, String name, JsonNode args) {
@@ -184,8 +250,11 @@ final class McpWriteTools {
         }
         return switch (name) {
             case "erd_set_table_meta" -> setTableMeta(dataDir, args);
+            case "erd_set_table_meta_batch" -> setTableMetaBatch(dataDir, args);
             case "erd_set_logical_constraints" -> setLogicalConstraints(dataDir, args);
+            case "erd_set_logical_constraints_batch" -> setLogicalConstraintsBatch(dataDir, args);
             case "erd_set_dictionary_entry" -> setDictionaryEntry(dataDir, args);
+            case "erd_set_dictionary_batch" -> setDictionaryBatch(dataDir, args);
             case "erd_set_ignore_tables" -> setIgnoreTables(dataDir, args);
             default -> throw new IllegalArgumentException("Unknown tool: " + name);
         };
@@ -201,11 +270,15 @@ final class McpWriteTools {
     private String setTableMeta(Path dataDir, JsonNode args) {
         rejectUnknownKeys(args, TABLE_META_KEYS, "");
         String tableId = McpTools.required(args, "tableId");
-        for (JsonNode c : args.path("columns")) {
-            rejectUnknownKeys(c, COLUMN_META_KEYS, "columns[]");
-        }
+        return writeTable(dataDir, tableId, tableMetaPatch(args, tableId, ""));
+    }
 
-        return writeTable(dataDir, tableId, existing -> {
+    /** {@code erd_set_table_meta} の1件分（一括版と共用）。キーの検査もここで行う。 */
+    private static Function<Table, Table> tableMetaPatch(JsonNode args, String tableId, String where) {
+        for (JsonNode c : args.path("columns")) {
+            rejectUnknownKeys(c, COLUMN_META_KEYS, where + "columns[]");
+        }
+        return existing -> {
             TableMeta m = existing.meta();
             String displayName = patchText(args, "displayName", m.displayName());
             String notes = patchText(args, "notes", m.notes());
@@ -233,7 +306,7 @@ final class McpWriteTools {
             }
             return existing.withMeta(new TableMeta(displayName, tags, color, notes, columns,
                     m.logicalUniques(), m.logicalForeignKeys(), m.relations(), m.unknown()));
-        });
+        };
     }
 
     // ------------------------------------------------ erd_set_logical_constraints
@@ -244,8 +317,12 @@ final class McpWriteTools {
     private String setLogicalConstraints(Path dataDir, JsonNode args) {
         rejectUnknownKeys(args, CONSTRAINT_KEYS, "");
         String tableId = McpTools.required(args, "tableId");
+        return writeTable(dataDir, tableId, constraintsPatch(args, ""));
+    }
 
-        return writeTable(dataDir, tableId, existing -> {
+    /** {@code erd_set_logical_constraints} の1件分（一括版と共用）。 */
+    private static Function<Table, Table> constraintsPatch(JsonNode args, String where) {
+        return existing -> {
             TableMeta m = existing.meta();
 
             List<LogicalForeignKey> lfks = m.logicalForeignKeys();
@@ -253,7 +330,7 @@ final class McpWriteTools {
                 lfks = new ArrayList<>();
                 for (JsonNode n : args.get("logicalForeignKeys")) {
                     rejectUnknownKeys(n, Set.of("name", "columns", "references", "referencedColumns", "notes"),
-                            "logicalForeignKeys[]");
+                            where + "logicalForeignKeys[]");
                     lfks.add(new LogicalForeignKey(
                             McpTools.required(n, "name"),
                             strings(n.path("columns")),
@@ -266,7 +343,7 @@ final class McpWriteTools {
             if (args.hasNonNull("logicalUniques")) {
                 lus = new ArrayList<>();
                 for (JsonNode n : args.get("logicalUniques")) {
-                    rejectUnknownKeys(n, Set.of("name", "columns", "notes"), "logicalUniques[]");
+                    rejectUnknownKeys(n, Set.of("name", "columns", "notes"), where + "logicalUniques[]");
                     lus.add(new LogicalUnique(McpTools.required(n, "name"), strings(n.path("columns")),
                             McpTools.text(n, "notes").isEmpty() ? null : McpTools.text(n, "notes")));
                 }
@@ -279,7 +356,7 @@ final class McpWriteTools {
                 for (Iterator<String> it = r.fieldNames(); it.hasNext(); ) {
                     String key = it.next();
                     JsonNode n = r.get(key);
-                    rejectUnknownKeys(n, Set.of("parent", "child", "notes"), "relations." + key);
+                    rejectUnknownKeys(n, Set.of("parent", "child", "notes"), where + "relations." + key);
                     relations.put(key, new RelationMeta(
                             McpTools.text(n, "parent").isEmpty() ? null : McpTools.text(n, "parent"),
                             McpTools.text(n, "child").isEmpty() ? null : McpTools.text(n, "child"),
@@ -289,15 +366,102 @@ final class McpWriteTools {
 
             return existing.withMeta(new TableMeta(m.displayName(), m.tags(), m.color(), m.notes(),
                     m.columns(), lus, lfks, relations, m.unknown()));
-        });
+        };
+    }
+
+    // ------------------------------------------- 一括版（erd_set_table_meta_batch 等）
+
+    private String setTableMetaBatch(Path dataDir, JsonNode args) {
+        List<JsonNode> items = batchItems(args, "tables");
+        Map<String, Function<Table, Table>> patches = new LinkedHashMap<>();
+        for (int i = 0; i < items.size(); i++) {
+            JsonNode item = items.get(i);
+            String where = "tables[" + i + "].";
+            rejectUnknownKeys(item, TABLE_META_ITEM_KEYS, "tables[" + i + "]");
+            String tableId = batchTableId(item, i, patches.keySet());
+            patches.put(tableId, tableMetaPatch(item, tableId, where));
+        }
+        return writeTables(dataDir, patches);
+    }
+
+    private String setLogicalConstraintsBatch(Path dataDir, JsonNode args) {
+        List<JsonNode> items = batchItems(args, "tables");
+        Map<String, Function<Table, Table>> patches = new LinkedHashMap<>();
+        for (int i = 0; i < items.size(); i++) {
+            JsonNode item = items.get(i);
+            rejectUnknownKeys(item, CONSTRAINT_ITEM_KEYS, "tables[" + i + "]");
+            String tableId = batchTableId(item, i, patches.keySet());
+            patches.put(tableId, constraintsPatch(item, "tables[" + i + "]."));
+        }
+        return writeTables(dataDir, patches);
+    }
+
+    private static final Set<String> TABLE_META_ITEM_KEYS =
+            Set.of("tableId", "displayName", "notes", "tags", "color", "columns");
+    private static final Set<String> CONSTRAINT_ITEM_KEYS =
+            Set.of("tableId", "logicalForeignKeys", "logicalUniques", "relations");
+
+    /** 一括ツールの配列引数。{@code workspace} 以外のトップレベルキーは拒否する。 */
+    private static List<JsonNode> batchItems(JsonNode args, String field) {
+        rejectUnknownKeys(args, Set.of("workspace", field), "");
+        JsonNode array = args.path(field);
+        if (!array.isArray() || array.isEmpty()) {
+            throw new McpTools.ToolException("\"" + field + "\" must be a non-empty array.");
+        }
+        List<JsonNode> items = new ArrayList<>();
+        array.forEach(items::add);
+        return items;
+    }
+
+    private static String batchTableId(JsonNode item, int i, Set<String> seen) {
+        String tableId = McpTools.text(item, "tableId");
+        if (tableId.isEmpty()) {
+            throw new McpTools.ToolException("tables[" + i + "]: \"tableId\" is required.");
+        }
+        if (seen.contains(tableId)) {
+            throw new McpTools.ToolException("tables[" + i + "]: \"" + tableId
+                    + "\" appears more than once. Merge its changes into one entry.");
+        }
+        return tableId;
     }
 
     // ---------------------------------------------------- erd_set_dictionary_entry
 
+    private static final Set<String> DICTIONARY_ENTRY_KEYS = Set.of("column", "displayName", "tags", "color");
+
     private String setDictionaryEntry(Path dataDir, JsonNode args) {
         rejectUnknownKeys(args, Set.of("workspace", "column", "displayName", "tags", "color"), "");
         String column = McpTools.required(args, "column");
+        return writeDictionary(dataDir, Map.of(column, args),
+                written -> done("column", column, written, List.of()));
+    }
 
+    private String setDictionaryBatch(Path dataDir, JsonNode args) {
+        List<JsonNode> items = batchItems(args, "entries");
+        Map<String, JsonNode> entries = new LinkedHashMap<>();
+        for (int i = 0; i < items.size(); i++) {
+            JsonNode item = items.get(i);
+            rejectUnknownKeys(item, DICTIONARY_ENTRY_KEYS, "entries[" + i + "]");
+            String column = McpTools.text(item, "column");
+            if (column.isEmpty()) {
+                throw new McpTools.ToolException("entries[" + i + "]: \"column\" is required.");
+            }
+            if (entries.containsKey(column)) {
+                throw new McpTools.ToolException("entries[" + i + "]: \"" + column
+                        + "\" appears more than once. Merge its changes into one entry.");
+            }
+            entries.put(column, item);
+        }
+        return writeDictionary(dataDir, entries,
+                written -> doneMany("columns", entries.keySet(), written, List.of()));
+    }
+
+    /**
+     * 辞書の read-modify-write。{@code entries} はカラム名 → そのカラムへの部分更新（省略 = 現状維持、
+     * null = 消す）。{@link DictionaryService#put} は全件置換なので、既存を全部載せてから差し替える。
+     */
+    private String writeDictionary(Path dataDir, Map<String, JsonNode> entries,
+                                   Function<Map<String, String>, String> onOk) {
         return retry(() -> {
             Path file = dataDir.resolve("dictionary.js");
             Dictionary existing = Dictionary.EMPTY;
@@ -307,27 +471,30 @@ final class McpWriteTools {
                 baseHash = Hashes.sha256(content.getBytes(StandardCharsets.UTF_8));
                 existing = parser.parseDictionary(content).value();
             }
-            DictionaryColumn old = existing.columns().get(column);
 
-            // DictionaryService.put は全件置換なので、既存を全部載せてから1件だけ差し替える
             ObjectNode body = mapper.createObjectNode();
             body.put("baseHash", baseHash);
             ObjectNode columns = body.putObject("columns");
             for (Map.Entry<String, DictionaryColumn> e : existing.columns().entrySet()) {
-                if (e.getKey().equals(column)) continue;
+                if (entries.containsKey(e.getKey())) continue;
                 columns.set(e.getKey(), dictionaryJson(e.getValue()));
             }
-            DictionaryColumn merged = new DictionaryColumn(
-                    patchText(args, "displayName", old == null ? null : old.displayName()),
-                    patchStrings(args, "tags", old == null ? List.of() : old.tags()),
-                    patchText(args, "color", old == null ? null : old.color()),
-                    old == null ? Map.of() : old.unknown());
-            // 全部空にしたらエントリ削除（サービス側の規則と同じ）
-            if (!merged.isEmpty()) columns.set(column, dictionaryJson(merged));
+            for (Map.Entry<String, JsonNode> e : entries.entrySet()) {
+                String column = e.getKey();
+                JsonNode args = e.getValue();
+                DictionaryColumn old = existing.columns().get(column);
+                DictionaryColumn merged = new DictionaryColumn(
+                        patchText(args, "displayName", old == null ? null : old.displayName()),
+                        patchStrings(args, "tags", old == null ? List.of() : old.tags()),
+                        patchText(args, "color", old == null ? null : old.color()),
+                        old == null ? Map.of() : old.unknown());
+                // 全部空にしたらエントリ削除（サービス側の規則と同じ）
+                if (!merged.isEmpty()) columns.set(column, dictionaryJson(merged));
+            }
 
             DictionaryService.Outcome outcome = dictionary.put(dataDir, body);
             if (outcome instanceof DictionaryService.Ok ok) {
-                return done("column", column, ok.writtenFiles(), List.of());
+                return onOk.apply(ok.writtenFiles());
             }
             if (outcome instanceof DictionaryService.Stale) return null;
             if (outcome instanceof DictionaryService.Invalid invalid) {
@@ -409,6 +576,46 @@ final class McpWriteTools {
         });
     }
 
+    /**
+     * 複数テーブルの read-modify-write（一括ツール用）。全件の patch を適用・検証してから
+     * {@link TableService#putAll} で書く。1件でも駄目なら何も書かない。
+     */
+    private String writeTables(Path dataDir, Map<String, Function<Table, Table>> patches) {
+        return retry(() -> {
+            List<TableService.Put> puts = new ArrayList<>();
+            List<String> missing = new ArrayList<>();
+            for (Map.Entry<String, Function<Table, Table>> e : patches.entrySet()) {
+                Path file = tables.tableFileOrNull(dataDir, e.getKey());
+                if (file == null) {
+                    missing.add(e.getKey());
+                    continue;
+                }
+                String content = read(file);
+                Table existing = parser.parseTable(content).value();
+                puts.add(new TableService.Put(e.getKey(), e.getValue().apply(existing),
+                        Hashes.sha256(content.getBytes(StandardCharsets.UTF_8))));
+            }
+            if (!missing.isEmpty()) {
+                throw new McpTools.ToolException("Table(s) " + missing + " do not exist. Nothing was written. "
+                        + "Use erd_list_tables to see valid ids.");
+            }
+
+            TableService.Outcome outcome = tables.putAll(dataDir, puts);
+            if (outcome instanceof TableService.Ok ok) {
+                return doneMany("tables", patches.keySet(), ok.writtenFiles(), ok.warnings());
+            }
+            if (outcome instanceof TableService.Stale) return null;
+            if (outcome instanceof TableService.Invalid invalid) {
+                throw new McpTools.ToolException(issues(invalid.errors()) + "\nNothing was written.");
+            }
+            if (outcome instanceof TableService.NotFound) {
+                throw new McpTools.ToolException("A table was removed while writing. Nothing was written. "
+                        + "Use erd_list_tables to see valid ids.");
+            }
+            throw new IllegalStateException("unexpected outcome: " + outcome);
+        });
+    }
+
     /** 1回の試行。{@code null} を返したら STALE（読み直して再試行する）。 */
     interface Attempt {
         String run();
@@ -428,6 +635,19 @@ final class McpWriteTools {
         ObjectNode out = mapper.createObjectNode();
         out.put("ok", true);
         out.put(what, id);
+        return result(out, written, warnings);
+    }
+
+    private String doneMany(String what, Collection<String> ids, Map<String, String> written,
+                            List<Issue> warnings) {
+        ObjectNode out = mapper.createObjectNode();
+        out.put("ok", true);
+        ArrayNode list = out.putArray(what);
+        ids.forEach(list::add);
+        return result(out, written, warnings);
+    }
+
+    private String result(ObjectNode out, Map<String, String> written, List<Issue> warnings) {
         ArrayNode files = out.putArray("written");
         written.keySet().forEach(files::add);
         if (!warnings.isEmpty()) {

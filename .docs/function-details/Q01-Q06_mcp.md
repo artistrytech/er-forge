@@ -215,6 +215,9 @@ Existing page IDs: core, billing, inventory.
 | `erd_set_table_meta` | `tableId`, `displayName?`, `notes?`, `tags?`, `color?`, `columns?: [{name, displayName?, notes?, tags?, color?}]` | `TableService.put`（**§4.4 のマージ層経由**） |
 | `erd_set_logical_constraints` | `tableId`, `logicalForeignKeys?`, `logicalUniques?`, `relations?` | 同上 |
 | `erd_set_dictionary_entry` | `column`, `displayName?`, `tags?`, `color?` | `DictionaryService.put` |
+| `erd_set_table_meta_batch` | `tables: [{tableId, …erd_set_table_meta と同じ}]` | `TableService.putAll`（§4.5） |
+| `erd_set_logical_constraints_batch` | `tables: [{tableId, …erd_set_logical_constraints と同じ}]` | 同上 |
+| `erd_set_dictionary_batch` | `entries: [{column, …erd_set_dictionary_entry と同じ}]` | `DictionaryService.put`（1回） |
 | `erd_set_ignore_tables` | `patterns: []` | `ConfigService.put` |
 
 - **省略した項目は変更しない**（`null` を明示したときだけ削除する）。全文置換にすると、
@@ -256,6 +259,18 @@ MCP のツールは部分更新なので、間に薄いマージ層を1枚置く
 実装は `McpWriteTools`。`McpTools` は名前で振り分けるだけで、**書き込み許可がオフなら
 `isKnown` が false を返す**（一覧に出ないだけでなく、直接呼んでも Unknown tool になる。INV-6）。
 
+### 4.5 一括版（`*_batch`）
+
+初回に数十〜数百テーブルへ論理名を付けると、1テーブル1呼び出しでは LLM との往復がその回数だけ発生し、
+さらに1回ごとに全テーブルの読み込みと `index.js` の再生成が走る（全体で O(N²)）。一括版はこれを1回にまとめる。
+
+- 1件分の引数・部分更新の規則・マージ層（§4.4）は単体版と**同一の実装**を使う
+- **全件を検証してから書く。** 存在しないテーブル / カラム、machine-owned のキー、同じ ID の重複、
+  P-08 の検証エラーが1件でもあれば1バイトも書かない。エラーの `path` は `<tableId>: <元のパス>` の形
+- 検証は一括内の**変更後の値**を見る（同じ呼び出しで追加した論理一意制約を、論理外部制約の参照先の一意性判定に使える）
+- `TableService.putAll` は全体の読み込み・`index.js` の再生成を1回だけ行う。単体の `put` と事前検査・検証・書き込みの部品を共有する
+- 単体版の説明文に「複数なら一括版を使え」と書き、モデルを一括版へ誘導する
+
 ---
 
 ## 5. Q-05 配置の自動レイアウト連携
@@ -291,8 +306,8 @@ MCP のツールは部分更新なので、間に薄いマージ層を1枚置く
 2. （AI がソースコードを読む）                  業務ドメインの切り方を推測する
 3. erd_create_diagram                          ページを切る
 4. erd_place_tables                            テーブルを置く（座標は ELK）
-5. erd_set_logical_constraints                 コード上の参照関係を論理外部制約に（破線エッジが出る）
-6. erd_set_table_meta                          論理名・注記を埋める
+5. erd_set_logical_constraints_batch           コード上の参照関係を論理外部制約に（破線エッジが出る）
+6. erd_set_table_meta_batch                    論理名・注記を埋める
 7. 人が GUI で確認し、git diff でレビューして commit
 ```
 
